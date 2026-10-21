@@ -33,13 +33,13 @@ const CONFIG = {
   * { box-sizing: border-box; }
   html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif; }
   a { color: var(--brand); }
-  header { position: sticky; top:0; z-index: 50; background: var(--brand); color: var(--brand-ink); padding: 10px 16px; display:flex; align-items:center; gap:12px; }
+  header { position: sticky; top:0; z-index: 50; background: var(--brand); color: var(--brand-ink); padding: 6px 16px; min-height:56px; display:flex; align-items:center; gap:12px; }
   header h1 { font-size: 17px; margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  header button { background: rgba(255,255,255,.15); color:#fff; border:0; border-radius:8px; padding:6px 10px; font-size:14px; }
-  nav.tabs { display:flex; gap:4px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--line); padding: 4px 8px; position: sticky; top:48px; z-index:40; }
-  nav.tabs a { text-decoration:none; color:var(--muted); padding: 8px 10px; border-radius:8px; white-space:nowrap; font-size:15px; }
+  header button { background: rgba(255,255,255,.15); color:#fff; border:0; border-radius:8px; padding:0 12px; min-height:44px; font-size:14px; }   /* UX-A1 พื้นที่สัมผัส ≥ 44px */
+  nav.tabs { display:flex; gap:4px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--line); padding: 4px 8px; position: sticky; top:56px; z-index:40; }
+  nav.tabs a { flex: 0 0 auto; text-decoration:none; color:var(--muted); padding: 0 14px; min-height:44px; min-width:44px; justify-content:center; display:inline-flex; align-items:center; border-radius:8px; white-space:nowrap; font-size:15px; }
   nav.tabs a.active { background: #e8f3ec; color: var(--brand); font-weight:600; }
-  main { padding: 12px 16px 90px; max-width: 1100px; margin: 0 auto; }
+  main { padding: 12px 16px calc(90px + env(safe-area-inset-bottom)); max-width: 1100px; margin: 0 auto; }
   .card { background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
@@ -53,18 +53,18 @@ const CONFIG = {
   button, .btn { font: inherit; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--brand); background: var(--brand); color:#fff; cursor:pointer; }
   button.secondary, .btn.secondary { background:#fff; color: var(--brand); }
   button.danger { background:#fff; color: var(--danger); border-color: var(--danger); }
-  button.small { padding: 6px 10px; font-size: 14px; }
+  button.small { padding: 6px 12px; min-height:44px; min-width:44px; font-size: 14px; }
   button:disabled { opacity:.5; cursor: default; }
   table { width:100%; border-collapse: collapse; font-size: 14px; }
   th, td { text-align:left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; }
   .muted { color: var(--muted); font-size: 14px; }
-  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background:#eef2f7; }
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background:#eef2f7; color: var(--ink); }   /* UX-A8 ความคมชัด */
   .dot { display:inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; margin-right: 6px; border: 1px solid rgba(0,0,0,.2); }
   #map { height: calc(100vh - 150px); min-height: 360px; border-radius: 12px; position: relative; z-index: 0; isolation: isolate; }  /* กันชั้นของ Leaflet ทับแถบเมนู/ส่วนหัว */
-  .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background:#1f2430; color:#fff; padding: 10px 16px; border-radius: 10px; z-index: 100; max-width: 90vw; }
+  .toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translateX(-50%); background:#1f2430; color:#fff; padding: 10px 16px; border-radius: 10px; z-index: 100; max-width: 90vw; }
   .toast.err { background: var(--danger); }
-  .fab { position: fixed; right: 16px; bottom: 20px; z-index: 60; border-radius: 999px; padding: 14px 18px; font-size: 16px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  .fab { position: fixed; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 60; border-radius: 999px; padding: 14px 18px; font-size: 16px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
   .photos { display:flex; gap:8px; flex-wrap:wrap; }
   .photos img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
   .banner { padding: 8px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 10px; }
@@ -77,9 +77,20 @@ const CONFIG = {
   .legend { display:flex; gap:10px; flex-wrap:wrap; font-size: 13px; }
   .hidden { display:none !important; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  /* ชุด A ตามผลตรวจ docs/07 (UX-A#) */
+  button, a, summary, input, select, textarea, label.pick-opt { touch-action: manipulation; }                                   /* A16 */
+  :focus-visible { outline: 3px solid #f59e0b; outline-offset: 2px; }                                                            /* A10 โฟกัสเห็นชัดบนพื้นเขียว */
+  td a, .muted a, .hbar-l a, details > summary { display:inline-block; padding: 13px 4px; margin: -13px -4px; }                  /* A1 ขยายพื้นที่แตะลิงก์ในตารางโดยไม่ขยับแถว */
+  details > summary { display:block; margin:0; padding: 10px 0; }
+  .leaflet-touch .leaflet-bar a, .leaflet-bar a { width:44px; height:44px; line-height:44px; font-size:22px; }                   /* A1 ปุ่มซูมแผนที่ */
+  .leaflet-container .leaflet-control-attribution { color:#374151; } .leaflet-container .leaflet-control-attribution a { color:#1d4ed8; }   /* A8 */
+  table, .kpi .v, .hbar-r, .hbar-r2, .finding .fv { font-variant-numeric: tabular-nums; }                                        /* A12 */
+  label.mini { font-size:13px; margin:0 0 2px; }                                                                                  /* A3 ป้ายเล็กในแถวถัง */
+  .binrow > div { display:flex; flex-direction:column; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }   /* A4 */
   /* แดชบอร์ด (DEC-088) */
   .subtabs { display:flex; gap:6px; margin: 0 0 12px; flex-wrap:wrap; }
-  .subtabs a { text-decoration:none; padding: 8px 14px; border-radius: 999px; border:1px solid var(--line); background:#fff; color:#374151; font-size:14px; }
+  .subtabs a { text-decoration:none; padding: 0 16px; min-height:44px; display:inline-flex; align-items:center; border-radius: 999px; border:1px solid var(--line); background:#fff; color:#374151; font-size:14px; }
   .subtabs a.active { background:#1F3A5F; color:#fff; border-color:#1F3A5F; font-weight:600; }
   .finding { background:#1F3A5F; color:#fff; border-radius:12px; padding:14px 16px; display:flex; gap:14px; align-items:center; margin-bottom:12px; }
   .finding .fv { font-size:34px; font-weight:700; color:#E9D5FF; min-width:120px; line-height:1.1; }
@@ -87,7 +98,7 @@ const CONFIG = {
   .chartbox { position:relative; height:300px; }
   .cardhead { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
   .cardhead h4 { margin:0; }
-  .infobtn { width:36px; height:36px; padding:0; border-radius:50%; background:#fff; color:#1F3A5F; border:1px solid #cbd5e1; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; vertical-align:middle; margin-left:6px; }   /* ชื่อ infobtn ไม่ใช่ info เพราะชนกับ .banner.info (MIS-011) */
+  .infobtn { width:44px; height:44px; padding:0; border-radius:50%; background:#fff; color:#1F3A5F; border:1px solid #cbd5e1; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; vertical-align:middle; margin-left:6px; }   /* ชื่อ infobtn ไม่ใช่ info เพราะชนกับ .banner.info (MIS-011) */
   .infobtn:hover { background:#eff6ff; }
   .hbar-r2 { flex:0 0 auto; text-align:right; font-size:14px; line-height:1.35; min-width:120px; }
   .hbar { display:flex; align-items:center; gap:10px; margin:10px 0; font-size:15px; }
@@ -97,10 +108,11 @@ const CONFIG = {
   .hbar-fill { height:100%; border-radius:4px; }
   .hbar-r { flex: 0 0 auto; text-align:right; white-space:nowrap; font-size:13px; }
   .pick { position:relative; border:1px solid #cbd5e1; border-radius:8px; background:#fff; min-width:160px; }
-  .pick summary { padding: 8px 10px; cursor:pointer; list-style:none; font-size:14px; }
+  .pick summary { padding: 11px 12px; min-height:44px; cursor:pointer; list-style:none; font-size:14px; }
   .pick summary::-webkit-details-marker { display:none; }
   .pick-body { position:absolute; z-index:30; top:100%; left:0; background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px; max-height:260px; overflow:auto; min-width:240px; box-shadow:0 8px 24px rgba(0,0,0,.12); }
-  .pick-opt { display:flex; gap:8px; align-items:center; margin:0; padding:6px 4px; font-size:14px; color:var(--ink); }
+  .pick-opt { display:flex; gap:10px; align-items:center; margin:0; padding:6px 4px; min-height:44px; font-size:14px; color:var(--ink); }
+  .pick-opt input { width:20px; height:20px; }
   .binrow { border:1px solid var(--line); border-radius:10px; padding:8px; margin-bottom:8px; display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:6px; }
   .binrow .full { grid-column: 1 / -1; }
 </style>
@@ -114,7 +126,7 @@ const CONFIG = {
 </header>
 <nav class="tabs" id="tabs"></nav>
 <main id="view"></main>
-<div id="toastHost"></div>
+<div id="toastHost" role="status" aria-live="polite"></div>
 
 <script>
 // =====================================================================
@@ -400,6 +412,7 @@ async function render() {
     if (h.startsWith('#me')) return pageMe(view);
     return pageMap(view);
   } catch (e) { view.innerHTML = `<div class="card"><b>เกิดข้อผิดพลาด</b><div class="muted">${esc(e.message || e)}</div><button class="secondary" onclick="render()">ลองใหม่</button></div>`; console.error(e); }
+  finally { setTimeout(() => bindLabels(view), 0); }
 }
 const roleLabel = r => ({ super_admin: 'super admin', admin: 'admin เทศบาล', recorder: 'ผู้บันทึก' }[r] || r);
 
@@ -448,6 +461,11 @@ async function tilesAvailable() {
   catch { _tilesOk = false; }
   return _tilesOk;
 }
+const ICON = {   // A6 ไอคอน SVG แทนอีโมจิ (เส้น 2px ชุดเดียวกับ ⓘ)
+  gps: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>',
+  print: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>'
+};
+const mkMap = id => L.map(id, { zoomAnimation: !window.REDUCED_MOTION_FLAG, fadeAnimation: !window.REDUCED_MOTION_FLAG, markerZoomAnimation: !window.REDUCED_MOTION_FLAG });   // A4
 async function addBaseLayer(map) {
   const opt = t => ({ maxZoom: t.maxZoom || 19, attribution: t.attribution, referrerPolicy: 'origin' });
   const useMain = !CONFIG.TILES_FALLBACK || await tilesAvailable();
@@ -463,7 +481,7 @@ async function pageMap(view) {
   view.innerHTML = `${scopeSelector()}<div class="legend card" style="padding:8px 12px">${S.cache.capacity_tier.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</div>
     <div id="map"></div>${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
   const places = (await api.list('v_place', { eq: { status: 'active', ...scopeEq() } })).filter(p => p.lat != null && p.lng != null);
-  const map = L.map('map'); S.map = map; addBaseLayer(map);
+  const map = mkMap('map'); S.map = map; addBaseLayer(map);
   const group = L.featureGroup().addTo(map);
   for (const p of places) {
     L.circleMarker([p.lat, p.lng], { radius: 9, color: '#fff', weight: 1.5, fillColor: p.tier_color || '#2E7D32', fillOpacity: .95 })
@@ -479,7 +497,7 @@ async function pageMap(view) {
 // =====================================================================
 async function pagePlaces(view) {
   const rows = await api.list('v_place', { eq: scopeEq(), order: ['place_code'] });
-  view.innerHTML = `${scopeSelector()}<div class="card"><div class="row"><input id="q" placeholder="ค้นหา รหัส/ชื่อ/ถนน" style="flex:1;min-width:200px"><button class="secondary small" onclick="exportCsv(S._places,'places')">ส่งออก CSV</button></div>
+  view.innerHTML = `${scopeSelector()}<div class="card"><div class="row"><input id="q" aria-label="ค้นหา รหัส ชื่อ หรือถนน" placeholder="ค้นหา รหัส/ชื่อ/ถนน" style="flex:1;min-width:200px"><button class="secondary small" onclick="exportCsv(S._places,'places')">ส่งออก CSV</button></div>
     <div class="muted" style="margin:6px 0">${rows.length} จุด</div><div id="list"></div></div>
     ${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
   S._places = rows;
@@ -541,7 +559,7 @@ async function pagePlaceEdit(view, id) {
     <label>ประเภทจุด</label><select id="f_type">${S.cache.place_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}" ${t.id === p.place_type_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <label>ถนน *</label><select id="f_road" onchange="fillSoi()">${roads.map(r => `<option value="${r.id}" ${r.id === p.road_id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
     <label>ซอย (ถ้ามี)</label><select id="f_soi"></select>
-    <label>พิกัด</label><div class="row"><input id="f_lat" placeholder="lat" value="${p.lat ?? ''}" style="flex:1"><input id="f_lng" placeholder="lng" value="${p.lng ?? ''}" style="flex:1"><button class="secondary" onclick="getGps()">📍 ใช้ GPS</button></div><div id="gpsInfo" class="muted"></div>
+    <label>พิกัด (กดปุ่ม GPS หรือพิมพ์ทศนิยม)</label><div class="row" style="align-items:flex-end"><div style="flex:1"><label class="mini" for="f_lat">ละติจูด</label><input id="f_lat" inputmode="decimal" placeholder="เช่น 15.2285" value="${p.lat ?? ''}"></div><div style="flex:1"><label class="mini" for="f_lng">ลองจิจูด</label><input id="f_lng" inputmode="decimal" placeholder="เช่น 104.8564" value="${p.lng ?? ''}"></div><button class="secondary" type="button" onclick="getGps()">${ICON.gps} ใช้ GPS</button></div><div id="gpsInfo" class="muted"></div>
     ${isNew ? `<label>รหัสจุด (เว้นว่าง = ระบบตั้งให้ "ชื่อถนน-ลำดับ")</label><input id="f_code" placeholder="อัตโนมัติ">` : ''}
     <label>หมายเหตุ</label><textarea id="f_note" rows="2">${esc(p.note || '')}</textarea>
     ${isNew ? `<h4>ถังในจุดนี้ (เพิ่มได้หลายแถว)</h4><div class="muted">1 แถว = ถังชุดเดียวกัน (ประเภท · สี · สภาพ · ปีงบที่ซื้อเดียวกัน) · ปีงบและราคาไม่บังคับ</div><div id="binRows"></div><button class="secondary small" onclick="addBinRow()">＋ เพิ่มแถวถัง</button>
@@ -552,11 +570,12 @@ async function pagePlaceEdit(view, id) {
 }
 function fillSoi() { const rid = $('#f_road').value; const list = S._sois.filter(s => s.road_id === rid); $('#f_soi').innerHTML = `<option value="">—</option>` + list.map(s => `<option value="${s.id}" ${s.id === S._p.soi_id ? 'selected' : ''}>${esc(s.name)}</option>`).join(''); }
 function addBinRow() { const d = document.createElement('div'); d.className = 'binrow';
-  d.innerHTML = `<select class="b_type full">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>
-    <input class="b_amt" type="number" min="1" value="1" placeholder="จำนวนใบ" title="จำนวนใบ">${binColorSelect('b_color', '')}${condSelect('b_cond', 'ปกติ')}${fySelect('b_fy', '')}
-    <input class="b_asset" placeholder="เลขครุภัณฑ์ (ถ้ามี)"><input class="b_cost" type="number" min="0" step="any" placeholder="ราคา/ใบ (ว่าง = มาตรฐาน)" title="ราคาต่อใบ บาท ว่าง = ใช้ราคามาตรฐานของประเภท">
-    <button class="small danger" type="button" onclick="this.parentNode.remove()">ลบแถว</button>`;
-  $('#binRows').appendChild(d); }
+  const f = (label, ctrl) => `<div><label class="mini">${label}</label>${ctrl}</div>`;   // A3 ป้ายเล็กเหนือทุกช่อง (bindLabels ผูก for= ให้อัตโนมัติ)
+  d.innerHTML = `${f('ประเภทถัง', `<select class="b_type">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>`).replace('<div>', '<div class="full">')}
+    ${f('จำนวนใบ', `<input class="b_amt" type="number" min="1" value="1">`)}${f('สีถัง', binColorSelect('b_color', ''))}${f('สภาพ', condSelect('b_cond', 'ปกติ'))}${f('ปีงบที่ซื้อ', fySelect('b_fy', ''))}
+    ${f('เลขครุภัณฑ์ (ถ้ามี)', `<input class="b_asset">`)}${f('ราคา/ใบ (ว่าง = มาตรฐาน)', `<input class="b_cost" type="number" min="0" step="any" inputmode="decimal">`)}
+    <div style="justify-content:flex-end"><button class="small danger" type="button" onclick="this.parentNode.parentNode.remove()">ลบแถว</button></div>`;
+  $('#binRows').appendChild(d); bindLabels(d); }
 function getGps() {
   if (!navigator.geolocation) return toast('อุปกรณ์นี้ไม่รองรับ GPS', true);
   $('#gpsInfo').textContent = 'กำลังอ่านตำแหน่ง…';
@@ -612,7 +631,7 @@ function binForm(placeId, binId) {
     <label>ประเภทถัง</label><select id="m_type">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>
     <label>จำนวนใบ</label><input id="m_amt" type="number" min="1" value="1"><label>สีถัง</label>${binColorSelect('m_color_sel', '')}
     <div class="grid2"><div><label>สภาพ (ชำรุด/หาย ไม่นับความจุ)</label>${condSelect('m_cond', 'ปกติ')}</div><div><label>ปีงบที่จัดซื้อ (พ.ศ.)</label>${fySelect('m_fy', '')}</div></div>
-    <label>ราคาต่อใบ (บาท · ว่าง = ใช้ราคามาตรฐานของประเภท)</label><input id="m_cost" type="number" min="0" step="any"><label>เลขครุภัณฑ์</label><input id="m_asset"><label>หมายเหตุ</label><input id="m_note">
+    <label>ราคาต่อใบ (บาท · ว่าง = ใช้ราคามาตรฐานของประเภท)</label><input id="m_cost" type="number" min="0" step="any" inputmode="decimal"><label>เลขครุภัณฑ์</label><input id="m_asset"><label>หมายเหตุ</label><input id="m_note">
     <div class="row" style="margin-top:12px"><button id="m_save">บันทึก</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div>`);
   if (binId) api.list('bin', { eq: { id: binId } }).then(([x]) => { $('#m_type').value = x.bin_type_id; $('#m_amt').value = x.amount; const sel = $('.m_color_sel'); if (x.color && ![...sel.options].some(o => o.value === x.color)) sel.add(new Option(x.color, x.color)); sel.value = x.color || ''; $('.m_cond').value = x.condition || 'ปกติ'; const fy = $('.m_fy'); if (x.fiscal_year && ![...fy.options].some(o => +o.value === +x.fiscal_year)) fy.add(new Option(x.fiscal_year, x.fiscal_year)); fy.value = x.fiscal_year || ''; $('#m_cost').value = x.unit_cost ?? ''; $('#m_asset').value = x.asset_no || ''; $('#m_note').value = x.note || ''; });
   $('#m_save').onclick = async () => {
@@ -664,6 +683,7 @@ function pageQueue(view) {
 //   #dashboard/assets    หน้า 3 ทรัพย์สินถัง (DEC-089: มูลค่าประมาณการ ไม่ใช่ตัวเลขทางบัญชี)
 // =====================================================================
 const DASH = { navy: '#1F3A5F', purple: '#6A1B9A', gray: '#CBD5E1', gray2: '#9CA3AF', cond: { 'ปกติ': '#2E7D32', 'ชำรุด': '#EF6C00', 'หาย': '#C62828' } };
+const REDUCED_MOTION = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; window.REDUCED_MOTION_FLAG = REDUCED_MOTION; if (REDUCED_MOTION) Chart.defaults.animation = false;   // A4
 Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif'; Chart.defaults.font.size = 14; Chart.defaults.color = '#374151';
 const fmt1 = n => (n == null || isNaN(n) ? '-' : Number(n).toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 const pct = (a, b) => (b > 0 ? 100 * a / b : 0);
@@ -681,7 +701,8 @@ const pickValues = id => [...document.querySelectorAll(`#${id} input:checked`)].
 function pickClear(id) { document.querySelectorAll(`#${id} input`).forEach(i => { i.checked = false; }); dashApply(); }
 function dashApply() { if (S._dashDraw) S._dashDraw(); document.querySelectorAll('.pick').forEach(d => { const n = d.querySelectorAll('input:checked').length; const b = d.querySelector('summary b'); if (b) b.textContent = n ? n + ' รายการ' : 'ทั้งหมด'; }); }
 function destroyCharts(list) { list.forEach(c => { c.destroy(); const i = S.charts.indexOf(c); if (i >= 0) S.charts.splice(i, 1); }); list.length = 0; }
-function mkChart(el, cfg) { const c = new Chart(el, cfg); S.charts.push(c); return c; }
+const CHART_KEY = { cStack: 'stack', cScatter: 'scatter', cPareto: 'pareto', cFy: 'fy', cFyVal: 'fyval' };
+function mkChart(el, cfg) { const c = new Chart(el, cfg); S.charts.push(c); const i = S._info && S._info[CHART_KEY[el.id]]; el.setAttribute('role', 'img'); el.setAttribute('aria-label', i ? `${i.title}: ${i.interp}` : 'กราฟ'); return c; }   // A11
 // ปลั๊กอินเล็ก: เขียนป้ายข้างจุดที่ dataset กำหนด ptLabels (Chart.js ไม่มีป้ายจุดในตัว)
 // ปลั๊กอินเล็ก: เขียนป้ายข้างจุดที่ dataset กำหนด ptLabels · เลือกตำแหน่ง ขวา/ซ้าย/บน/ล่าง ที่ไม่ทับป้ายอื่นและไม่ล้นกรอบ · มีพื้นขาวให้อ่านง่าย
 const ptLabelPlugin = { id: 'ptLabels', afterDatasetsDraw(chart) { const { ctx, chartArea: A } = chart; const placed = []; chart.data.datasets.forEach((ds, di) => { if (!ds.ptLabels) return; chart.getDatasetMeta(di).data.forEach((el, i) => { const t = ds.ptLabels[i]; if (!t) return; ctx.save(); ctx.font = '600 13px system-ui, "Noto Sans Thai", sans-serif'; const w = ctx.measureText(t).width + 8, h = 20;
@@ -757,7 +778,7 @@ async function pageDashOverview(view) {
       <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">ความจุตามประเภทถัง ${infoBtn('types')}</h4><span class="pill" title="จุดที่บันทึกแล้วแต่ยังไม่มีแถวถัง (ไม่ทราบ ≠ 0)">จุดที่ยังไม่มีข้อมูลถัง: <b>${fmt(noBins)}</b></span></div><div style="margin-top:8px">${types.map((t, i) => hbar(esc(t.name), t.liters, types[0].liters, i === 0 ? DASH.purple : DASH.gray2, `${fmt(t.liters)} ล. · <span class="muted">${fmt(t.bins)} ใบ</span>`)).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div></div></div>
     ${!S.scopeMuni && isSuper() && msum.length > 1 ? `<div class="card"><h4 style="margin-top:0">เปรียบเทียบรายเทศบาล</h4><div style="overflow:auto"><table><thead><tr><th>เทศบาล</th><th style="text-align:right">จุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">ถนน</th><th style="text-align:right">จุดไม่มีถัง</th><th>ล่าสุด</th></tr></thead><tbody>${msum.map(m => `<tr><td><a href="#dashboard" onclick="S.scopeMuni='${m.municipality_id}'">${esc(m.municipality_code)} ${esc(m.municipality_name)}</a></td><td style="text-align:right">${fmt(m.places)}</td><td style="text-align:right">${fmt(m.total_bins)}</td><td style="text-align:right">${fmt(m.total_liters)}</td><td style="text-align:right">${fmt(m.roads_with_places)}</td><td style="text-align:right">${fmt(m.places_without_bins ?? '-')}</td><td class="muted">${thDate(m.data_updated_at)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
   // แผนที่: วงตามความจุ (รากที่สอง เพื่อให้พื้นที่วงแปรตามลิตร) + สลับแผนที่/ดาวเทียม
-  const map = L.map('map'); S.map = map;
+  const map = mkMap('map'); S.map = map;
   const street = L.tileLayer((await tilesAvailable()) ? CONFIG.TILES.url : CONFIG.TILES_FALLBACK.url, { maxZoom: 19, attribution: (await tilesAvailable()) ? CONFIG.TILES.attribution : CONFIG.TILES_FALLBACK.attribution, referrerPolicy: 'origin' }).addTo(map);
   const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri' });
   L.control.layers({ 'แผนที่': street, 'ดาวเทียม': sat }, null, { position: 'topright' }).addTo(map);
@@ -829,9 +850,9 @@ async function pageDashResearch(view) {
         <div style="overflow:auto"><table><thead><tr><th>รหัสจุด</th><th>ชื่อสถานที่</th><th>ถนน</th><th>ประเภทจุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th></tr></thead><tbody>
         ${rows.slice(S._page * PAGE, (S._page + 1) * PAGE).map(r => `<tr><td><a href="#place/${r.id}">${esc(r.place_code)}</a></td><td>${esc(r.name)}</td><td>${esc(r.road_name)}</td><td>${esc(r.place_type_name || '')}</td><td style="text-align:right">${fmt(r.f_bins)}</td><td style="text-align:right;white-space:nowrap"><i class="dot" style="background:${tierOf(r).color}"></i>${fmt(r.f_liters)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">ไม่มีจุดตามตัวกรอง</td></tr>'}</tbody></table></div>
         <div class="row" style="justify-content:center;margin-top:8px"><button class="small secondary" ${S._page === 0 ? 'disabled' : ''} onclick="S._page--;dashApply()">‹ ก่อนหน้า</button><span class="muted">หน้า ${S._page + 1}/${pages}</span><button class="small secondary" ${S._page >= pages - 1 ? 'disabled' : ''} onclick="S._page++;dashApply()">ถัดไป ›</button></div></div>`;
-    charts.push(mkChart($('#cScatter'), { type: 'scatter', data: { datasets: [{ data: roadArr.map(r => ({ x: r.n, y: r.liters })), ptLabels: roadArr.map((r, i) => (i < heavy ? r.name : '')), backgroundColor: roadArr.map((r, i) => (i < heavy ? DASH.purple : DASH.gray2)), pointRadius: 6 }] },
+    charts.push(mkChart($('#cScatter'), { type: 'scatter', data: { datasets: [{ data: roadArr.map(r => ({ x: r.n, y: r.liters })), ptLabels: roadArr.map((r, i) => (i < heavy ? r.name : '')), backgroundColor: roadArr.map((r, i) => (i < heavy ? DASH.purple : DASH.gray2)), pointRadius: 6, pointHitRadius: 16 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${roadArr[c.dataIndex].name}: ${fmt(c.raw.x)} จุด · ${fmt(c.raw.y)} ล.` } } }, scales: { x: { title: { display: true, text: 'จำนวนจุด' }, beginAtZero: true, ticks: { precision: 0 } }, y: { title: { display: true, text: 'ลิตร' }, beginAtZero: true } } }, plugins: [ptLabelPlugin] }));
-    charts.push(mkChart($('#cPareto'), { type: 'line', data: { datasets: [{ data: cumPts, borderColor: DASH.navy, pointRadius: 0, borderWidth: 2, tension: 0 }, { type: 'scatter', data: marks.map(m => ({ x: m.x, y: m.y })), ptLabels: marks.map(m => m.l), backgroundColor: DASH.purple, pointRadius: 7 }] },
+    charts.push(mkChart($('#cPareto'), { type: 'line', data: { datasets: [{ data: cumPts, borderColor: DASH.navy, pointRadius: 0, borderWidth: 2, tension: 0 }, { type: 'scatter', data: marks.map(m => ({ x: m.x, y: m.y })), ptLabels: marks.map(m => m.l), backgroundColor: DASH.purple, pointRadius: 7, pointHitRadius: 16 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${fmt(c.raw.x)} จุด: ${fmt1(c.raw.y)}% ของความจุ` } } }, scales: { x: { type: 'linear', min: 0, title: { display: true, text: 'จำนวนจุด (เรียงความจุมาก→น้อย)' }, ticks: { precision: 0 } }, y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } }, plugins: [ptLabelPlugin] }));
   };
   S._dashDraw = draw; draw();
@@ -918,9 +939,9 @@ async function pageRoutes(view) {
   $('#routeInfo').innerHTML = `<div class="kpis" style="margin-top:10px"><div class="kpi"><div class="v">${fmt(r.roads)}</div><div class="l">ถนน</div></div><div class="kpi"><div class="v">${fmt(r.places)}</div><div class="l">จุด</div></div><div class="kpi"><div class="v">${fmt(r.total_liters)}</div><div class="l">ลิตร${r.est_weight_kg != null ? ` ≈ ${fmt(r.est_weight_kg)} กก.` : ''}</div></div><div class="kpi"><div class="v" style="${over ? 'color:var(--danger)' : ''}">${r.load_pct == null ? '-' : fmt(r.load_pct) + '%'}</div><div class="l">ของความจุรถ ${r.truck_capacity_liters ? fmt(r.truck_capacity_liters) + ' ล.' : '(ไม่ได้ระบุ)'}</div></div></div>
     <div class="muted" style="margin-top:6px"><span class="pill">${kindLabel(r)}</span> ${esc(r.schedule_note || '')}${over ? ' · <b style="color:var(--danger)">เกินความจุรถ</b>' : ''}</div>
     ${+r.shared_roads > 0 ? `<div class="banner info" style="margin-top:8px">เพื่อทราบ: ถนน ${fmt(r.shared_roads)} สายในเส้นทางนี้ มีรถคันอื่นรับผิดชอบด้วย (ยอดลิตรจึงนับซ้ำกันระหว่างเส้นทาง)</div>` : ''}
-    <div class="row" style="margin-top:8px"><button class="secondary small" onclick="printDriverReport('${r.route_id}')">🖨 รายงานแจ้งคนขับ</button></div>`;
+    <div class="row" style="margin-top:8px"><button class="secondary small" onclick="printDriverReport('${r.route_id}')">${ICON.print} รายงานแจ้งคนขับ</button></div>`;
   const stops = (await api.list('v_route_place', { eq: { route_id: sel } })).filter(x => x.place_id).sort((a, b) => a.road_seq - b.road_seq || String(a.place_code).localeCompare(String(b.place_code), 'th'));
-  const map = L.map('map'); addBaseLayer(map);
+  const map = mkMap('map'); addBaseLayer(map);
   const all = (await api.list('v_place', { eq: { status: 'active', municipality_id: S.scopeMuni } })).filter(p => p.lat != null);
   const inRoute = new Set(stops.map(s => s.place_id));
   const g = L.featureGroup().addTo(map);
@@ -972,7 +993,16 @@ function crudForm(table, id) {
     try { if (id) await api.update(spec.table, r[spec.pk || 'id'], patch, spec.pk || 'id'); else await api.insert(spec.table, { ...(spec.defaults ? spec.defaults() : {}), ...patch }); closeModal(); toast('บันทึกแล้ว'); S.cache.loaded = false; render(); } catch (e) { toast(e.message, true); }
   };
 }
-function openModal(html) { closeModal(); const d = document.createElement('div'); d.className = 'modal-bg'; d.id = 'modal'; d.innerHTML = `<div class="modal">${html}</div>`; d.onclick = e => { if (e.target === d) closeModal(); }; document.body.appendChild(d); }
+// A2 ผูกป้ายกับช่องกรอกอัตโนมัติ: label ที่ไม่มี for= และไม่ได้ครอบช่อง → ผูกกับช่องแรกที่ตามมา (ตั้ง id ให้ถ้ายังไม่มี) เพื่อโปรแกรมอ่านหน้าจอ
+let _lblSeq = 0;
+function bindLabels(root) {
+  root.querySelectorAll('label:not([for])').forEach(l => {
+    if (l.querySelector('input,select,textarea')) return;
+    let el = l.nextElementSibling; if (el && !el.matches('input,select,textarea')) el = el.querySelector('input,select,textarea');
+    if (!el) return; if (!el.id) el.id = 'fld_' + (++_lblSeq); l.htmlFor = el.id;
+  });
+}
+function openModal(html) { closeModal(); const d = document.createElement('div'); d.className = 'modal-bg'; d.id = 'modal'; d.innerHTML = `<div class="modal">${html}</div>`; d.onclick = e => { if (e.target === d) closeModal(); }; document.body.appendChild(d); bindLabels(d); }
 function closeModal() { const m = $('#modal'); if (m) m.remove(); }
 
 // =====================================================================
