@@ -478,7 +478,7 @@ async function pagePlace(view, id) {
   </div>
   <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">ถัง (${bins.length} แถว)</h4>${canEdit ? `<button class="small" onclick="binForm('${p.id}')">＋ เพิ่มถัง</button>` : ''}</div>
     <table><thead><tr><th>ประเภท</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th>ครุภัณฑ์</th><th></th></tr></thead><tbody>
-    ${bins.map(b => `<tr style="${b.status !== 'active' ? 'opacity:.5' : ''}"><td>${esc(b.bin_type_name)} <span class="muted">${esc(b.bin_type_color || '')}</span></td><td style="text-align:right">${b.amount}</td><td style="text-align:right">${fmt(b.liters)}</td><td>${esc(b.asset_no || '')}</td>
+    ${bins.map(b => `<tr style="${b.status !== 'active' ? 'opacity:.5' : ''}"><td>${esc(b.bin_type_name)}${b.bin_color ? ` <span class="muted">สี${esc(b.bin_color)}</span>` : ''}</td><td style="text-align:right">${b.amount}</td><td style="text-align:right">${fmt(b.liters)}</td><td>${esc(b.asset_no || '')}</td>
       <td>${canEdit && b.status === 'active' ? `<button class="small secondary" onclick="binForm('${p.id}','${b.id}')">แก้</button> ${isAdmin() ? `<button class="small danger" onclick="cancelRow('bin','${b.id}')">ยกเลิก</button>` : ''}` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">ยังไม่มีถัง</td></tr>'}</tbody></table></div>
   <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">รูป (${photos.length}/${maxPhotos()})</h4>${canEdit && photos.length < maxPhotos() ? `<label class="btn small" style="display:inline-block;margin:0">＋ ถ่าย/เลือกรูป<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addPhoto('${p.id}', this.files[0])"></label>` : (canEdit ? `<span class="muted">ครบ ${maxPhotos()} รูปแล้ว${isAdmin() ? ' · ยกเลิกรูปเก่าเพื่อเพิ่มใหม่' : ''}</span>` : '')}</div>
     <div class="photos" style="margin-top:8px">${photos.map(ph => `<div style="text-align:center"><a href="${esc(ph.url)}" target="_blank" rel="noopener"><img src="${esc(ph.url)}" alt="รูป ${ph.seq}" loading="lazy"></a>${canEdit && isAdmin() ? `<br><button class="small danger" style="margin-top:4px" onclick="cancelRow('place_photo','${ph.id}')">ยกเลิกรูป</button>` : ''}</div>`).join('') || '<span class="muted">ยังไม่มีรูป</span>'}</div></div>`;
@@ -513,7 +513,7 @@ async function pagePlaceEdit(view, id) {
 }
 function fillSoi() { const rid = $('#f_road').value; const list = S._sois.filter(s => s.road_id === rid); $('#f_soi').innerHTML = `<option value="">—</option>` + list.map(s => `<option value="${s.id}" ${s.id === S._p.soi_id ? 'selected' : ''}>${esc(s.name)}</option>`).join(''); }
 function addBinRow() { const d = document.createElement('div'); d.className = 'row'; d.style.marginBottom = '6px';
-  d.innerHTML = `<select class="b_type" style="flex:2;min-width:160px">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select><input class="b_amt" type="number" min="1" value="1" style="flex:1;min-width:70px" placeholder="ใบ"><input class="b_asset" style="flex:2;min-width:120px" placeholder="เลขครุภัณฑ์"><button class="small danger" onclick="this.parentNode.remove()">ลบ</button>`;
+  d.innerHTML = `<select class="b_type" style="flex:2;min-width:160px">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select><input class="b_amt" type="number" min="1" value="1" style="flex:1;min-width:70px" placeholder="ใบ"><input class="b_color" style="flex:1;min-width:90px" placeholder="สีถัง"><input class="b_asset" style="flex:2;min-width:120px" placeholder="เลขครุภัณฑ์"><button class="small danger" onclick="this.parentNode.remove()">ลบ</button>`;
   $('#binRows').appendChild(d); }
 function getGps() {
   if (!navigator.geolocation) return toast('อุปกรณ์นี้ไม่รองรับ GPS', true);
@@ -527,12 +527,13 @@ async function savePlace(id) {
   if ((lat == null) !== (lng == null)) return toast('กรอกพิกัดให้ครบทั้งสองค่า หรือเว้นว่างทั้งคู่', true);
   const payload = { name, place_type_id: $('#f_type').value || null, road_id: $('#f_road').value, soi_id: $('#f_soi').value || null, lat, lng, note: $('#f_note').value.trim() || null };
   if (!S.me.municipality_id) payload.municipality_id = S.scopeMuni;   // super admin ต้องระบุเทศบาล
-  const b = $('#btnSave'); b.disabled = true;
+  const b = $('#btnSave'); b.disabled = true; const btnText = b.textContent; b.textContent = 'กำลังบันทึก…';
   try {
     if (id) { await api.update('place', id, payload); toast('บันทึกแล้ว'); go('#place/' + id); return; }
     const code = $('#f_code').value.trim(); if (code) payload.place_code = code;
-    const binRows = [...document.querySelectorAll('#binRows .row')].map(r => ({ bin_type_id: $('.b_type', r).value, amount: parseInt($('.b_amt', r).value || '0'), asset_no: $('.b_asset', r).value.trim() || null })).filter(x => x.amount > 0);
-    const files = [...($('#f_photos').files || [])];
+    const binRows = [...document.querySelectorAll('#binRows .row')].map(r => ({ bin_type_id: $('.b_type', r).value, amount: parseInt($('.b_amt', r).value || '0'), color: $('.b_color', r).value.trim() || null, asset_no: $('.b_asset', r).value.trim() || null })).filter(x => x.amount > 0);
+    const files = [...($('#f_photos').files || [])].slice(0, maxPhotos());
+    if (files.length) toast(`กำลังย่อรูป ${files.length} รูป…`);
     const photoPayloads = []; for (const f of files) photoPayloads.push(await compressImage(f));
     const queueAll = (why) => {
       const tempId = 'tmp' + Date.now();
@@ -546,9 +547,20 @@ async function savePlace(id) {
     let row;
     try { row = await api.insert('place', payload); } catch (e) { if (isNetworkError(e)) return queueAll('ส่งไม่สำเร็จ'); throw e; }
     for (const x of binRows) { try { await api.insert('bin', { ...x, place_id: row.id }); } catch (e) { if (isNetworkError(e)) Queue.push({ kind: 'bin', placeRef: row.id, payload: x, label: 'ถังของ ' + name }); else toast('ถังบางแถวบันทึกไม่ได้: ' + e.message, true); } }
-    for (const ph of photoPayloads) { try { await savePhoto(row.id, ph); } catch (e) { if (isNetworkError(e)) Queue.push({ kind: 'photo', placeRef: row.id, payload: ph, label: 'รูปของ ' + name }); else toast('รูปบางรูปส่งไม่ได้: ' + e.message, true); } }
-    toast('บันทึกจุด ' + row.place_code + ' แล้ว'); go('#place/' + row.id);
-  } catch (e) { toast(e.message, true); } finally { b.disabled = false; }
+    toast('บันทึกจุด ' + row.place_code + ' แล้ว' + (photoPayloads.length ? ' · กำลังส่งรูปต่อเบื้องหลัง' : ''));
+    go('#place/' + row.id);                                   // ไปหน้าจุดทันที ไม่รอรูป (ส่งรูปใช้เวลาหลายวินาที)
+    if (photoPayloads.length) uploadPhotosInBackground(row.id, photoPayloads, name);
+  } catch (e) { toast(e.message, true); } finally { b.disabled = false; b.textContent = btnText; }
+}
+// ส่งรูปทีละรูปเบื้องหลัง แสดงความคืบหน้า · ล้มเหลวแบบเครือข่าย → เข้าคิว · ล้มเหลวแบบอื่น → แจ้ง
+async function uploadPhotosInBackground(placeId, payloads, label) {
+  let okCount = 0;
+  for (let i = 0; i < payloads.length; i++) {
+    toast(`กำลังส่งรูป ${i + 1}/${payloads.length}…`);
+    try { const row = await savePhoto(placeId, payloads[i]); okCount++; toast(`ส่งรูป ${i + 1}/${payloads.length} แล้ว` + (row._size ? ` (${Math.round(row._size / 1024)} KB)` : '')); }
+    catch (e) { if (isNetworkError(e)) { Queue.push({ kind: 'photo', placeRef: placeId, payload: payloads[i], label: 'รูปของ ' + label }); toast('ไม่มีสัญญาณ เก็บรูปไว้ส่งภายหลัง'); } else toast('ส่งรูปไม่สำเร็จ: ' + e.message, true); }
+  }
+  if (okCount && location.hash === '#place/' + placeId) render();   // ยังอยู่หน้าจุดนั้น → แสดงรูปที่เพิ่งส่ง
 }
 
 // ---- ฟอร์มถัง (ในหน้ารายละเอียด) ----
