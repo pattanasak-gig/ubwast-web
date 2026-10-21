@@ -190,7 +190,7 @@ const DemoBackend = () => {
   const pt = add('place_type', { name: 'จุดทิ้งขยะ', sort_order: 1 }); add('place_type', { name: 'ตลาด', sort_order: 2 }); add('place_type', { name: 'ร้านค้า', sort_order: 3 });
   [['≤120 ลิตร', 0, 120, '#2E7D32'], ['121–240 ลิตร', 120.01, 240, '#F9A825'], ['241–480 ลิตร', 240.01, 480, '#EF6C00'], ['481–1,000 ลิตร', 480.01, 1000, '#C62828'], ['>1,000 ลิตร', 1000.01, null, '#6A1B9A']]
     .forEach((t, i) => add('capacity_tier', { label: t[0], min_liters: t[1], max_liters: t[2], color: t[3], sort_order: i + 1 }));
-  D.app_setting.push({ key: 'kg_per_liter', value: '', description: 'ตัวคูณแปลงลิตรเป็นกิโลกรัม' }, { key: 'default_photo_endpoint_url', value: '', description: 'ลิงก์สคริปต์รับรูปค่ากลาง' }, { key: 'system_name', value: 'ระบบข้อมูลจุดวางถังขยะ (สาธิต)', description: 'ชื่อระบบ' }, { key: 'max_photos_per_place', value: '3', description: 'จำนวนรูปสูงสุดต่อจุด' });
+  D.app_setting.push({ key: 'kg_per_liter', value: '', description: 'ตัวคูณแปลงลิตรเป็นกิโลกรัม' }, { key: 'default_photo_endpoint_url', value: '', description: 'ลิงก์สคริปต์รับรูปค่ากลาง' }, { key: 'system_name', value: 'ระบบข้อมูลจุดวางถังขยะ (สาธิต)', description: 'ชื่อระบบ' }, { key: 'max_photos_per_place', value: '3', description: 'จำนวนรูปสูงสุดต่อจุด' }, { key: 'bin_colors', value: 'น้ำเงิน,เขียว,เหลือง,แดง,ดำ', description: 'รายการสีถังให้เลือก' });
   const r1 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ก', road_type: 'สายหลัก' });
   const r2 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ข', road_type: 'สายรอง' });
   const r3 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ค', road_type: 'สายรอง' });
@@ -484,6 +484,9 @@ async function pagePlace(view, id) {
     <div class="photos" style="margin-top:8px">${photos.map(ph => `<div style="text-align:center"><a href="${esc(ph.url)}" target="_blank" rel="noopener"><img src="${esc(ph.url)}" alt="รูป ${ph.seq}" loading="lazy"></a>${canEdit && isAdmin() ? `<br><button class="small danger" style="margin-top:4px" onclick="cancelRow('place_photo','${ph.id}')">ยกเลิกรูป</button>` : ''}</div>`).join('') || '<span class="muted">ยังไม่มีรูป</span>'}</div></div>`;
 }
 const maxPhotos = () => parseInt(setting('max_photos_per_place') || '3') || 3;
+// รายการสีถังจากค่าตั้งค่าส่วนกลาง (super admin แก้ได้) · ตัวเลือกแรก = ว่าง (ตามประเภท) · ค่าที่มีอยู่แต่ไม่อยู่ในรายการจะถูกเติมให้เลือกได้
+const binColorSelect = (cls, current) => { const list = (setting('bin_colors') || '').split(',').map(s => s.trim()).filter(Boolean); if (current && !list.includes(current)) list.push(current);
+  return `<select class="${cls}"><option value="">ตามประเภท/ไม่ระบุ</option>${list.map(c => `<option value="${esc(c)}" ${c === current ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`; };
 async function cancelRow(table, id) {
   if (!confirm('ยืนยันยกเลิกรายการนี้? (ข้อมูลยังอยู่ แต่จะไม่นับในยอดรวม)')) return;
   try { await api.update(table, id, { status: 'inactive' }); toast('ยกเลิกแล้ว'); render(); } catch (e) { toast(e.message, true); }
@@ -513,7 +516,7 @@ async function pagePlaceEdit(view, id) {
 }
 function fillSoi() { const rid = $('#f_road').value; const list = S._sois.filter(s => s.road_id === rid); $('#f_soi').innerHTML = `<option value="">—</option>` + list.map(s => `<option value="${s.id}" ${s.id === S._p.soi_id ? 'selected' : ''}>${esc(s.name)}</option>`).join(''); }
 function addBinRow() { const d = document.createElement('div'); d.className = 'row'; d.style.marginBottom = '6px';
-  d.innerHTML = `<select class="b_type" style="flex:2;min-width:160px">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select><input class="b_amt" type="number" min="1" value="1" style="flex:1;min-width:70px" placeholder="ใบ"><input class="b_color" style="flex:1;min-width:90px" placeholder="สีถัง"><input class="b_asset" style="flex:2;min-width:120px" placeholder="เลขครุภัณฑ์"><button class="small danger" onclick="this.parentNode.remove()">ลบ</button>`;
+  d.innerHTML = `<select class="b_type" style="flex:2;min-width:160px">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select><input class="b_amt" type="number" min="1" value="1" style="flex:1;min-width:70px" placeholder="ใบ"><span style="flex:1;min-width:120px">${binColorSelect('b_color', '')}</span><input class="b_asset" style="flex:2;min-width:120px" placeholder="เลขครุภัณฑ์"><button class="small danger" onclick="this.parentNode.remove()">ลบ</button>`;
   $('#binRows').appendChild(d); }
 function getGps() {
   if (!navigator.geolocation) return toast('อุปกรณ์นี้ไม่รองรับ GPS', true);
@@ -531,7 +534,7 @@ async function savePlace(id) {
   try {
     if (id) { await api.update('place', id, payload); toast('บันทึกแล้ว'); go('#place/' + id); return; }
     const code = $('#f_code').value.trim(); if (code) payload.place_code = code;
-    const binRows = [...document.querySelectorAll('#binRows .row')].map(r => ({ bin_type_id: $('.b_type', r).value, amount: parseInt($('.b_amt', r).value || '0'), color: $('.b_color', r).value.trim() || null, asset_no: $('.b_asset', r).value.trim() || null })).filter(x => x.amount > 0);
+    const binRows = [...document.querySelectorAll('#binRows .row')].map(r => ({ bin_type_id: $('.b_type', r).value, amount: parseInt($('.b_amt', r).value || '0'), color: $('.b_color', r).value || null, asset_no: $('.b_asset', r).value.trim() || null })).filter(x => x.amount > 0);
     const files = [...($('#f_photos').files || [])].slice(0, maxPhotos());
     if (files.length) toast(`กำลังย่อรูป ${files.length} รูป…`);
     const photoPayloads = []; for (const f of files) photoPayloads.push(await compressImage(f));
@@ -568,13 +571,14 @@ function binForm(placeId, binId) {
   const b = binId ? null : { amount: 1 };
   openModal(`<h3 style="margin-top:0">${binId ? 'แก้ไขถัง' : 'เพิ่มถัง'}</h3>
     <label>ประเภทถัง</label><select id="m_type">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>
-    <label>จำนวนใบ</label><input id="m_amt" type="number" min="1" value="1"><label>สีถัง (ว่าง = ตามประเภท)</label><input id="m_color" placeholder="เช่น เขียว"><label>เลขครุภัณฑ์</label><input id="m_asset"><label>หมายเหตุ</label><input id="m_note">
+    <label>จำนวนใบ</label><input id="m_amt" type="number" min="1" value="1"><label>สีถัง</label>${binColorSelect('m_color_sel', '')}<label>เลขครุภัณฑ์</label><input id="m_asset"><label>หมายเหตุ</label><input id="m_note">
     <div class="row" style="margin-top:12px"><button id="m_save">บันทึก</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div>`);
-  if (binId) api.list('bin', { eq: { id: binId } }).then(([x]) => { $('#m_type').value = x.bin_type_id; $('#m_amt').value = x.amount; $('#m_color').value = x.color || ''; $('#m_asset').value = x.asset_no || ''; $('#m_note').value = x.note || ''; });
+  if (binId) api.list('bin', { eq: { id: binId } }).then(([x]) => { $('#m_type').value = x.bin_type_id; $('#m_amt').value = x.amount; const sel = $('.m_color_sel'); if (x.color && ![...sel.options].some(o => o.value === x.color)) sel.add(new Option(x.color, x.color)); sel.value = x.color || ''; $('#m_asset').value = x.asset_no || ''; $('#m_note').value = x.note || ''; });
   $('#m_save').onclick = async () => {
-    const payload = { bin_type_id: $('#m_type').value, amount: parseInt($('#m_amt').value || '0'), color: $('#m_color').value.trim() || null, asset_no: $('#m_asset').value.trim() || null, note: $('#m_note').value.trim() || null };
+    const payload = { bin_type_id: $('#m_type').value, amount: parseInt($('#m_amt').value || '0'), color: $('.m_color_sel').value || null, asset_no: $('#m_asset').value.trim() || null, note: $('#m_note').value.trim() || null };
     if (payload.amount < 1) return toast('จำนวนใบต้องมากกว่า 0', true);
-    try { if (binId) await api.update('bin', binId, payload); else { try { await api.insert('bin', { ...payload, place_id: placeId }); } catch (e) { if (!isNetworkError(e)) throw e; Queue.push({ kind: 'bin', placeRef: placeId, payload, label: 'ถัง (เพิ่มภายหลัง)' }); toast('ไม่มีสัญญาณ เก็บไว้ส่งภายหลัง'); } } closeModal(); render(); } catch (e) { toast(e.message, true); }
+    const b = $('#m_save'); b.disabled = true;
+    try { if (binId) { await api.update('bin', binId, payload); toast('แก้ไขถังแล้ว'); } else { try { await api.insert('bin', { ...payload, place_id: placeId }); toast('เพิ่มถังแล้ว'); } catch (e) { if (!isNetworkError(e)) throw e; Queue.push({ kind: 'bin', placeRef: placeId, payload, label: 'ถัง (เพิ่มภายหลัง)' }); toast('ไม่มีสัญญาณ เก็บไว้ส่งภายหลัง'); } } closeModal(); render(); } catch (e) { toast(e.message, true); b.disabled = false; }
   };
 }
 
