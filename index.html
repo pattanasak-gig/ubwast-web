@@ -931,13 +931,23 @@ function exportCsv(rows, name) {
 // =====================================================================
 // หน้า: เส้นทางรถ
 // =====================================================================
+// DEC-092 สีเส้นทางตามความจุรวมของเส้นทาง: แบ่ง 5 ช่วงเท่ากันระหว่างเส้นทางที่น้อยสุดและมากสุดของเทศบาล (คำนวณสด ไม่ฟิกตัวเลข)
+const ROUTE_RAMP = ['#9ccc65', '#ffca28', '#fb8c00', '#e53935', '#6a1b9a'];   // น้อย → มาก (เขียวอ่อน เหลือง ส้ม แดง ม่วง ชุดเดียวกับระดับจุด)
+function routeBands(routes) {
+  const vals = routes.map(r => +r.total_liters || 0); const lo = Math.min(...vals), hi = Math.max(...vals);
+  const step = hi > lo ? (hi - lo) / ROUTE_RAMP.length : 0;
+  const bandOf = v => (step === 0 ? ROUTE_RAMP.length - 1 : Math.min(ROUTE_RAMP.length - 1, Math.floor(((+v || 0) - lo) / step)));
+  const legend = ROUTE_RAMP.map((c, i) => ({ color: c, from: Math.round(lo + step * i), to: i === ROUTE_RAMP.length - 1 ? Math.round(hi) : Math.round(lo + step * (i + 1)) }));
+  return { colorOf: r => ROUTE_RAMP[bandOf(r.total_liters)], legend, single: step === 0 };
+}
 async function pageRoutes(view) {
   if (!S.scopeMuni) return view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลก่อน</div>';
   const routes = await api.list('v_route_summary', { eq: { municipality_id: S.scopeMuni }, order: ['route_name'] });
   const sel = (location.hash.split('/')[1]) || (routes[0] && routes[0].route_id);
   const kindLabel = r => r.route_kind === 'temporary' ? `ชั่วคราว${r.valid_from || r.valid_to ? ` ${r.valid_from || '…'} ถึง ${r.valid_to || '…'}` : ''}` : 'ประจำ';
   view.innerHTML = `${scopeSelector()}<div class="card"><label style="margin-top:0">เลือกเส้นทาง / รถ</label><select onchange="go('#routes/'+this.value)">${routes.map(r => `<option value="${r.route_id}" ${r.route_id === sel ? 'selected' : ''}>${esc(r.route_name)} · ${esc(r.truck_code)}${r.status !== 'active' ? ' (ยกเลิก)' : ''} · ${kindLabel(r)}</option>`).join('')}</select>
-    ${!routes.length ? '<div class="muted">ยังไม่มีเส้นทาง ให้ admin เพิ่มที่เมนู "จัดการเทศบาล"</div>' : ''}<div id="routeInfo"></div></div><div id="map"></div>`;
+    ${!routes.length ? '<div class="muted">ยังไม่มีเส้นทาง ให้ admin เพิ่มที่เมนู "จัดการเทศบาล"</div>' : ''}<div id="routeInfo"></div></div>
+    <div class="card" style="padding:8px 12px"><div class="row" style="justify-content:space-between"><label class="pick-opt" style="padding:0"><input type="checkbox" id="rtAll" ${S._routesAll !== false ? 'checked' : ''} onchange="S._routesAll=this.checked;render()"> แสดงทุกเส้นทางของเทศบาล (สีตามความจุรวมของเส้นทาง)</label><span id="rtLegend" class="legend"></span></div></div><div id="map"></div>`;
   const r = routes.find(x => x.route_id === sel); if (!r) return;
   const over = r.load_pct != null && r.load_pct > 100;
   $('#routeInfo').innerHTML = `<div class="kpis" style="margin-top:10px"><div class="kpi"><div class="v">${fmt(r.roads)}</div><div class="l">ถนน</div></div><div class="kpi"><div class="v">${fmt(r.places)}</div><div class="l">จุด</div></div><div class="kpi"><div class="v">${fmt(r.total_liters)}</div><div class="l">ลิตร${r.est_weight_kg != null ? ` ≈ ${fmt(r.est_weight_kg)} กก.` : ''}</div></div><div class="kpi"><div class="v" style="${over ? 'color:var(--danger)' : ''}">${r.load_pct == null ? '-' : fmt(r.load_pct) + '%'}</div><div class="l">ของความจุรถ ${r.truck_capacity_liters ? fmt(r.truck_capacity_liters) + ' ล.' : '(ไม่ได้ระบุ)'}</div></div></div>
@@ -954,8 +964,17 @@ async function pageRoutes(view) {
   const inRoute = new Set(stops.map(s => s.place_id));
   const g = L.featureGroup().addTo(map);
   for (const p of all) L.circleMarker([p.lat, p.lng], { radius: inRoute.has(p.id) ? 10 : 5, color: '#fff', weight: 1, fillColor: inRoute.has(p.id) ? (p.tier_color || '#1b6e3a') : '#9ca3af', fillOpacity: inRoute.has(p.id) ? .95 : .5 }).bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${fmt(p.total_liters)} ลิตร`).addTo(g);
-  if (path) L.geoJSON(path, { style: { color: '#1b6e3a', weight: 5, opacity: .85 } }).addTo(g);   // เส้นบนถนนที่เก็บไว้
-  else { const line = stops.filter(s => s.lat != null).map(s => [s.lat, s.lng]); if (line.length > 1) L.polyline(line, { color: '#1b6e3a', weight: 3, dashArray: '6 6' }).addTo(g); }
+  const activeRoutes = routes.filter(x => x.status === 'active'); const bands = routeBands(activeRoutes); const myColor = bands.colorOf(r);
+  $('#rtLegend').innerHTML = bands.single ? `<span><i class="dot" style="background:${myColor}"></i>ความจุรวม ${fmt(r.total_liters)} ล.</span>` : bands.legend.map(b => `<span><i class="dot" style="background:${b.color}"></i>${fmt(b.from)}–${fmt(b.to)} ล.</span>`).join('');
+  let othersDrawn = 0, othersNoPath = 0;
+  if (S._routesAll !== false && activeRoutes.length > 1) {   // DEC-092: เส้นทางอื่นของเทศบาล (เฉพาะที่มีเส้นบนถนนแล้ว) สีตามความจุรวม บางกว่าเส้นที่เลือก
+    const rows = await api.list('route', { eq: { municipality_id: S.scopeMuni, status: 'active' } });
+    for (const o of rows) { if (o.id === sel) continue; const sum = activeRoutes.find(x => x.route_id === o.id); if (!sum) continue; if (!(o.path && o.path.coordinates)) { othersNoPath++; continue; }
+      L.geoJSON(o.path, { style: { color: bands.colorOf(sum), weight: 4, opacity: .6 } }).bindPopup(`<b>${esc(sum.route_name)}</b><br>${esc(sum.truck_code)} · ${fmt(sum.places)} จุด · <b>${fmt(sum.total_liters)} ลิตร</b>${o.path_distance_m ? ` · ${fmt(Math.round(o.path_distance_m / 100) / 10)} กม.` : ''}<br><a href="#routes/${o.id}">เปิดเส้นทางนี้</a>`).addTo(g); othersDrawn++; }
+  }
+  if (path) L.geoJSON(path, { style: { color: myColor, weight: 7, opacity: .95 } }).bindPopup(`<b>${esc(r.route_name)}</b><br>${fmt(r.places)} จุด · <b>${fmt(r.total_liters)} ลิตร</b>`).addTo(g);   // เส้นบนถนนที่เก็บไว้ (เส้นที่เลือก หนากว่า)
+  else { const line = stops.filter(s => s.lat != null).map(s => [s.lat, s.lng]); if (line.length > 1) L.polyline(line, { color: myColor, weight: 3, dashArray: '6 6' }).addTo(g); }
+  if (othersDrawn || othersNoPath) $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px">แสดงเส้นทางอื่นอีก ${fmt(othersDrawn)} เส้น${othersNoPath ? ` · อีก ${fmt(othersNoPath)} เส้นยังไม่มีเส้นบนถนน (admin กด "ลากเส้นตามถนน")` : ''} · แตะเส้นเพื่อดูชื่อและความจุ</div>`);
   if (custom.length) for (const sidx of stops.filter(s => s.lat != null)) L.circleMarker([sidx.lat, sidx.lng], { radius: 11, color: '#fff', weight: 1.5, fillColor: '#1F3A5F', fillOpacity: .95 }).bindTooltip(String(sidx.seq), { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${sidx.seq}. ${esc(sidx.place_code)}</b><br>${esc(sidx.place_name)}<br>${fmt(sidx.total_liters)} ลิตร`).addTo(g);
   if (all.length) map.fitBounds(g.getBounds().pad(0.2)); else map.setView([CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng], CONFIG.MAP_FALLBACK.zoom);
   S._routeStops = stops; S._route = { ...r, path_distance_m: routeRow && routeRow.path_distance_m, path_at: routeRow && routeRow.path_at, path_source: routeRow && routeRow.path_source, custom_order: custom.length > 0 };
