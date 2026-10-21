@@ -365,7 +365,7 @@ function scopeSelector() {
 // เราเตอร์และเมนู
 // =====================================================================
 const TABS = () => [
-  ['#map', 'แผนที่'], ['#places', 'จุด'], ['#dashboard', 'แดชบอร์ด'], ['#routes', 'เส้นทางรถ'],
+  ['#map', 'แผนที่'], ['#places', 'จุด'], ...(isAdmin() ? [['#dashboard', 'แดชบอร์ด']] : []), ['#routes', 'เส้นทางรถ'],   // DEC-090: แดชบอร์ดเฉพาะ admin เทศบาล (เห็นเทศบาลตน) และ super admin
   ...(isAdmin() ? [['#admin', 'จัดการเทศบาล']] : []),
   ...(isSuper() ? [['#super', 'ส่วนกลาง']] : [])
 ];
@@ -387,7 +387,7 @@ async function render() {
     if (h.startsWith('#places')) return pagePlaces(view);
     if (h.startsWith('#place-edit/')) return pagePlaceEdit(view, h.split('/')[1]);
     if (h.startsWith('#place/')) return pagePlace(view, h.split('/')[1]);
-    if (h.startsWith('#dashboard')) return pageDashboard(view);
+    if (h.startsWith('#dashboard')) return isAdmin() ? pageDashboard(view) : (view.innerHTML = '<div class="card"><b>แดชบอร์ดเปิดให้ admin ของเทศบาลและเจ้าของโครงการเท่านั้น</b><div class="muted">บัญชีผู้บันทึกใช้เมนู แผนที่ · จุด · เส้นทางรถ ได้ตามปกติ</div><a href="#map">ไปหน้าแผนที่</a></div>');
     if (h.startsWith('#routes')) return pageRoutes(view);
     if (h.startsWith('#admin')) return pageAdmin(view);
     if (h.startsWith('#super')) return pageSuper(view);
@@ -692,7 +692,8 @@ async function loadDashData() {
     api.list('v_road_summary', { eq: scopeEq() }),
     api.list('v_municipality_summary', { order: ['municipality_code'] })]);
   const placeIds = new Set(places.map(p => p.id));
-  return { places, bins: bins.filter(b => placeIds.has(b.place_id) && (b.condition || 'ปกติ') === 'ปกติ'), roads,   // ชำรุด/หาย ไม่นับทั้งใบและลิตร (DEC-089) msum: S.scopeMuni ? msum.filter(m => m.municipality_id === S.scopeMuni) : msum };
+  // ชำรุด/หาย ไม่นับทั้งใบและลิตร (DEC-089)
+  return { places, bins: bins.filter(b => placeIds.has(b.place_id) && (b.condition || 'ปกติ') === 'ปกติ'), roads, msum: S.scopeMuni ? msum.filter(m => m.municipality_id === S.scopeMuni) : msum };
 }
 function dashTabs(cur) {
   return `<nav class="subtabs">${[['', 'ภาพรวม'], ['research', 'วิเคราะห์เชิงลึก'], ['assets', 'ทรัพย์สินถัง']].map(([k, l]) => `<a href="#dashboard${k ? '/' + k : ''}" class="${cur === k ? 'active' : ''}">${l}</a>`).join('')}</nav>`;
