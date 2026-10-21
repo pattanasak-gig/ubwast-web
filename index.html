@@ -485,7 +485,8 @@ async function pagePlace(view, id) {
 }
 const maxPhotos = () => parseInt(setting('max_photos_per_place') || '3') || 3;
 // รายการสีถังจากค่าตั้งค่าส่วนกลาง (super admin แก้ได้) · ตัวเลือกแรก = ว่าง (ตามประเภท) · ค่าที่มีอยู่แต่ไม่อยู่ในรายการจะถูกเติมให้เลือกได้
-const binColorSelect = (cls, current) => { const list = (setting('bin_colors') || '').split(',').map(s => s.trim()).filter(Boolean); if (current && !list.includes(current)) list.push(current);
+const binColorSelect = (cls, current) => { let list = (setting('bin_colors') || '').split(',').map(s => s.trim()).filter(Boolean); if (!list.length) list = ['น้ำเงิน', 'เขียว', 'เหลือง', 'แดง', 'ดำ'];   // สำรองเมื่อยังไม่ได้ตั้งค่า bin_colors
+  if (current && !list.includes(current)) list.push(current);
   return `<select class="${cls}"><option value="">ตามประเภท/ไม่ระบุ</option>${list.map(c => `<option value="${esc(c)}" ${c === current ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`; };
 async function cancelRow(table, id) {
   if (!confirm('ยืนยันยกเลิกรายการนี้? (ข้อมูลยังอยู่ แต่จะไม่นับในยอดรวม)')) return;
