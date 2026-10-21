@@ -77,6 +77,27 @@ const CONFIG = {
   .legend { display:flex; gap:10px; flex-wrap:wrap; font-size: 13px; }
   .hidden { display:none !important; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  /* แดชบอร์ด (DEC-088) */
+  .subtabs { display:flex; gap:6px; margin: 0 0 12px; flex-wrap:wrap; }
+  .subtabs a { text-decoration:none; padding: 8px 14px; border-radius: 999px; border:1px solid var(--line); background:#fff; color:#374151; font-size:14px; }
+  .subtabs a.active { background:#1F3A5F; color:#fff; border-color:#1F3A5F; font-weight:600; }
+  .finding { background:#1F3A5F; color:#fff; border-radius:12px; padding:14px 16px; display:flex; gap:14px; align-items:center; margin-bottom:12px; }
+  .finding .fv { font-size:34px; font-weight:700; color:#E9D5FF; min-width:120px; line-height:1.1; }
+  .finding b { color:#E9D5FF; }
+  .chartbox { position:relative; height:280px; }
+  .hbar { display:flex; align-items:center; gap:8px; margin:6px 0; font-size:14px; }
+  .hbar-l { flex: 0 0 38%; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hbar-track { flex:1; height:16px; background:#f1f5f9; border-radius:4px; overflow:hidden; }
+  .hbar-track.thin { height:8px; margin:2px 0; }
+  .hbar-fill { height:100%; border-radius:4px; }
+  .hbar-r { flex: 0 0 auto; text-align:right; white-space:nowrap; font-size:13px; }
+  .pick { position:relative; border:1px solid #cbd5e1; border-radius:8px; background:#fff; min-width:160px; }
+  .pick summary { padding: 8px 10px; cursor:pointer; list-style:none; font-size:14px; }
+  .pick summary::-webkit-details-marker { display:none; }
+  .pick-body { position:absolute; z-index:30; top:100%; left:0; background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px; max-height:260px; overflow:auto; min-width:240px; box-shadow:0 8px 24px rgba(0,0,0,.12); }
+  .pick-opt { display:flex; gap:8px; align-items:center; margin:0; padding:6px 4px; font-size:14px; color:var(--ink); }
+  .binrow { border:1px solid var(--line); border-radius:10px; padding:8px; margin-bottom:8px; display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:6px; }
+  .binrow .full { grid-column: 1 / -1; }
 </style>
 </head>
 <body>
@@ -182,15 +203,16 @@ const DemoBackend = () => {
     add('app_user', { username: 'demo2-admin', display_name: 'admin เทศบาลสอง', role: 'admin', municipality_id: m2.id }),
     add('app_user', { username: 'demo2-rec1', display_name: 'ผู้บันทึก สอง', role: 'recorder', municipality_id: m2.id })
   ];
-  const bt120 = add('bin_type', { name: 'ตัวอย่าง ถัง 120 ลิตร', liters: 120, color: 'เขียว', sort_order: 1 });
-  const bt240 = add('bin_type', { name: 'ตัวอย่าง ถัง 240 ลิตร', liters: 240, color: 'น้ำเงิน', sort_order: 2 });
-  const bt4000 = add('bin_type', { name: 'ตัวอย่าง คอนเทนเนอร์ 4,000 ลิตร', liters: 4000, color: 'เหลือง', sort_order: 3 });
+  const bt120 = add('bin_type', { name: 'ตัวอย่าง ถัง 120 ลิตร', liters: 120, color: 'เขียว', sort_order: 1, unit_cost: 1000, useful_life_years: 5 });
+  const bt240 = add('bin_type', { name: 'ตัวอย่าง ถัง 240 ลิตร', liters: 240, color: 'น้ำเงิน', sort_order: 2, unit_cost: 2000, useful_life_years: 5 });
+  const bt4000 = add('bin_type', { name: 'ตัวอย่าง คอนเทนเนอร์ 4,000 ลิตร', liters: 4000, color: 'เหลือง', sort_order: 3, unit_cost: 70000, useful_life_years: 10 });
+  const bt200 = add('bin_type', { name: 'ตัวอย่าง ถังเหล็ก 200 ลิตร (ยังไม่กำหนดราคา)', liters: 200, color: 'ดำ', sort_order: 4, unit_cost: 0, useful_life_years: 0 });
   const tt = add('truck_type', { name: 'ตัวอย่าง รถอัดท้าย 6 ลบ.ม.', capacity_liters: 6000, sort_order: 1 });
   add('truck_type', { name: 'ตัวอย่าง รถอัดท้าย 12 ลบ.ม.', capacity_liters: 12000, sort_order: 2 });
   const pt = add('place_type', { name: 'จุดทิ้งขยะ', sort_order: 1 }); add('place_type', { name: 'ตลาด', sort_order: 2 }); add('place_type', { name: 'ร้านค้า', sort_order: 3 });
   [['≤120 ลิตร', 0, 120, '#2E7D32'], ['121–240 ลิตร', 120.01, 240, '#F9A825'], ['241–480 ลิตร', 240.01, 480, '#EF6C00'], ['481–1,000 ลิตร', 480.01, 1000, '#C62828'], ['>1,000 ลิตร', 1000.01, null, '#6A1B9A']]
     .forEach((t, i) => add('capacity_tier', { label: t[0], min_liters: t[1], max_liters: t[2], color: t[3], sort_order: i + 1 }));
-  D.app_setting.push({ key: 'kg_per_liter', value: '', description: 'ตัวคูณแปลงลิตรเป็นกิโลกรัม' }, { key: 'default_photo_endpoint_url', value: '', description: 'ลิงก์สคริปต์รับรูปค่ากลาง' }, { key: 'system_name', value: 'ระบบข้อมูลจุดวางถังขยะ (สาธิต)', description: 'ชื่อระบบ' }, { key: 'max_photos_per_place', value: '3', description: 'จำนวนรูปสูงสุดต่อจุด' }, { key: 'bin_colors', value: 'น้ำเงิน,เขียว,เหลือง,แดง,ดำ', description: 'รายการสีถังให้เลือก' });
+  D.app_setting.push({ key: 'kg_per_liter', value: '', description: 'ตัวคูณแปลงลิตรเป็นกิโลกรัม' }, { key: 'default_photo_endpoint_url', value: '', description: 'ลิงก์สคริปต์รับรูปค่ากลาง' }, { key: 'system_name', value: 'ระบบข้อมูลจุดวางถังขยะ (สาธิต)', description: 'ชื่อระบบ' }, { key: 'max_photos_per_place', value: '3', description: 'จำนวนรูปสูงสุดต่อจุด' }, { key: 'bin_colors', value: 'น้ำเงิน,เขียว,เหลือง,แดง,ดำ', description: 'รายการสีถังให้เลือก' }, { key: 'asset_prices_status', value: 'ประมาณการ', description: 'สถานะราคามาตรฐานถัง' });
   const r1 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ก', road_type: 'สายหลัก' });
   const r2 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ข', road_type: 'สายรอง' });
   const r3 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ค', road_type: 'สายรอง' });
@@ -206,7 +228,7 @@ const DemoBackend = () => {
   add('route_road', { municipality_id: m1.id, route_id: rt3.id, road_id: r1.id, seq: 1 });
   const mkPlace = (m, name, road, i, soi, lat, lng) => add('place', { municipality_id: m.id, place_code: `${road.name}-${i}`, name, place_type_id: pt.id, road_id: road.id, soi_id: soi ? soi.id : null, lat, lng, created_by: users[2].id });
   const bins = [[bt120, 1], [bt120, 2], [bt240, 2], [bt240, 4], [bt4000, 1], null];
-  for (let i = 1; i <= 6; i++) { const p = mkPlace(m1, `จุดตัวอย่าง ก-${i}`, r1, i, i === 6 ? s1 : null, 15 + i * 0.001, 100 + i * 0.001); if (bins[i - 1]) add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bins[i - 1][0].id, amount: bins[i - 1][1], asset_no: i === 5 ? 'ตัวอย่าง-ครุภัณฑ์-001' : null }); }
+  for (let i = 1; i <= 6; i++) { const p = mkPlace(m1, `จุดตัวอย่าง ก-${i}`, r1, i, i === 6 ? s1 : null, 15 + i * 0.001, 100 + i * 0.001); if (bins[i - 1]) add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bins[i - 1][0].id, amount: bins[i - 1][1], asset_no: i === 5 ? 'ตัวอย่าง-ครุภัณฑ์-001' : null, condition: 'ปกติ', fiscal_year: i === 5 ? 2566 : (i === 2 ? 2568 : null) }); if (i === 1) { add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bt120.id, amount: 1, condition: 'ชำรุด', fiscal_year: 2562 }); add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bt200.id, amount: 2, condition: 'ปกติ', fiscal_year: 2567 }); } }
   for (let i = 1; i <= 3; i++) { const p = mkPlace(m1, `จุดตัวอย่าง ข-${i}`, r2, i, null, 15.01 + i * 0.001, 100.01 + i * 0.001); add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bt120.id, amount: i }); }
   for (let i = 1; i <= 2; i++) { const p = mkPlace(m1, `จุดตัวอย่าง ค-${i}`, r3, i, null, 15.02 + i * 0.001, 100.02 + i * 0.001); add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bt240.id, amount: 1 }); }
   for (let i = 1; i <= 2; i++) { const p = mkPlace(m2, `จุดตัวอย่าง ง-${i}`, r4, i, null, 15.1 + i * 0.001, 100.1 + i * 0.001); add('bin', { municipality_id: m2.id, place_id: p.id, bin_type_id: bt120.id, amount: 2 }); }
@@ -214,13 +236,15 @@ const DemoBackend = () => {
   let me = null;
   const byId = (t, id) => D[t].find(r => r.id === id);
   const tier = L => { const t = D.capacity_tier.slice().sort((a, b) => a.sort_order - b.sort_order).find(t => L >= t.min_liters && (t.max_liters == null || L <= t.max_liters)); return t || {}; };
-  const placeAgg = pid => { const bs = D.bin.filter(b => b.place_id === pid && b.status === 'active'); return { bin_rows: bs.length, total_bins: bs.reduce((s, b) => s + b.amount, 0), total_liters: bs.reduce((s, b) => s + b.amount * byId('bin_type', b.bin_type_id).liters, 0) }; };
+  const okCond = b => (b.condition || 'ปกติ') === 'ปกติ';
+  const placeAgg = pid => { const bs = D.bin.filter(b => b.place_id === pid && b.status === 'active' && okCond(b)); return { bin_rows: bs.length, total_bins: bs.reduce((s, b) => s + b.amount, 0), total_liters: bs.reduce((s, b) => s + b.amount * byId('bin_type', b.bin_type_id).liters, 0) }; };
   const views = {
-    v_bin: () => D.bin.map(b => { const bt = byId('bin_type', b.bin_type_id); return { ...b, bin_type_name: bt.name, bin_type_color: b.color || bt.color, bin_color: b.color || null, liters_per_bin: bt.liters, liters: b.amount * bt.liters }; }),
-    v_place: () => D.place.map(p => { const a = placeAgg(p.id), m = byId('municipality', p.municipality_id), r = byId('road', p.road_id), s = p.soi_id ? byId('soi', p.soi_id) : null, t = tier(a.total_liters), ptt = byId('place_type', p.place_type_id); return { ...p, ...a, created_by_name: (byId('app_user', p.created_by) || {}).display_name, updated_by_name: (byId('app_user', p.updated_by) || {}).display_name, municipality_code: m.code, municipality_name: m.name, road_name: r.name, soi_name: s ? s.name : null, place_type_name: ptt ? ptt.name : null, tier_label: t.label, tier_color: t.color, photo_count: D.place_photo.filter(x => x.place_id === p.id && x.status === 'active').length }; }),
+    v_bin: () => D.bin.map(b => { const bt = byId('bin_type', b.bin_type_id); return { ...b, condition: b.condition || 'ปกติ', fiscal_year: b.fiscal_year ?? null, bin_unit_cost: b.unit_cost ?? null, bin_type_name: bt.name, bin_type_color: b.color || bt.color, bin_color: b.color || null, liters_per_bin: bt.liters, liters: okCond(b) ? b.amount * bt.liters : 0 }; }),
+    v_bin_asset: () => { const fy = currentFY(); return D.bin.filter(b => b.status === 'active').map(b => { const bt = byId('bin_type', b.bin_type_id), p = byId('place', b.place_id), r = byId('road', p.road_id); const cost = b.unit_cost ?? bt.unit_cost ?? 0, life = bt.useful_life_years || 0, pv = b.amount * cost; let bv = null, st = 'คำนวณได้'; if (cost <= 0) st = 'ยังไม่กำหนดราคา'; else if (life <= 0) { bv = pv; st = 'ไม่คิดค่าเสื่อม'; } else if (b.fiscal_year == null) st = 'ไม่ทราบปีซื้อ'; else bv = pv * Math.max(0, 1 - (fy - b.fiscal_year) / life); return { bin_id: b.id, municipality_id: b.municipality_id, place_id: p.id, place_code: p.place_code, place_name: p.name, road_id: r.id, road_name: r.name, bin_type_id: bt.id, bin_type_name: bt.name, liters_per_bin: bt.liters, amount: b.amount, condition: b.condition || 'ปกติ', fiscal_year: b.fiscal_year ?? null, status: b.status, unit_cost: cost, priced: cost > 0, useful_life_years: life, current_fy: fy, purchase_value: pv, book_value: bv == null ? null : Math.round(bv * 100) / 100, valuation_status: st }; }); },
+    v_place: () => D.place.map(p => { const a = placeAgg(p.id), m = byId('municipality', p.municipality_id), r = byId('road', p.road_id), s = p.soi_id ? byId('soi', p.soi_id) : null, t = tier(a.total_liters), ptt = byId('place_type', p.place_type_id); return { ...p, ...a, created_by_name: (byId('app_user', p.created_by) || {}).display_name, updated_by_name: (byId('app_user', p.updated_by) || {}).display_name, municipality_code: m.code, municipality_name: m.name, road_name: r.name, soi_name: s ? s.name : null, place_type_name: ptt ? ptt.name : null, tier_label: t.label, tier_color: t.color, tier_level: t.sort_order, photo_count: D.place_photo.filter(x => x.place_id === p.id && x.status === 'active').length }; }),
     v_road_summary: () => D.road.map(r => { const ps = D.place.filter(p => p.road_id === r.id && p.status === 'active'); const ag = ps.map(p => placeAgg(p.id)); const m = byId('municipality', r.municipality_id); return { municipality_id: r.municipality_id, municipality_code: m.code, municipality_name: m.name, road_id: r.id, road_name: r.name, road_type: r.road_type, road_status: r.status, places: ps.length, total_bins: ag.reduce((s, a) => s + a.total_bins, 0), total_liters: ag.reduce((s, a) => s + a.total_liters, 0) }; }),
-    v_bin_type_summary: () => { const out = {}; for (const b of D.bin) { const p = byId('place', b.place_id); if (b.status !== 'active' || p.status !== 'active') continue; const bt = byId('bin_type', b.bin_type_id), k = b.municipality_id + bt.id; out[k] = out[k] || { municipality_id: b.municipality_id, municipality_code: byId('municipality', b.municipality_id).code, bin_type_id: bt.id, bin_type_name: bt.name, bin_type_color: bt.color, liters_per_bin: bt.liters, bin_rows: 0, total_bins: 0, total_liters: 0 }; out[k].bin_rows++; out[k].total_bins += b.amount; out[k].total_liters += b.amount * bt.liters; } return Object.values(out); },
-    v_municipality_summary: () => D.municipality.map(m => { const ps = D.place.filter(p => p.municipality_id === m.id && p.status === 'active'); const ag = ps.map(p => placeAgg(p.id)); return { municipality_id: m.id, municipality_code: m.code, municipality_name: m.name, status: m.status, places: ps.length, bin_rows: ag.reduce((s, a) => s + a.bin_rows, 0), total_bins: ag.reduce((s, a) => s + a.total_bins, 0), total_liters: ag.reduce((s, a) => s + a.total_liters, 0), roads_with_places: new Set(ps.map(p => p.road_id)).size }; }),
+    v_bin_type_summary: () => { const out = {}; for (const b of D.bin) { const p = byId('place', b.place_id); if (b.status !== 'active' || p.status !== 'active' || !okCond(b)) continue; const bt = byId('bin_type', b.bin_type_id), k = b.municipality_id + bt.id; out[k] = out[k] || { municipality_id: b.municipality_id, municipality_code: byId('municipality', b.municipality_id).code, bin_type_id: bt.id, bin_type_name: bt.name, bin_type_color: bt.color, liters_per_bin: bt.liters, bin_rows: 0, total_bins: 0, total_liters: 0 }; out[k].bin_rows++; out[k].total_bins += b.amount; out[k].total_liters += b.amount * bt.liters; } return Object.values(out); },
+    v_municipality_summary: () => D.municipality.map(m => { const ps = D.place.filter(p => p.municipality_id === m.id && p.status === 'active'); const ag = ps.map(p => placeAgg(p.id)); return { municipality_id: m.id, municipality_code: m.code, municipality_name: m.name, status: m.status, places: ps.length, bin_rows: ag.reduce((s, a) => s + a.bin_rows, 0), total_bins: ag.reduce((s, a) => s + a.total_bins, 0), total_liters: ag.reduce((s, a) => s + a.total_liters, 0), roads_with_places: new Set(ps.map(p => p.road_id)).size, places_without_bins: ag.filter(a => a.total_bins === 0).length, data_updated_at: ps.map(p => p.updated_at).sort().pop() || null }; }),
     v_route_place: () => { const out = []; for (const rt of D.route) for (const rr of D.route_road.filter(x => x.route_id === rt.id)) { const r = byId('road', rr.road_id); const ps = D.place.filter(p => p.road_id === r.id && p.status === 'active'); if (!ps.length) out.push({ route_id: rt.id, municipality_id: rt.municipality_id, route_name: rt.name, truck_id: rt.truck_id, road_seq: rr.seq, road_id: r.id, road_name: r.name, place_id: null }); for (const p of ps) { const a = placeAgg(p.id); out.push({ route_id: rt.id, municipality_id: rt.municipality_id, route_name: rt.name, truck_id: rt.truck_id, road_seq: rr.seq, road_id: r.id, road_name: r.name, place_id: p.id, place_code: p.place_code, place_name: p.name, lat: p.lat, lng: p.lng, total_bins: a.total_bins, total_liters: a.total_liters }); } } return out; },
     v_route_summary: () => D.route.map(rt => { const t = byId('truck', rt.truck_id), ttp = t.truck_type_id ? byId('truck_type', t.truck_type_id) : null, cap = t.capacity_liters || (ttp && ttp.capacity_liters) || null; const vp = views.v_route_place().filter(x => x.route_id === rt.id); const L = vp.reduce((s, x) => s + (x.total_liters || 0), 0); const kg = parseFloat((D.app_setting.find(s => s.key === 'kg_per_liter') || {}).value); const myRoads = D.route_road.filter(x => x.route_id === rt.id).map(x => x.road_id); const shared = myRoads.filter(rid => D.route_road.some(x => x.road_id === rid && x.route_id !== rt.id && byId('route', x.route_id).status === 'active')).length; return { route_id: rt.id, municipality_id: rt.municipality_id, municipality_code: byId('municipality', rt.municipality_id).code, route_name: rt.name, route_kind: rt.route_kind || 'regular', valid_from: rt.valid_from || null, valid_to: rt.valid_to || null, shared_roads: shared, schedule_note: rt.schedule_note, status: rt.status, truck_id: t.id, truck_code: t.code, plate_no: t.plate_no, truck_capacity_liters: cap, roads: new Set(vp.map(x => x.road_id)).size, places: vp.filter(x => x.place_id).length, total_bins: vp.reduce((s, x) => s + (x.total_bins || 0), 0), total_liters: L, load_pct: cap ? Math.round(1000 * L / cap) / 10 : null, est_weight_kg: isNaN(kg) ? null : Math.round(L * kg * 10) / 10 }; })
   };
@@ -477,9 +501,9 @@ async function pagePlace(view, id) {
     <p class="muted">บันทึกโดย ${esc(p.created_by_name || p.created_by || '-')} เมื่อ ${thDate(p.created_at)} · แก้ล่าสุดโดย ${esc(p.updated_by_name || '-')} ${thDate(p.updated_at)}</p>
   </div>
   <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">ถัง (${bins.length} แถว)</h4>${canEdit ? `<button class="small" onclick="binForm('${p.id}')">＋ เพิ่มถัง</button>` : ''}</div>
-    <table><thead><tr><th>ประเภท</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th>ครุภัณฑ์</th><th></th></tr></thead><tbody>
-    ${bins.map(b => `<tr style="${b.status !== 'active' ? 'opacity:.5' : ''}"><td>${esc(b.bin_type_name)}${b.bin_color ? ` <span class="muted">สี${esc(b.bin_color)}</span>` : ''}</td><td style="text-align:right">${b.amount}</td><td style="text-align:right">${fmt(b.liters)}</td><td>${esc(b.asset_no || '')}</td>
-      <td>${canEdit && b.status === 'active' ? `<button class="small secondary" onclick="binForm('${p.id}','${b.id}')">แก้</button> ${isAdmin() ? `<button class="small danger" onclick="cancelRow('bin','${b.id}')">ยกเลิก</button>` : ''}` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">ยังไม่มีถัง</td></tr>'}</tbody></table></div>
+    <table><thead><tr><th>ประเภท</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th>ปีงบ</th><th>ครุภัณฑ์</th><th></th></tr></thead><tbody>
+    ${bins.map(b => `<tr style="${b.status !== 'active' ? 'opacity:.5' : ''}"><td>${esc(b.bin_type_name)}${b.bin_color ? ` <span class="muted">สี${esc(b.bin_color)}</span>` : ''}${condPill(b.condition)}</td><td style="text-align:right">${b.amount}</td><td style="text-align:right">${fmt(b.liters)}</td><td>${b.fiscal_year || '<span class="muted">-</span>'}</td><td>${esc(b.asset_no || '')}</td>
+      <td>${canEdit && b.status === 'active' ? `<button class="small secondary" onclick="binForm('${p.id}','${b.id}')">แก้</button> ${isAdmin() ? `<button class="small danger" onclick="cancelRow('bin','${b.id}')">ยกเลิก</button>` : ''}` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">ยังไม่มีถัง</td></tr>'}</tbody></table></div>
   <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">รูป (${photos.length}/${maxPhotos()})</h4>${canEdit && photos.length < maxPhotos() ? `<label class="btn small" style="display:inline-block;margin:0">＋ ถ่าย/เลือกรูป<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addPhoto('${p.id}', this.files[0])"></label>` : (canEdit ? `<span class="muted">ครบ ${maxPhotos()} รูปแล้ว${isAdmin() ? ' · ยกเลิกรูปเก่าเพื่อเพิ่มใหม่' : ''}</span>` : '')}</div>
     <div class="photos" style="margin-top:8px">${photos.map(ph => `<div style="text-align:center"><a href="${esc(ph.url)}" target="_blank" rel="noopener"><img src="${esc(ph.url)}" alt="รูป ${ph.seq}" loading="lazy"></a>${canEdit && isAdmin() ? `<br><button class="small danger" style="margin-top:4px" onclick="cancelRow('place_photo','${ph.id}')">ยกเลิกรูป</button>` : ''}</div>`).join('') || '<span class="muted">ยังไม่มีรูป</span>'}</div></div>`;
 }
@@ -488,6 +512,12 @@ const maxPhotos = () => parseInt(setting('max_photos_per_place') || '3') || 3;
 const binColorSelect = (cls, current) => { let list = (setting('bin_colors') || '').split(',').map(s => s.trim()).filter(Boolean); if (!list.length) list = ['น้ำเงิน', 'เขียว', 'เหลือง', 'แดง', 'ดำ'];   // สำรองเมื่อยังไม่ได้ตั้งค่า bin_colors
   if (current && !list.includes(current)) list.push(current);
   return `<select class="${cls}"><option value="">ตามประเภท/ไม่ระบุ</option>${list.map(c => `<option value="${esc(c)}" ${c === current ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`; };
+// ปีงบประมาณไทย (พ.ศ.) 1 ต.ค.–30 ก.ย. · สภาพถัง (DEC-089: ชำรุด/หาย ไม่นับความจุ)
+const currentFY = () => { const d = new Date(); return d.getFullYear() + 543 + (d.getMonth() >= 9 ? 1 : 0); };
+const CONDITIONS = ['ปกติ', 'ชำรุด', 'หาย'];
+const fySelect = (cls, current) => { const fy = currentFY(); const cur = current ? +current : null; let opts = ''; if (cur && (cur > fy || cur < fy - 30)) opts += `<option value="${cur}" selected>${cur}</option>`; for (let y = fy; y >= fy - 30; y--) opts += `<option value="${y}" ${cur === y ? 'selected' : ''}>${y}</option>`; return `<select class="${cls}"><option value="">ไม่ทราบปี</option>${opts}</select>`; };
+const condSelect = (cls, current) => `<select class="${cls}">${CONDITIONS.map(c => `<option value="${c}" ${c === (current || 'ปกติ') ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
+const condPill = c => c && c !== 'ปกติ' ? ` <span class="pill" style="background:${c === 'หาย' ? '#fee2e2' : '#ffedd5'}">${esc(c)} · ไม่นับความจุ</span>` : '';
 async function cancelRow(table, id) {
   if (!confirm('ยืนยันยกเลิกรายการนี้? (ข้อมูลยังอยู่ แต่จะไม่นับในยอดรวม)')) return;
   try { await api.update(table, id, { status: 'inactive' }); toast('ยกเลิกแล้ว'); render(); } catch (e) { toast(e.message, true); }
@@ -509,15 +539,18 @@ async function pagePlaceEdit(view, id) {
     <label>พิกัด</label><div class="row"><input id="f_lat" placeholder="lat" value="${p.lat ?? ''}" style="flex:1"><input id="f_lng" placeholder="lng" value="${p.lng ?? ''}" style="flex:1"><button class="secondary" onclick="getGps()">📍 ใช้ GPS</button></div><div id="gpsInfo" class="muted"></div>
     ${isNew ? `<label>รหัสจุด (เว้นว่าง = ระบบตั้งให้ "ชื่อถนน-ลำดับ")</label><input id="f_code" placeholder="อัตโนมัติ">` : ''}
     <label>หมายเหตุ</label><textarea id="f_note" rows="2">${esc(p.note || '')}</textarea>
-    ${isNew ? `<h4>ถังในจุดนี้ (เพิ่มได้หลายแถว)</h4><div id="binRows"></div><button class="secondary small" onclick="addBinRow()">＋ เพิ่มแถวถัง</button>
+    ${isNew ? `<h4>ถังในจุดนี้ (เพิ่มได้หลายแถว)</h4><div class="muted">1 แถว = ถังชุดเดียวกัน (ประเภท · สี · สภาพ · ปีงบที่ซื้อเดียวกัน) · ปีงบและราคาไม่บังคับ</div><div id="binRows"></div><button class="secondary small" onclick="addBinRow()">＋ เพิ่มแถวถัง</button>
       <h4>รูป (ไม่บังคับ)</h4><input type="file" accept="image/*" capture="environment" multiple id="f_photos"><div class="muted">รูปจะถูกย่อให้เล็กลงก่อนส่ง</div>` : ''}
     <div class="row" style="margin-top:16px"><button id="btnSave" onclick="savePlace('${isNew ? '' : p.id}')">บันทึก</button><button class="secondary" onclick="history.back()">ยกเลิก</button></div>
     ${!navigator.onLine ? '<div class="banner warn" style="margin-top:10px">ไม่มีสัญญาณ: จะเก็บไว้ในเครื่องและส่งเมื่อมีสัญญาณ</div>' : ''}</div>`;
   S._sois = sois; S._p = p; fillSoi(); if (isNew) addBinRow();
 }
 function fillSoi() { const rid = $('#f_road').value; const list = S._sois.filter(s => s.road_id === rid); $('#f_soi').innerHTML = `<option value="">—</option>` + list.map(s => `<option value="${s.id}" ${s.id === S._p.soi_id ? 'selected' : ''}>${esc(s.name)}</option>`).join(''); }
-function addBinRow() { const d = document.createElement('div'); d.className = 'row'; d.style.marginBottom = '6px';
-  d.innerHTML = `<select class="b_type" style="flex:2;min-width:160px">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select><input class="b_amt" type="number" min="1" value="1" style="flex:1;min-width:70px" placeholder="ใบ"><span style="flex:1;min-width:120px">${binColorSelect('b_color', '')}</span><input class="b_asset" style="flex:2;min-width:120px" placeholder="เลขครุภัณฑ์"><button class="small danger" onclick="this.parentNode.remove()">ลบ</button>`;
+function addBinRow() { const d = document.createElement('div'); d.className = 'binrow';
+  d.innerHTML = `<select class="b_type full">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>
+    <input class="b_amt" type="number" min="1" value="1" placeholder="จำนวนใบ" title="จำนวนใบ">${binColorSelect('b_color', '')}${condSelect('b_cond', 'ปกติ')}${fySelect('b_fy', '')}
+    <input class="b_asset" placeholder="เลขครุภัณฑ์ (ถ้ามี)"><input class="b_cost" type="number" min="0" step="any" placeholder="ราคา/ใบ (ว่าง = มาตรฐาน)" title="ราคาต่อใบ บาท ว่าง = ใช้ราคามาตรฐานของประเภท">
+    <button class="small danger" type="button" onclick="this.parentNode.remove()">ลบแถว</button>`;
   $('#binRows').appendChild(d); }
 function getGps() {
   if (!navigator.geolocation) return toast('อุปกรณ์นี้ไม่รองรับ GPS', true);
@@ -535,7 +568,7 @@ async function savePlace(id) {
   try {
     if (id) { await api.update('place', id, payload); toast('บันทึกแล้ว'); go('#place/' + id); return; }
     const code = $('#f_code').value.trim(); if (code) payload.place_code = code;
-    const binRows = [...document.querySelectorAll('#binRows .row')].map(r => ({ bin_type_id: $('.b_type', r).value, amount: parseInt($('.b_amt', r).value || '0'), color: $('.b_color', r).value || null, asset_no: $('.b_asset', r).value.trim() || null })).filter(x => x.amount > 0);
+    const binRows = [...document.querySelectorAll('#binRows .binrow')].map(r => ({ bin_type_id: $('.b_type', r).value, amount: parseInt($('.b_amt', r).value || '0'), color: $('.b_color', r).value || null, condition: $('.b_cond', r).value || 'ปกติ', fiscal_year: $('.b_fy', r).value ? parseInt($('.b_fy', r).value) : null, unit_cost: $('.b_cost', r).value === '' ? null : parseFloat($('.b_cost', r).value), asset_no: $('.b_asset', r).value.trim() || null })).filter(x => x.amount > 0);
     const files = [...($('#f_photos').files || [])].slice(0, maxPhotos());
     if (files.length) toast(`กำลังย่อรูป ${files.length} รูป…`);
     const photoPayloads = []; for (const f of files) photoPayloads.push(await compressImage(f));
@@ -572,11 +605,13 @@ function binForm(placeId, binId) {
   const b = binId ? null : { amount: 1 };
   openModal(`<h3 style="margin-top:0">${binId ? 'แก้ไขถัง' : 'เพิ่มถัง'}</h3>
     <label>ประเภทถัง</label><select id="m_type">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>
-    <label>จำนวนใบ</label><input id="m_amt" type="number" min="1" value="1"><label>สีถัง</label>${binColorSelect('m_color_sel', '')}<label>เลขครุภัณฑ์</label><input id="m_asset"><label>หมายเหตุ</label><input id="m_note">
+    <label>จำนวนใบ</label><input id="m_amt" type="number" min="1" value="1"><label>สีถัง</label>${binColorSelect('m_color_sel', '')}
+    <div class="grid2"><div><label>สภาพ (ชำรุด/หาย ไม่นับความจุ)</label>${condSelect('m_cond', 'ปกติ')}</div><div><label>ปีงบที่จัดซื้อ (พ.ศ.)</label>${fySelect('m_fy', '')}</div></div>
+    <label>ราคาต่อใบ (บาท · ว่าง = ใช้ราคามาตรฐานของประเภท)</label><input id="m_cost" type="number" min="0" step="any"><label>เลขครุภัณฑ์</label><input id="m_asset"><label>หมายเหตุ</label><input id="m_note">
     <div class="row" style="margin-top:12px"><button id="m_save">บันทึก</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div>`);
-  if (binId) api.list('bin', { eq: { id: binId } }).then(([x]) => { $('#m_type').value = x.bin_type_id; $('#m_amt').value = x.amount; const sel = $('.m_color_sel'); if (x.color && ![...sel.options].some(o => o.value === x.color)) sel.add(new Option(x.color, x.color)); sel.value = x.color || ''; $('#m_asset').value = x.asset_no || ''; $('#m_note').value = x.note || ''; });
+  if (binId) api.list('bin', { eq: { id: binId } }).then(([x]) => { $('#m_type').value = x.bin_type_id; $('#m_amt').value = x.amount; const sel = $('.m_color_sel'); if (x.color && ![...sel.options].some(o => o.value === x.color)) sel.add(new Option(x.color, x.color)); sel.value = x.color || ''; $('.m_cond').value = x.condition || 'ปกติ'; const fy = $('.m_fy'); if (x.fiscal_year && ![...fy.options].some(o => +o.value === +x.fiscal_year)) fy.add(new Option(x.fiscal_year, x.fiscal_year)); fy.value = x.fiscal_year || ''; $('#m_cost').value = x.unit_cost ?? ''; $('#m_asset').value = x.asset_no || ''; $('#m_note').value = x.note || ''; });
   $('#m_save').onclick = async () => {
-    const payload = { bin_type_id: $('#m_type').value, amount: parseInt($('#m_amt').value || '0'), color: $('.m_color_sel').value || null, asset_no: $('#m_asset').value.trim() || null, note: $('#m_note').value.trim() || null };
+    const payload = { bin_type_id: $('#m_type').value, amount: parseInt($('#m_amt').value || '0'), color: $('.m_color_sel').value || null, condition: $('.m_cond').value || 'ปกติ', fiscal_year: $('.m_fy').value ? parseInt($('.m_fy').value) : null, unit_cost: $('#m_cost').value === '' ? null : parseFloat($('#m_cost').value), asset_no: $('#m_asset').value.trim() || null, note: $('#m_note').value.trim() || null };
     if (payload.amount < 1) return toast('จำนวนใบต้องมากกว่า 0', true);
     const b = $('#m_save'); b.disabled = true;
     try { if (binId) { await api.update('bin', binId, payload); toast('แก้ไขถังแล้ว'); } else { try { await api.insert('bin', { ...payload, place_id: placeId }); toast('เพิ่มถังแล้ว'); } catch (e) { if (!isNetworkError(e)) throw e; Queue.push({ kind: 'bin', placeRef: placeId, payload, label: 'ถัง (เพิ่มภายหลัง)' }); toast('ไม่มีสัญญาณ เก็บไว้ส่งภายหลัง'); } } closeModal(); render(); } catch (e) { toast(e.message, true); b.disabled = false; }
@@ -618,27 +653,206 @@ function pageQueue(view) {
 }
 
 // =====================================================================
-// หน้า: แดชบอร์ด
+// หน้า: แดชบอร์ด 3 หน้า (DEC-088 ตาม CMD-SPEC-006) — ตัวเลขทุกตัวคำนวณสด · ไม่ผูกชื่อถนน/เมือง/ค่าเฉพาะพื้นที่
+//   #dashboard           หน้า 1 ภาพรวมสำหรับผู้บริหาร
+//   #dashboard/research  หน้า 2 วิเคราะห์เชิงลึก (ตัวกรอง · กระจาย · Pareto · แท่งคู่ · ตารางรายจุด)
+//   #dashboard/assets    หน้า 3 ทรัพย์สินถัง (DEC-089: มูลค่าประมาณการ ไม่ใช่ตัวเลขทางบัญชี)
 // =====================================================================
+const DASH = { navy: '#1F3A5F', purple: '#6A1B9A', gray: '#CBD5E1', gray2: '#9CA3AF', cond: { 'ปกติ': '#2E7D32', 'ชำรุด': '#EF6C00', 'หาย': '#C62828' } };
+const fmt1 = n => (n == null || isNaN(n) ? '-' : Number(n).toLocaleString('th-TH', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+const pct = (a, b) => (b > 0 ? 100 * a / b : 0);
+const sum = (rows, k) => rows.reduce((s, r) => s + (+r[k] || 0), 0);
+S.dash = S.dash || { road: [], type: [], ptype: [], route: [], place: [], fy: [], cond: [] };
+
+// ตัวเลือกหลายรายการแบบกาง (ใช้บนมือถือได้ ไม่ใช้ <select multiple>)
+function multiPick(id, label, options, selected) {
+  const sel = new Set(selected); const n = options.filter(o => sel.has(o.value)).length;
+  return `<details class="pick" id="${id}"><summary>${label}: <b>${n ? n + ' รายการ' : 'ทั้งหมด'}</b></summary><div class="pick-body">
+    <div class="row" style="margin-bottom:6px"><button class="small secondary" onclick="pickClear('${id}')">ล้างตัวกรองนี้</button><span class="muted">${options.length} ตัวเลือก</span></div>
+    ${options.map(o => `<label class="pick-opt"><input type="checkbox" value="${esc(o.value)}" ${sel.has(o.value) ? 'checked' : ''} onchange="dashApply()"> ${esc(o.label)}</label>`).join('') || '<div class="muted">ไม่มีตัวเลือก</div>'}</div></details>`;
+}
+const pickValues = id => [...document.querySelectorAll(`#${id} input:checked`)].map(i => i.value);
+function pickClear(id) { document.querySelectorAll(`#${id} input`).forEach(i => { i.checked = false; }); dashApply(); }
+function dashApply() { if (S._dashDraw) S._dashDraw(); document.querySelectorAll('.pick').forEach(d => { const n = d.querySelectorAll('input:checked').length; const b = d.querySelector('summary b'); if (b) b.textContent = n ? n + ' รายการ' : 'ทั้งหมด'; }); }
+function destroyCharts(list) { list.forEach(c => { c.destroy(); const i = S.charts.indexOf(c); if (i >= 0) S.charts.splice(i, 1); }); list.length = 0; }
+function mkChart(el, cfg) { const c = new Chart(el, cfg); S.charts.push(c); return c; }
+// ปลั๊กอินเล็ก: เขียนป้ายข้างจุดที่ dataset กำหนด ptLabels (Chart.js ไม่มีป้ายจุดในตัว)
+const ptLabelPlugin = { id: 'ptLabels', afterDatasetsDraw(chart) { const { ctx } = chart; chart.data.datasets.forEach((ds, di) => { if (!ds.ptLabels) return; chart.getDatasetMeta(di).data.forEach((el, i) => { const t = ds.ptLabels[i]; if (!t) return; ctx.save(); ctx.font = '12px system-ui, "Noto Sans Thai", sans-serif'; ctx.fillStyle = '#374151'; const w = ctx.measureText(t).width; const right = el.x + 8 + w > chart.chartArea.right; ctx.textAlign = right ? 'right' : 'left'; ctx.fillText(t, right ? el.x - 8 : el.x + 8, el.y + 4); ctx.restore(); }); }); } };
+// แท่งแนวนอนแบบ HTML (ตัวเลขท้ายแท่ง · กดได้) ใช้กับอันดับถนน/ประเภทถัง และแท่งคู่
+const hbar = (label, value, max, color, right, href) => `<div class="hbar"><div class="hbar-l">${href ? `<a href="${href}">${label}</a>` : label}</div><div class="hbar-track"><div class="hbar-fill" style="width:${max > 0 ? Math.max(1, 100 * value / max) : 0}%;background:${color}"></div></div><div class="hbar-r">${right}</div></div>`;
+const hbar2 = (label, a, b, colorB, textA, textB) => `<div class="hbar"><div class="hbar-l">${label}</div><div style="flex:1"><div class="hbar-track thin"><div class="hbar-fill" style="width:${Math.max(0.5, a)}%;background:${DASH.gray2}"></div></div><div class="hbar-track thin"><div class="hbar-fill" style="width:${Math.max(0.5, b)}%;background:${colorB}"></div></div></div><div class="hbar-r" style="line-height:1.2"><span class="muted">${textA}</span><br>${textB}</div></div>`;
+const tiersSorted = () => S.cache.capacity_tier.slice().sort((a, b) => a.sort_order - b.sort_order);
+const tierOf = p => tiersSorted().find(t => t.label === p.tier_label) || tiersSorted()[0];
+const scopeName = () => (S.scopeMuni ? `${muniOf(S.scopeMuni).code || ''} · ${muniOf(S.scopeMuni).name || ''}` : 'ทุกเทศบาล');
+
+async function loadDashData() {
+  const [places, bins, roads, msum] = await Promise.all([
+    api.list('v_place', { eq: { status: 'active', ...scopeEq() } }),
+    api.list('v_bin', { eq: { status: 'active', ...scopeEq() } }),
+    api.list('v_road_summary', { eq: scopeEq() }),
+    api.list('v_municipality_summary', { order: ['municipality_code'] })]);
+  const placeIds = new Set(places.map(p => p.id));
+  return { places, bins: bins.filter(b => placeIds.has(b.place_id) && (b.condition || 'ปกติ') === 'ปกติ'), roads,   // ชำรุด/หาย ไม่นับทั้งใบและลิตร (DEC-089) msum: S.scopeMuni ? msum.filter(m => m.municipality_id === S.scopeMuni) : msum };
+}
+function dashTabs(cur) {
+  return `<nav class="subtabs">${[['', 'ภาพรวม'], ['research', 'วิเคราะห์เชิงลึก'], ['assets', 'ทรัพย์สินถัง']].map(([k, l]) => `<a href="#dashboard${k ? '/' + k : ''}" class="${cur === k ? 'active' : ''}">${l}</a>`).join('')}</nav>`;
+}
 async function pageDashboard(view) {
-  const all = await api.list('v_municipality_summary', { order: ['municipality_code'] });
-  const sums = S.scopeMuni ? all.filter(m => m.municipality_id === S.scopeMuni) : all;
-  const tot = sums.reduce((a, m) => ({ places: a.places + +m.places, bins: a.bins + +m.total_bins, liters: a.liters + +m.total_liters, roads: a.roads + +m.roads_with_places }), { places: 0, bins: 0, liters: 0, roads: 0 });
-  const roads = (await api.list('v_road_summary', { eq: scopeEq() })).filter(r => +r.places > 0).sort((a, b) => b.total_liters - a.total_liters);
-  const types = await api.list('v_bin_type_summary', { eq: scopeEq() });
-  const typeAgg = {}; for (const t of types) { typeAgg[t.bin_type_name] = typeAgg[t.bin_type_name] || { bins: 0, liters: 0 }; typeAgg[t.bin_type_name].bins += +t.total_bins; typeAgg[t.bin_type_name].liters += +t.total_liters; }
+  const sub = (location.hash.split('/')[1] || '').split('?')[0];
+  if (sub === 'research') return pageDashResearch(view);
+  if (sub === 'assets') return pageDashAssets(view);
+  return pageDashOverview(view);
+}
+
+// ---------- หน้า 1 ภาพรวมสำหรับผู้บริหาร ----------
+async function pageDashOverview(view) {
+  const { places, bins, roads, msum } = await loadDashData();
+  const tiers = tiersSorted(); const totL = sum(places, 'total_liters'), totB = sum(places, 'total_bins');
+  const byTier = tiers.map(t => { const ps = places.filter(p => p.tier_label === t.label); return { t, n: ps.length, liters: sum(ps, 'total_liters') }; });
+  const top = byTier[byTier.length - 1] || { n: 0, liters: 0, t: {} };
+  const typeAgg = {}; for (const b of bins) { const k = b.bin_type_name; typeAgg[k] = typeAgg[k] || { name: k, bins: 0, liters: 0 }; typeAgg[k].bins += +b.amount; typeAgg[k].liters += +b.liters; }
+  const types = Object.values(typeAgg).sort((a, b) => b.liters - a.liters); const topType = types[0];
+  const roadsWith = roads.filter(r => +r.places > 0).sort((a, b) => b.total_liters - a.total_liters);
+  const noBins = places.filter(p => +p.total_bins === 0).length;
   const kg = parseFloat(setting('kg_per_liter'));
-  view.innerHTML = `${scopeSelector()}
-    <div class="kpis"><div class="kpi"><div class="v">${fmt(tot.places)}</div><div class="l">จุด</div></div><div class="kpi"><div class="v">${fmt(tot.bins)}</div><div class="l">ถัง (ใบ)</div></div><div class="kpi"><div class="v">${fmt(tot.liters)}</div><div class="l">ลิตร${!isNaN(kg) ? ` ≈ ${fmt(tot.liters * kg)} กก.` : ''}</div></div><div class="kpi"><div class="v">${fmt(tot.roads)}</div><div class="l">ถนนที่มีจุด</div></div></div>
-    ${!S.scopeMuni && isSuper() ? `<div class="card"><h4 style="margin-top:0">รายเทศบาล</h4><table><thead><tr><th>เทศบาล</th><th style="text-align:right">จุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">ถนน</th></tr></thead><tbody>${all.map(m => `<tr><td>${esc(m.municipality_code)} ${esc(m.municipality_name)}</td><td style="text-align:right">${fmt(m.places)}</td><td style="text-align:right">${fmt(m.total_bins)}</td><td style="text-align:right">${fmt(m.total_liters)}</td><td style="text-align:right">${fmt(m.roads_with_places)}</td></tr>`).join('')}</tbody></table></div>` : ''}
-    <div class="grid2"><div class="card"><h4 style="margin-top:0">ความจุรวมรายถนน (10 อันดับ)</h4><canvas id="cRoad"></canvas><button class="secondary small" style="margin-top:8px" onclick="exportCsv(S._roads,'roads')">ส่งออก CSV รายถนน</button></div>
-    <div class="card"><h4 style="margin-top:0">สัดส่วนความจุตามประเภทถัง</h4><canvas id="cType"></canvas><button class="secondary small" style="margin-top:8px" onclick="exportCsv(S._types,'bin_types')">ส่งออก CSV รายประเภท</button></div></div>
-    <div class="card"><h4 style="margin-top:0">สีหมุด</h4><div class="legend">${S.cache.capacity_tier.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</div></div>`;
-  S._roads = roads; S._types = types;
-  const top = roads.slice(0, 10);
-  S.charts.push(new Chart($('#cRoad'), { type: 'bar', data: { labels: top.map(r => r.road_name + (S.scopeMuni ? '' : ' (' + r.municipality_code + ')')), datasets: [{ label: 'ลิตร', data: top.map(r => +r.total_liters), backgroundColor: '#1b6e3a' }] }, options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } } }));
-  const names = Object.keys(typeAgg);
-  S.charts.push(new Chart($('#cType'), { type: 'doughnut', data: { labels: names, datasets: [{ data: names.map(n => typeAgg[n].liters), backgroundColor: ['#1b6e3a', '#F9A825', '#EF6C00', '#C62828', '#6A1B9A', '#0277bd', '#5d4037', '#546e7a'] }] }, options: { plugins: { legend: { position: 'bottom' } } } }));
+  const updated = msum.map(m => m.data_updated_at).filter(Boolean).sort().pop();
+  const card = (v, l, sub) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}${sub ? `<br><span style="font-size:12px">${sub}</span>` : ''}</div></div>`;
+  view.innerHTML = `${scopeSelector()}${dashTabs('')}
+    <div class="card" style="padding:12px 14px"><div style="font-size:20px;font-weight:700;color:${DASH.navy}">${esc(setting('system_name') || 'ระบบข้อมูลจุดวางถังขยะ')} — ภาพรวม</div>
+      <div class="muted">${esc(scopeName())} · ข้อมูลล่าสุด ${thDate(updated)} · ${places.length ? '' : 'ยังไม่มีข้อมูลจุดในขอบเขตนี้'}</div></div>
+    <div class="kpis">${card(fmt(places.length), 'จุด')}${card(fmt(totB), 'ถัง (ใบ)')}${card(fmt(totL), 'ลิตร', !isNaN(kg) ? `≈ ${fmt(Math.round(totL * kg))} กก.` : '')}${card(fmt(new Set(places.map(p => p.road_id)).size), 'ถนนที่มีจุด')}${card(fmt(places.length ? Math.round(totL / places.length) : 0), 'เฉลี่ยลิตร/จุด')}</div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="finding"><div class="fv">${fmt1(pct(top.liters, totL))}%</div><div>ของความจุทั้งหมดอยู่ในจุดระดับสูงสุด "${esc(top.t.label || '')}" ซึ่งมีเพียง <b>${fmt(top.n)} จุด</b> (${fmt1(pct(top.n, places.length))}% ของจุด)</div></div>
+      <div class="finding"><div class="fv">${topType ? fmt1(pct(topType.liters, totL)) : '0.0'}%</div><div>ของความจุทั้งหมดมาจากถังประเภท "${esc(topType ? topType.name : '-')}" (${fmt(topType ? topType.bins : 0)} ใบ = ${fmt1(pct(topType ? topType.bins : 0, totB))}% ของใบ)</div></div></div>
+    <div class="card"><h4 style="margin-top:0">แผนที่: วงใหญ่ = ความจุมาก · สี = ระดับความจุของจุด</h4><div class="legend" style="margin-bottom:6px">${tiers.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</div><div id="map" style="height:420px"></div></div>
+    <div class="card"><h4 style="margin-top:0">จำนวนจุด เทียบ ความจุ แบ่งตามระดับ (%)</h4><div class="muted">แถวบน = % ของจำนวนจุด · แถวล่าง = % ของความจุ (ลิตร) · ชิ้นสีเดียวกันคือระดับเดียวกัน</div><div class="chartbox" style="height:170px"><canvas id="cStack"></canvas></div></div>
+    <div class="grid2">
+      <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">10 ถนนความจุสูงสุด</h4><span class="muted">กดชื่อถนนเพื่อเจาะดู</span></div><div style="margin-top:8px">${roadsWith.slice(0, 10).map(r => hbar(esc(r.road_name) + (S.scopeMuni ? '' : ` <span class="muted">(${esc(r.municipality_code)})</span>`), +r.total_liters, +roadsWith[0].total_liters, DASH.navy, `${fmt(r.total_liters)} ล. · <span class="muted">${fmt(r.places)} จุด</span>`, `#dashboard/research?road=${r.road_id}`)).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div>
+        ${roadsWith.length > 10 ? `<div class="muted" style="margin-top:6px">อีก ${roadsWith.length - 10} ถนนรวม ${fmt(sum(roadsWith.slice(10), 'total_liters'))} ล. (ดูทั้งหมดในหน้าวิเคราะห์)</div>` : ''}</div>
+      <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">ความจุตามประเภทถัง</h4><span class="pill" title="จุดที่บันทึกแล้วแต่ยังไม่มีแถวถัง (ไม่ทราบ ≠ 0)">จุดที่ยังไม่มีข้อมูลถัง: <b>${fmt(noBins)}</b></span></div><div style="margin-top:8px">${types.map((t, i) => hbar(esc(t.name), t.liters, types[0].liters, i === 0 ? DASH.purple : DASH.gray2, `${fmt(t.liters)} ล. · <span class="muted">${fmt(t.bins)} ใบ</span>`)).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div></div></div>
+    ${!S.scopeMuni && isSuper() && msum.length > 1 ? `<div class="card"><h4 style="margin-top:0">เปรียบเทียบรายเทศบาล</h4><div style="overflow:auto"><table><thead><tr><th>เทศบาล</th><th style="text-align:right">จุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">ถนน</th><th style="text-align:right">จุดไม่มีถัง</th><th>ล่าสุด</th></tr></thead><tbody>${msum.map(m => `<tr><td><a href="#dashboard" onclick="S.scopeMuni='${m.municipality_id}'">${esc(m.municipality_code)} ${esc(m.municipality_name)}</a></td><td style="text-align:right">${fmt(m.places)}</td><td style="text-align:right">${fmt(m.total_bins)}</td><td style="text-align:right">${fmt(m.total_liters)}</td><td style="text-align:right">${fmt(m.roads_with_places)}</td><td style="text-align:right">${fmt(m.places_without_bins ?? '-')}</td><td class="muted">${thDate(m.data_updated_at)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
+  // แผนที่: วงตามความจุ (รากที่สอง เพื่อให้พื้นที่วงแปรตามลิตร) + สลับแผนที่/ดาวเทียม
+  const map = L.map('map'); S.map = map;
+  const street = L.tileLayer((await tilesAvailable()) ? CONFIG.TILES.url : CONFIG.TILES_FALLBACK.url, { maxZoom: 19, attribution: (await tilesAvailable()) ? CONFIG.TILES.attribution : CONFIG.TILES_FALLBACK.attribution, referrerPolicy: 'origin' }).addTo(map);
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri' });
+  L.control.layers({ 'แผนที่': street, 'ดาวเทียม': sat }, null, { position: 'topright' }).addTo(map);
+  const g = L.featureGroup().addTo(map); const maxL = Math.max(1, ...places.map(p => +p.total_liters));
+  for (const p of places.filter(p => p.lat != null && p.lng != null)) L.circleMarker([p.lat, p.lng], { radius: 5 + 17 * Math.sqrt((+p.total_liters) / maxL), color: '#fff', weight: 1, fillColor: p.tier_color || tiers[0].color, fillOpacity: .85 })
+    .bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${esc(p.road_name)}<br>${fmt(p.total_bins)} ใบ · <b>${fmt(p.total_liters)} ลิตร</b> · ${esc(p.tier_label || '')}<br><a href="#place/${p.id}">รายละเอียด/รูป</a>`).addTo(g);
+  if (g.getLayers().length) map.fitBounds(g.getBounds().pad(0.15)); else map.setView([CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng], CONFIG.MAP_FALLBACK.zoom);
+  // แท่ง 100% ซ้อน 2 แถว
+  mkChart($('#cStack'), { type: 'bar', data: { labels: ['จำนวนจุด', 'ความจุ'], datasets: byTier.map(x => ({ label: x.t.label, data: [pct(x.n, places.length), pct(x.liters, totL)], rawVals: [x.n, x.liters], backgroundColor: x.t.color, borderWidth: 0 })) },
+    options: { indexAxis: 'y', maintainAspectRatio: false, scales: { x: { stacked: true, min: 0, max: 100, ticks: { callback: v => v + '%' } }, y: { stacked: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt1(c.raw)}% (${fmt(c.dataset.rawVals[c.dataIndex])} ${c.dataIndex ? 'ลิตร' : 'จุด'})` } } } } });
+}
+
+// ---------- หน้า 2 วิเคราะห์เชิงลึก ----------
+async function pageDashResearch(view) {
+  const { places, bins, roads } = await loadDashData();
+  const qs = new URLSearchParams((location.hash.split('?')[1] || '')); if (qs.get('road')) { S.dash.road = [qs.get('road')]; history.replaceState(null, '', '#dashboard/research'); }
+  const roadOpts = roads.filter(r => +r.places > 0).sort((a, b) => String(a.road_name).localeCompare(String(b.road_name), 'th')).map(r => ({ value: r.road_id, label: r.road_name + (S.scopeMuni ? '' : ` (${r.municipality_code})`) }));
+  const typeOpts = S.cache.bin_type.map(t => ({ value: t.id, label: t.name })).filter(o => bins.some(b => b.bin_type_id === o.value));
+  const ptOpts = S.cache.place_type.map(t => ({ value: t.id, label: t.name }));
+  view.innerHTML = `${scopeSelector()}${dashTabs('research')}
+    <div class="card"><div style="font-size:18px;font-weight:700;color:${DASH.navy}">จำนวนเทียบความจุ: ใครถือภาระของเมือง</div><div class="muted">${esc(scopeName())} · ตัวกรองมีผลกับทุกกราฟและตารางในหน้านี้</div>
+      <div class="row" style="margin-top:8px;align-items:flex-start">${multiPick('pk_road', 'ถนน', roadOpts, S.dash.road)}${multiPick('pk_type', 'ประเภทถัง', typeOpts, S.dash.type)}${multiPick('pk_ptype', 'ประเภทจุด', ptOpts, S.dash.ptype)}<button class="small secondary" onclick="S.dash.road=[];S.dash.type=[];S.dash.ptype=[];render()">ล้างทั้งหมด</button></div></div>
+    <div id="dashBody"></div>`;
+  const charts = []; S._page = 0;
+  const draw = () => {
+    S.dash.road = pickValues('pk_road'); S.dash.type = pickValues('pk_type'); S.dash.ptype = pickValues('pk_ptype');
+    const fr = new Set(S.dash.road), ft = new Set(S.dash.type), fp = new Set(S.dash.ptype);
+    let ps = places.filter(p => (!fr.size || fr.has(p.road_id)) && (!fp.size || fp.has(p.place_type_id)));
+    const pid = new Set(ps.map(p => p.id));
+    const bs = bins.filter(b => pid.has(b.place_id) && (!ft.size || ft.has(b.bin_type_id)));
+    if (ft.size) { const has = new Set(bs.map(b => b.place_id)); ps = ps.filter(p => has.has(p.id)); }   // กรองประเภทถัง → นับเฉพาะจุดที่มีถังประเภทนั้น และนับลิตรเฉพาะประเภทนั้น
+    const agg = {}; for (const b of bs) { agg[b.place_id] = agg[b.place_id] || { bins: 0, liters: 0 }; agg[b.place_id].bins += +b.amount; agg[b.place_id].liters += +b.liters; }
+    const rows = ps.map(p => ({ ...p, f_bins: (agg[p.id] || {}).bins || 0, f_liters: (agg[p.id] || {}).liters || 0 })).sort((a, b) => b.f_liters - a.f_liters);
+    const totL = sum(rows, 'f_liters'), totB = sum(rows, 'f_bins'); const tiers = tiersSorted();
+    // รายถนน
+    const byRoad = {}; for (const r of rows) { byRoad[r.road_id] = byRoad[r.road_id] || { name: r.road_name + (S.scopeMuni ? '' : ` (${r.municipality_code})`), n: 0, liters: 0 }; byRoad[r.road_id].n++; byRoad[r.road_id].liters += r.f_liters; }
+    const roadArr = Object.values(byRoad).sort((a, b) => b.liters - a.liters);
+    let cum = 0, heavy = 0; for (const r of roadArr) { if (cum < totL / 2) heavy++; cum += r.liters; }   // ถนนกลุ่มแรกที่รวมกันถือความจุเกินครึ่ง (ไม่ฟิกตัวเลขลิตร)
+    // Pareto
+    let c2 = 0; const cumPts = rows.map((r, i) => { c2 += r.f_liters; return { x: i + 1, y: pct(c2, totL) }; });
+    const half = cumPts.findIndex(p => p.y > 50) + 1; const topTier = tiers[tiers.length - 1]; const nTop = rows.filter(r => r.tier_label === topTier.label).length;
+    const marks = [half > 0 ? { x: half, y: cumPts[half - 1].y, l: `${half} จุด = ${fmt1(cumPts[half - 1].y)}% (เกินครึ่ง)` } : null, nTop > 0 && nTop !== half ? { x: nTop, y: cumPts[nTop - 1].y, l: `${nTop} จุดระดับสูงสุด = ${fmt1(cumPts[nTop - 1].y)}%` } : null].filter(Boolean);
+    const byTier = tiers.map(t => { const x = rows.filter(r => r.tier_label === t.label); return { t, n: x.length, liters: sum(x, 'f_liters') }; });
+    const typeAgg = {}; for (const b of bs) { typeAgg[b.bin_type_name] = typeAgg[b.bin_type_name] || { name: b.bin_type_name, bins: 0, liters: 0 }; typeAgg[b.bin_type_name].bins += +b.amount; typeAgg[b.bin_type_name].liters += +b.liters; }
+    const types = Object.values(typeAgg).sort((a, b) => b.liters - a.liters);
+    S._dashRows = rows; const PAGE = 20, pages = Math.max(1, Math.ceil(rows.length / PAGE)); S._page = Math.min(S._page, pages - 1);
+    const card = (v, l) => `<div class="kpi"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}</div></div>`;
+    destroyCharts(charts);
+    $('#dashBody').innerHTML = `<div class="kpis">${card(fmt(rows.length), 'จุด')}${card(fmt(totB), 'ใบ')}${card(fmt(totL), 'ลิตร')}${card(fmt(roadArr.length), 'ถนน')}</div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="card"><h4 style="margin-top:0">รายถนน: จำนวนจุด (X) เทียบ ความจุรวม (Y)</h4><div class="muted">1 จุดบนกราฟ = 1 ถนน · ม่วง = ${fmt(heavy)} ถนนแรกที่รวมกันถือความจุเกินครึ่ง</div><div class="chartbox"><canvas id="cScatter"></canvas></div></div>
+        <div class="card"><h4 style="margin-top:0">ความจุสะสม เมื่อเรียงจุดจากมาก→น้อย (Pareto)</h4><div class="muted">${marks.map(m => m.l).join(' · ') || '-'}</div><div class="chartbox"><canvas id="cPareto"></canvas></div></div></div>
+      <div class="grid2">
+        <div class="card"><h4 style="margin-top:0">ตามระดับความจุ: % จุด (เทา) เทียบ % ความจุ (สีระดับ)</h4>${byTier.map(x => hbar2(`<i class="dot" style="background:${x.t.color}"></i>${esc(x.t.label)}`, pct(x.n, rows.length), pct(x.liters, totL), x.t.color, `${fmt1(pct(x.n, rows.length))}% · ${fmt(x.n)} จุด`, `${fmt1(pct(x.liters, totL))}% · ${fmt(x.liters)} ล.`)).join('')}</div>
+        <div class="card"><h4 style="margin-top:0">ตามประเภทถัง: % ใบ (เทา) เทียบ % ความจุ (กรมท่า · อันดับ 1 ม่วง)</h4>${types.map((t, i) => hbar2(esc(t.name), pct(t.bins, totB), pct(t.liters, totL), i === 0 ? DASH.purple : DASH.navy, `${fmt1(pct(t.bins, totB))}% · ${fmt(t.bins)} ใบ`, `${fmt1(pct(t.liters, totL))}% · ${fmt(t.liters)} ล.`)).join('') || '<div class="muted">ไม่มีข้อมูล</div>'}</div></div>
+      <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">รายจุด (${fmt(rows.length)}) เรียงความจุมาก→น้อย</h4><button class="small secondary" onclick="exportCsv(S._dashRows.map(r=>({รหัสจุด:r.place_code,ชื่อ:r.name,ถนน:r.road_name,ซอย:r.soi_name||'',ประเภทจุด:r.place_type_name||'',ระดับ:r.tier_label||'',ใบ:r.f_bins,ลิตร:r.f_liters,ละติจูด:r.lat,ลองจิจูด:r.lng,ผู้บันทึก:r.created_by_name||''})),'research')">ส่งออก CSV ตามตัวกรอง</button></div>
+        <div style="overflow:auto"><table><thead><tr><th>รหัสจุด</th><th>ชื่อสถานที่</th><th>ถนน</th><th>ประเภทจุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th></tr></thead><tbody>
+        ${rows.slice(S._page * PAGE, (S._page + 1) * PAGE).map(r => `<tr><td><a href="#place/${r.id}">${esc(r.place_code)}</a></td><td>${esc(r.name)}</td><td>${esc(r.road_name)}</td><td>${esc(r.place_type_name || '')}</td><td style="text-align:right">${fmt(r.f_bins)}</td><td style="text-align:right;white-space:nowrap"><i class="dot" style="background:${tierOf(r).color}"></i>${fmt(r.f_liters)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">ไม่มีจุดตามตัวกรอง</td></tr>'}</tbody></table></div>
+        <div class="row" style="justify-content:center;margin-top:8px"><button class="small secondary" ${S._page === 0 ? 'disabled' : ''} onclick="S._page--;dashApply()">‹ ก่อนหน้า</button><span class="muted">หน้า ${S._page + 1}/${pages}</span><button class="small secondary" ${S._page >= pages - 1 ? 'disabled' : ''} onclick="S._page++;dashApply()">ถัดไป ›</button></div></div>`;
+    charts.push(mkChart($('#cScatter'), { type: 'scatter', data: { datasets: [{ data: roadArr.map(r => ({ x: r.n, y: r.liters })), ptLabels: roadArr.map((r, i) => (i < heavy ? r.name : '')), backgroundColor: roadArr.map((r, i) => (i < heavy ? DASH.purple : DASH.gray2)), pointRadius: 6 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${roadArr[c.dataIndex].name}: ${fmt(c.raw.x)} จุด · ${fmt(c.raw.y)} ล.` } } }, scales: { x: { title: { display: true, text: 'จำนวนจุด' }, beginAtZero: true, ticks: { precision: 0 } }, y: { title: { display: true, text: 'ลิตร' }, beginAtZero: true } } }, plugins: [ptLabelPlugin] }));
+    charts.push(mkChart($('#cPareto'), { type: 'line', data: { datasets: [{ data: cumPts, borderColor: DASH.navy, pointRadius: 0, borderWidth: 2, tension: 0 }, { type: 'scatter', data: marks.map(m => ({ x: m.x, y: m.y })), ptLabels: marks.map(m => m.l), backgroundColor: DASH.purple, pointRadius: 7 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${fmt(c.raw.x)} จุด: ${fmt1(c.raw.y)}% ของความจุ` } } }, scales: { x: { type: 'linear', min: 0, title: { display: true, text: 'จำนวนจุด (เรียงความจุมาก→น้อย)' }, ticks: { precision: 0 } }, y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } } }, plugins: [ptLabelPlugin] }));
+  };
+  S._dashDraw = draw; draw();
+}
+
+// ---------- หน้า 3 ทรัพย์สินถัง (DEC-089) ----------
+async function pageDashAssets(view) {
+  const [assets, routes, routePlaces] = await Promise.all([
+    api.list('v_bin_asset', { eq: scopeEq() }),
+    S.scopeMuni ? api.list('v_route_summary', { eq: { municipality_id: S.scopeMuni, status: 'active' }, order: ['route_name'] }) : Promise.resolve([]),
+    S.scopeMuni ? api.list('v_route_place', { eq: { municipality_id: S.scopeMuni } }) : Promise.resolve([])]);
+  const estimated = (setting('asset_prices_status') || 'ประมาณการ') !== 'ยืนยันแล้ว';
+  const routeOpts = routes.map(r => ({ value: r.route_id, label: `${r.route_name} · ${r.truck_code}` }));
+  const placeMap = {}; for (const a of assets) placeMap[a.place_id] = `${a.place_code} ${a.place_name}`;
+  const placeOpts = Object.entries(placeMap).map(([v, l]) => ({ value: v, label: l })).sort((a, b) => a.label.localeCompare(b.label, 'th'));
+  const fyOpts = [...new Set(assets.map(a => a.fiscal_year == null ? '' : String(a.fiscal_year)))].sort().reverse().map(v => ({ value: v, label: v || 'ไม่ทราบปี' }));
+  const condOpts = ['ปกติ', 'ชำรุด', 'หาย'].map(c => ({ value: c, label: c }));
+  view.innerHTML = `${scopeSelector()}${dashTabs('assets')}
+    <div class="card"><div style="font-size:18px;font-weight:700;color:${DASH.navy}">ทรัพย์สินถัง: จำนวน สภาพ และมูลค่าประมาณการ</div><div class="muted">${esc(scopeName())} · มูลค่า = จำนวนใบ × ราคาต่อใบ · มูลค่าคงเหลือ = เส้นตรงตามอายุใช้งาน นับจากปีงบที่ซื้อ (ปีงบ 1 ต.ค.–30 ก.ย.) · ถังราคาต่ำกว่าเกณฑ์ครุภัณฑ์เป็นวัสดุ ไม่คิดค่าเสื่อม · <b>ตัวเลขเป็นมูลค่าประมาณการเพื่อการบริหาร ไม่ใช่ตัวเลขทางบัญชี</b></div>
+      ${estimated ? `<div class="banner warn" style="margin-top:8px">ราคามาตรฐานต่อใบของแต่ละประเภทถังเป็น <b>ค่าประมาณการ</b> ที่ยังไม่ได้ยืนยันโดยเจ้าของโครงการ (ส่วนกลาง → ประเภทถัง · เมื่อตรวจแล้วตั้งค่า asset_prices_status = ยืนยันแล้ว)</div>` : ''}
+      <div class="row" style="margin-top:8px;align-items:flex-start">${S.scopeMuni ? multiPick('pk_route', 'เส้นทางรถ', routeOpts, S.dash.route) : '<span class="muted">เลือกเทศบาลเพื่อกรองตามเส้นทาง</span>'}${multiPick('pk_place', 'จุด', placeOpts, S.dash.place)}${multiPick('pk_fy', 'ปีงบที่ซื้อ', fyOpts, S.dash.fy)}${multiPick('pk_cond', 'สภาพ', condOpts, S.dash.cond)}<button class="small secondary" onclick="S.dash.route=[];S.dash.place=[];S.dash.fy=[];S.dash.cond=[];render()">ล้างทั้งหมด</button></div></div>
+    <div id="dashBody"></div>`;
+  const charts = [];
+  const draw = () => {
+    S.dash.route = S.scopeMuni ? pickValues('pk_route') : []; S.dash.place = pickValues('pk_place'); S.dash.fy = pickValues('pk_fy'); S.dash.cond = pickValues('pk_cond');
+    const fr = new Set(S.dash.route), fp = new Set(S.dash.place), ffy = new Set(S.dash.fy), fc = new Set(S.dash.cond);
+    const routePlaceIds = new Set(routePlaces.filter(x => fr.has(x.route_id) && x.place_id).map(x => x.place_id));
+    const rows = assets.filter(a => (!fr.size || routePlaceIds.has(a.place_id)) && (!fp.size || fp.has(a.place_id)) && (!ffy.size || ffy.has(a.fiscal_year == null ? '' : String(a.fiscal_year))) && (!fc.size || fc.has(a.condition)));
+    const priced = rows.filter(a => a.priced), unpriced = rows.filter(a => !a.priced);
+    const unpricedTypes = [...new Set(unpriced.map(a => a.bin_type_name))];
+    const binsBy = c => sum(rows.filter(a => a.condition === c), 'amount');
+    const purchase = sum(priced, 'purchase_value'), book = sum(priced.filter(a => a.book_value != null), 'book_value'), bookable = priced.filter(a => a.book_value != null);
+    const noYear = priced.filter(a => a.valuation_status === 'ไม่ทราบปีซื้อ');
+    const card = (v, l, s) => `<div class="kpi"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}${s ? `<br><span style="font-size:12px">${s}</span>` : ''}</div></div>`;
+    // ตามปีงบ (แยกสภาพ)
+    const fys = [...new Set(rows.map(a => a.fiscal_year == null ? 'ไม่ทราบปี' : String(a.fiscal_year)))].sort((a, b) => (a === 'ไม่ทราบปี' ? 1 : b === 'ไม่ทราบปี' ? -1 : a.localeCompare(b)));
+    const fyAgg = {}; for (const a of rows) { const k = a.fiscal_year == null ? 'ไม่ทราบปี' : String(a.fiscal_year); fyAgg[k] = fyAgg[k] || { 'ปกติ': 0, 'ชำรุด': 0, 'หาย': 0, value: 0 }; fyAgg[k][a.condition] += +a.amount; fyAgg[k].value += a.priced ? +a.purchase_value : 0; }
+    // ตามประเภท
+    const tAgg = {}; for (const a of rows) { const t = tAgg[a.bin_type_id] = tAgg[a.bin_type_id] || { name: a.bin_type_name, unit_cost: +a.unit_cost, life: +a.useful_life_years, priced: a.priced, 'ปกติ': 0, 'ชำรุด': 0, 'หาย': 0, purchase: 0, book: 0, noYear: 0 }; t[a.condition] += +a.amount; if (a.priced) { t.purchase += +a.purchase_value; if (a.book_value != null) t.book += +a.book_value; else t.noYear += +a.amount; } }
+    const tArr = Object.values(tAgg).sort((a, b) => b.purchase - a.purchase);
+    // ตามจุด
+    const pAgg = {}; for (const a of rows) { const p = pAgg[a.place_id] = pAgg[a.place_id] || { id: a.place_id, code: a.place_code, name: a.place_name, road: a.road_name, 'ปกติ': 0, 'ชำรุด': 0, 'หาย': 0, purchase: 0, book: 0 }; p[a.condition] += +a.amount; if (a.priced) { p.purchase += +a.purchase_value; p.book += +(a.book_value || 0); } }
+    const pArr = Object.values(pAgg).sort((a, b) => b.purchase - a.purchase); S._assetRows = rows; S._assetPlaces = pArr;
+    destroyCharts(charts);
+    $('#dashBody').innerHTML = `${unpricedTypes.length ? `<div class="banner info">admin หลักยังไม่ได้กำหนดราคาประเภทถัง: <b>${unpricedTypes.map(esc).join(' · ')}</b> → ไม่นำ ${fmt(unpriced.length)} แถว (${fmt(sum(unpriced, 'amount'))} ใบ) มาคำนวณมูลค่า จำนวนใบยังนับตามปกติ</div>` : ''}
+      <div class="kpis">${card(fmt(sum(rows, 'amount')), 'ใบทั้งหมด', `ปกติ ${fmt(binsBy('ปกติ'))} · ชำรุด ${fmt(binsBy('ชำรุด'))} · หาย ${fmt(binsBy('หาย'))}`)}${card(fmt(Math.round(purchase)), 'มูลค่าซื้อประมาณการ (บาท)', `${fmt(sum(priced, 'amount'))} ใบที่มีราคา`)}${card(fmt(Math.round(book)), 'มูลค่าคงเหลือประมาณการ (บาท)', `${fmt(sum(bookable, 'amount'))} ใบที่คำนวณได้`)}${card(fmt(Math.round(sum(bookable, 'purchase_value') - book)), 'ค่าเสื่อมสะสมประมาณการ (บาท)')}${card(fmt(sum(noYear, 'amount')), 'ใบที่ไม่ทราบปีซื้อ', 'กรอกปีงบที่แถวถังเพื่อคำนวณ')}</div>
+      <div class="grid2" style="margin-top:12px">
+        <div class="card"><h4 style="margin-top:0">จำนวนใบตามปีงบที่จัดซื้อ แยกสภาพ</h4><div class="muted">ชำรุด/หาย ไม่นับเป็นความจุในแผนที่และแดชบอร์ดอื่น</div><div class="chartbox"><canvas id="cFy"></canvas></div></div>
+        <div class="card"><h4 style="margin-top:0">มูลค่าซื้อประมาณการตามปีงบ (บาท)</h4><div class="chartbox"><canvas id="cFyVal"></canvas></div></div></div>
+      <div class="card"><h4 style="margin-top:0">ตามประเภทถัง</h4><div style="overflow:auto"><table><thead><tr><th>ประเภท</th><th style="text-align:right">ปกติ</th><th style="text-align:right">ชำรุด</th><th style="text-align:right">หาย</th><th style="text-align:right">ราคา/ใบ</th><th style="text-align:right">อายุ (ปี)</th><th style="text-align:right">มูลค่าซื้อ</th><th style="text-align:right">คงเหลือ</th><th>หมายเหตุ</th></tr></thead><tbody>
+        ${tArr.map(t => `<tr><td>${esc(t.name)}</td><td style="text-align:right">${fmt(t['ปกติ'])}</td><td style="text-align:right">${fmt(t['ชำรุด'])}</td><td style="text-align:right">${fmt(t['หาย'])}</td><td style="text-align:right">${t.priced ? fmt(t.unit_cost) : '<span style="color:var(--warn)">ยังไม่กำหนด</span>'}</td><td style="text-align:right">${t.life > 0 ? fmt(t.life) : 'ไม่คิดค่าเสื่อม'}</td><td style="text-align:right">${t.priced ? fmt(Math.round(t.purchase)) : '-'}</td><td style="text-align:right">${t.priced ? fmt(Math.round(t.book)) : '-'}</td><td class="muted">${!t.priced ? 'ไม่นำมาคำนวณ' : t.noYear ? `${fmt(t.noYear)} ใบไม่ทราบปี` : ''}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody></table></div></div>
+      <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">รายจุด (${fmt(pArr.length)})</h4><div class="row"><button class="small secondary" onclick="exportCsv(S._assetPlaces.map(p=>({รหัสจุด:p.code,ชื่อ:p.name,ถนน:p.road,ปกติ:p['ปกติ'],ชำรุด:p['ชำรุด'],หาย:p['หาย'],มูลค่าซื้อประมาณการ:Math.round(p.purchase),มูลค่าคงเหลือประมาณการ:Math.round(p.book)})),'assets_places')">CSV รายจุด</button><button class="small secondary" onclick="exportCsv(S._assetRows.map(a=>({รหัสจุด:a.place_code,ชื่อ:a.place_name,ถนน:a.road_name,ประเภทถัง:a.bin_type_name,ใบ:a.amount,สภาพ:a.condition,ปีงบ:a.fiscal_year||'',ราคาต่อใบ:a.unit_cost,อายุปี:a.useful_life_years,มูลค่าซื้อ:a.purchase_value,มูลค่าคงเหลือ:a.book_value??'',สถานะ:a.valuation_status})),'assets_rows')">CSV รายแถวถัง</button></div></div>
+        <div style="overflow:auto"><table><thead><tr><th>รหัสจุด</th><th>ชื่อ</th><th>ถนน</th><th style="text-align:right">ปกติ</th><th style="text-align:right">ชำรุด/หาย</th><th style="text-align:right">มูลค่าซื้อ</th><th style="text-align:right">คงเหลือ</th></tr></thead><tbody>
+        ${pArr.slice(0, 50).map(p => `<tr><td><a href="#place/${p.id}">${esc(p.code)}</a></td><td>${esc(p.name)}</td><td>${esc(p.road)}</td><td style="text-align:right">${fmt(p['ปกติ'])}</td><td style="text-align:right">${p['ชำรุด'] + p['หาย'] ? `<span style="color:var(--warn)">${fmt(p['ชำรุด'] + p['หาย'])}</span>` : '0'}</td><td style="text-align:right">${fmt(Math.round(p.purchase))}</td><td style="text-align:right">${fmt(Math.round(p.book))}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody></table></div>${pArr.length > 50 ? `<div class="muted">แสดง 50 จุดแรก (ทั้งหมดอยู่ใน CSV)</div>` : ''}</div>`;
+    charts.push(mkChart($('#cFy'), { type: 'bar', data: { labels: fys, datasets: ['ปกติ', 'ชำรุด', 'หาย'].map(c => ({ label: c, data: fys.map(f => fyAgg[f][c]), backgroundColor: DASH.cond[c] })) }, options: { maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } }, plugins: { legend: { position: 'bottom' } } } }));
+    charts.push(mkChart($('#cFyVal'), { type: 'bar', data: { labels: fys, datasets: [{ label: 'มูลค่าซื้อ (บาท)', data: fys.map(f => Math.round(fyAgg[f].value)), backgroundColor: DASH.navy }] }, options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${fmt(c.raw)} บาท` } } } } }));
+  };
+  S._dashDraw = draw; draw();
 }
 function exportCsv(rows, name) {
   if (!rows || !rows.length) return toast('ไม่มีข้อมูล', true);
@@ -778,12 +992,12 @@ function showCredentials(accs) {
 // =====================================================================
 async function pageSuper(view) {
   SPECS.municipality = { table: 'municipality', title: 'เทศบาล', noAdd: true, order: ['code'], cols: [{ key: 'code', label: 'รหัส', readonly: true }, { key: 'name', label: 'ชื่อ', required: true }, { key: 'max_recorders', label: 'เพดานผู้บันทึก', type: 'number', required: true }, { key: 'status', label: 'สถานะ', type: 'status' }, { key: 'photo_endpoint_url', label: 'ลิงก์สคริปต์รับรูป', nullable: true, hide: true }, { key: 'note', label: 'หมายเหตุ', type: 'textarea', nullable: true, hide: true }], extraBtn: `<button class="small" onclick="muniForm()">＋ สร้างเทศบาล (พร้อม 2 บัญชี)</button>`, rowBtns: r => ` <button class="small secondary" onclick="S.scopeMuni='${r.id}';go('#admin')">จัดการ</button>` };
-  SPECS.bin_type = { table: 'bin_type', title: 'ประเภทถัง', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'liters', label: 'ความจุต่อใบ (ลิตร)', type: 'number', required: true }, { key: 'color', label: 'สี' }, { key: 'detail', label: 'รายละเอียด', nullable: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.bin_type = { table: 'bin_type', title: 'ประเภทถัง', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'liters', label: 'ความจุต่อใบ (ลิตร)', type: 'number', required: true }, { key: 'color', label: 'สี' }, { key: 'unit_cost', label: 'ราคามาตรฐานต่อใบ (บาท · 0 = ยังไม่กำหนด ไม่นำมาคำนวณมูลค่า)', type: 'number', required: true }, { key: 'useful_life_years', label: 'อายุใช้งาน (ปี · 0 = วัสดุ ไม่คิดค่าเสื่อม)', type: 'number', required: true }, { key: 'detail', label: 'รายละเอียด', nullable: true, hide: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number', hide: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
   SPECS.truck_type = { table: 'truck_type', title: 'ประเภทรถ', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'capacity_liters', label: 'ความจุ (ลิตร)', type: 'number', nullable: true }, { key: 'detail', label: 'รายละเอียด', nullable: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
   SPECS.place_type = { table: 'place_type', title: 'ประเภทจุด', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
   SPECS.capacity_tier = { table: 'capacity_tier', title: 'เกณฑ์สีหมุด', order: ['sort_order'], cols: [{ key: 'label', label: 'ป้าย', required: true }, { key: 'min_liters', label: 'ตั้งแต่ (ลิตร)', type: 'number', required: true }, { key: 'max_liters', label: 'ถึง (ลิตร, ว่าง = ไม่จำกัด)', type: 'number', nullable: true }, { key: 'color', label: 'รหัสสี', type: 'color', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }] };
   SPECS.app_setting = { table: 'app_setting', title: 'ค่าตั้งค่าส่วนกลาง', noAdd: true, pk: 'key', order: ['key'], cols: [{ key: 'key', label: 'ค่า', readonly: true }, { key: 'value', label: 'ค่าที่ตั้ง', nullable: true }, { key: 'description', label: 'คำอธิบาย', readonly: true }] };
-  view.innerHTML = `<div class="banner info">ส่วนกลาง: ค่าที่นี่ใช้เหมือนกันทุกเทศบาล (DEC-079)</div>` + (await crudSection(SPECS.municipality)) + (await crudSection(SPECS.bin_type)) + (await crudSection(SPECS.truck_type)) + (await crudSection(SPECS.place_type)) + (await crudSection(SPECS.capacity_tier)) + (await crudSection(SPECS.app_setting));
+  view.innerHTML = `<div class="banner info">ส่วนกลาง: ค่าที่นี่ใช้เหมือนกันทุกเทศบาล (DEC-079)</div>${(setting('asset_prices_status') || 'ประมาณการ') !== 'ยืนยันแล้ว' ? `<div class="banner warn">ราคามาตรฐานต่อใบและอายุใช้งานของประเภทถังเป็น <b>ค่าประมาณการตั้งต้น</b> (DEC-089) · ตรวจแล้วแก้ที่ตาราง "ประเภทถัง" จากนั้นตั้งค่า asset_prices_status = ยืนยันแล้ว เพื่อปิดป้ายเตือนบนแดชบอร์ด</div>` : ''}` + (await crudSection(SPECS.municipality)) + (await crudSection(SPECS.bin_type)) + (await crudSection(SPECS.truck_type)) + (await crudSection(SPECS.place_type)) + (await crudSection(SPECS.capacity_tier)) + (await crudSection(SPECS.app_setting));
 }
 function muniForm() {
   openModal(`<h3 style="margin-top:0">สร้างเทศบาลใหม่</h3><label>รหัสย่อ (a-z/0-9 2–12 ตัว ใช้ประกอบชื่อล็อกอิน เช่น ubn)</label><input id="mu_code" autocapitalize="none"><label>ชื่อเทศบาล</label><input id="mu_name"><label>หมายเหตุ</label><input id="mu_note">
