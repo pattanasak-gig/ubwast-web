@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ระบบข้อมูลจุดวางถังขยะ</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// =====================================================================
+// CONFIG — ค่าที่เจ้าของโครงการแก้ได้ที่นี่ที่เดียว (ห้ามใส่ secret key ในไฟล์นี้)
+// =====================================================================
+const CONFIG = {
+  SUPABASE_URL: 'https://cbmaqzocmgvbjubdvfsz.supabase.co',
+  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_WWVj5eL3Cw3cfNK4rEY5hw_kcvrrGcO',
+  LOGIN_EMAIL_DOMAIN: 'ubwast.local',   // ต้องตรงกับ LOGIN_EMAIL_DOMAIN ในห้องเครื่อง Apps Script
+  ENGINE_URL: 'https://script.google.com/macros/s/AKfycbylaxh8Tp5P0ptgCBY4-aBpkwAgrP6vcV25Bng9sAbSQneeruuDDeN5dfoISCArNoqlqQ/exec',  // Web app URL ของ apps-script/engine (deploy เวอร์ชัน 1, 21 ต.ค. 2569)
+  DEMO: false,                          // true = โหมดสาธิต ใช้ข้อมูลตัวอย่างในเครื่อง ไม่ต่อ Supabase (หรือเปิดด้วย ?demo=1)
+  MAP_FALLBACK: { lat: 15.0, lng: 100.0, zoom: 6 },   // ใช้เมื่อยังไม่มีจุดใดมีพิกัด (ค่ากลางของประเทศ ไม่ผูกเมือง)
+  // แผนที่พื้นหลัง (tile) — เปลี่ยนผู้ให้บริการได้ที่นี่ · OSM ต้องการ Referer จึงอาจถูกบล็อกเมื่อเปิดจาก file:// (MIS-007)
+  TILES: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap contributors', maxZoom: 19 },
+  // ตัวสำรองอัตโนมัติเมื่อแผ่นแผนที่หลักโหลดไม่ได้ · เงื่อนไขการใช้ของผู้ให้บริการสำรองยังไม่ได้ตรวจ ใช้ชั่วคราวระหว่างพัฒนา
+  TILES_FALLBACK: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles © Esri', maxZoom: 19 },
+  PHOTO_MAX_PX: 1280,                   // ย่อรูปด้านยาวสุดก่อนส่ง (ประหยัดพื้นที่ Drive และเวลาส่ง)
+  PHOTO_QUALITY: 0.8,
+  QUEUE_WARN_BYTES: 4 * 1024 * 1024     // เตือนเมื่อคิวพักข้อมูลในเครื่องใกล้เต็ม
+};
+</script>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1f2430; --muted:#6b7280; --line:#e5e7eb; --brand:#1b6e3a; --brand-ink:#fff; --danger:#b91c1c; --warn:#b45309; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif; }
+  a { color: var(--brand); }
+  header { position: sticky; top:0; z-index: 50; background: var(--brand); color: var(--brand-ink); padding: 10px 16px; display:flex; align-items:center; gap:12px; }
+  header h1 { font-size: 17px; margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  header button { background: rgba(255,255,255,.15); color:#fff; border:0; border-radius:8px; padding:6px 10px; font-size:14px; }
+  nav.tabs { display:flex; gap:4px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--line); padding: 4px 8px; position: sticky; top:48px; z-index:40; }
+  nav.tabs a { text-decoration:none; color:var(--muted); padding: 8px 10px; border-radius:8px; white-space:nowrap; font-size:15px; }
+  nav.tabs a.active { background: #e8f3ec; color: var(--brand); font-weight:600; }
+  main { padding: 12px 16px 90px; max-width: 1100px; margin: 0 auto; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .kpi { background:#fff; border:1px solid var(--line); border-radius:12px; padding: 12px; }
+  .kpi .v { font-size: 26px; font-weight: 700; }
+  .kpi .l { color: var(--muted); font-size: 13px; }
+  label { display:block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
+  input, select, textarea { width:100%; font: inherit; padding: 10px; border:1px solid #cbd5e1; border-radius: 8px; background:#fff; }
+  input[type=checkbox] { width:auto; }
+  button, .btn { font: inherit; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--brand); background: var(--brand); color:#fff; cursor:pointer; }
+  button.secondary, .btn.secondary { background:#fff; color: var(--brand); }
+  button.danger { background:#fff; color: var(--danger); border-color: var(--danger); }
+  button.small { padding: 6px 10px; font-size: 14px; }
+  button:disabled { opacity:.5; cursor: default; }
+  table { width:100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align:left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background:#eef2f7; }
+  .dot { display:inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; margin-right: 6px; border: 1px solid rgba(0,0,0,.2); }
+  #map { height: calc(100vh - 150px); min-height: 360px; border-radius: 12px; position: relative; z-index: 0; isolation: isolate; }  /* กันชั้นของ Leaflet ทับแถบเมนู/ส่วนหัว */
+  .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background:#1f2430; color:#fff; padding: 10px 16px; border-radius: 10px; z-index: 100; max-width: 90vw; }
+  .toast.err { background: var(--danger); }
+  .fab { position: fixed; right: 16px; bottom: 20px; z-index: 60; border-radius: 999px; padding: 14px 18px; font-size: 16px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+  .photos { display:flex; gap:8px; flex-wrap:wrap; }
+  .photos img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+  .banner { padding: 8px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 10px; }
+  .banner.warn { background:#fff7ed; color: var(--warn); border:1px solid #fed7aa; }
+  .banner.info { background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; }
+  .login { max-width: 380px; margin: 40px auto; }
+  .modal-bg { position: fixed; inset:0; background: rgba(0,0,0,.4); z-index: 90; display:flex; align-items:flex-end; justify-content:center; }
+  .modal { background:#fff; width: 100%; max-width: 560px; max-height: 92vh; overflow:auto; border-radius: 16px 16px 0 0; padding: 16px; }
+  @media (min-width: 640px) { .modal-bg { align-items:center; } .modal { border-radius: 16px; } }
+  .legend { display:flex; gap:10px; flex-wrap:wrap; font-size: 13px; }
+  .hidden { display:none !important; }
+  .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">ระบบข้อมูลจุดวางถังขยะ</h1>
+  <span id="who" class="muted" style="color:#dbeafe;font-size:13px"></span>
+  <button id="btnQueue" class="hidden" onclick="go('#queue')">รอส่ง <b id="queueCount">0</b></button>
+  <button onclick="go('#me')">บัญชี</button>
+</header>
+<nav class="tabs" id="tabs"></nav>
+<main id="view"></main>
+<div id="toastHost"></div>
+
+<script>
+// =====================================================================
+// สถานะรวมของแอป
+// =====================================================================
+const S = {
+  me: null,           // โปรไฟล์ app_user ของผู้ล็อกอิน
+  scopeMuni: null,    // เทศบาลที่กำลังดู (super admin เลือกได้ · คนอื่น = เทศบาลตน)
+  munis: [],          // เทศบาลที่มองเห็น
+  cache: {},          // ตารางแม่ที่โหลดแล้ว
+  map: null, markers: null,
+  charts: []
+};
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = n => (n == null ? '-' : Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 }));
+const thDate = iso => iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+const IS_DEMO = CONFIG.DEMO || /[?&]demo=1/.test(location.search);
+
+function toast(msg, isErr) {
+  const t = document.createElement('div'); t.className = 'toast' + (isErr ? ' err' : ''); t.textContent = msg;
+  $('#toastHost').appendChild(t); setTimeout(() => t.remove(), isErr ? 5000 : 2500);
+}
+function go(hash) { location.hash = hash; }
+function isNetworkError(e) { return !navigator.onLine || /fetch|network|Failed|load failed|timeout/i.test(String(e && (e.message || e))); }
+
+// =====================================================================
+// ชั้นข้อมูล A: Supabase จริง
+// =====================================================================
+const SupaBackend = () => {
+  const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_PUBLISHABLE_KEY);
+  const unwrap = r => { if (r.error) throw new Error(r.error.message || JSON.stringify(r.error)); return r.data; };
+  const applyOpts = (qb, o = {}) => {
+    for (const [k, v] of Object.entries(o.eq || {})) qb = qb.eq(k, v);
+    for (const [k, v] of Object.entries(o.in || {})) qb = qb.in(k, v);
+    if (o.order) qb = qb.order(o.order[0], { ascending: o.order[1] !== false });
+    if (o.limit) qb = qb.limit(o.limit);
+    return qb;
+  };
+  return {
+    name: 'supabase',
+    async session() { return unwrap(await sb.auth.getSession()).session; },
+    async login(username, password) {
+      const email = username.includes('@') ? username : `${username.trim().toLowerCase()}@${CONFIG.LOGIN_EMAIL_DOMAIN}`;
+      unwrap(await sb.auth.signInWithPassword({ email, password }));
+      return this.me();
+    },
+    async logout() { await sb.auth.signOut(); },
+    async me() {
+      const sess = await this.session(); if (!sess) return null;
+      const rows = unwrap(await sb.from('app_user').select('*').eq('id', sess.user.id));
+      return rows[0] || null;
+    },
+    async changePassword(pw) { unwrap(await sb.auth.updateUser({ password: pw })); },
+    async list(name, o) { return unwrap(await applyOpts(sb.from(name).select(o?.select || '*'), o)); },
+    async insert(table, row) { return unwrap(await sb.from(table).insert(row).select().single()); },
+    async update(table, id, patch, pk = 'id') { return unwrap(await sb.from(table).update(patch).eq(pk, id).select().single()); },
+    async remove(table, id) { unwrap(await sb.from(table).delete().eq('id', id)); },
+    async engine(action, payload) {
+      if (!CONFIG.ENGINE_URL) throw new Error('ยังไม่ได้ตั้งค่า ENGINE_URL (ห้องเครื่อง Apps Script ขั้นที่ 4)');
+      const sess = await this.session(); if (!sess) throw new Error('ไม่ได้ล็อกอิน');
+      const r = await fetch(CONFIG.ENGINE_URL, { method: 'POST', body: JSON.stringify({ action, token: sess.access_token, ...payload }) });
+      const j = await r.json(); if (!j.ok) throw new Error(j.error || 'ห้องเครื่องตอบผิดพลาด'); return j;
+    },
+    async uploadPhoto(endpointUrl, payload) {
+      const url = endpointUrl || CONFIG.ENGINE_URL;
+      if (!url) throw new Error('ยังไม่ได้ตั้งค่าที่เก็บรูป (ENGINE_URL หรือสคริปต์รับรูปของเทศบาล)');
+      const sess = await this.session();
+      const r = await fetch(url, { method: 'POST', body: JSON.stringify({ action: 'upload_photo', token: sess.access_token, ...payload }) });
+      const j = await r.json(); if (!j.ok) throw new Error(j.error || 'ส่งรูปไม่สำเร็จ'); return j;
+    }
+  };
+};
+
+// =====================================================================
+// ชั้นข้อมูล B: โหมดสาธิต (ข้อมูลตัวอย่างในหน่วยความจำ เลียนแบบ RLS และ view)
+// =====================================================================
+const DemoBackend = () => {
+  const uid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+  const now = () => new Date().toISOString();
+  const D = { municipality: [], app_user: [], bin_type: [], truck_type: [], place_type: [], capacity_tier: [], app_setting: [],
+              road: [], soi: [], truck: [], route: [], route_road: [], place: [], bin: [], place_photo: [] };
+  const add = (t, row) => { const r = { id: uid(), status: 'active', created_at: now(), updated_at: now(), ...row }; D[t].push(r); return r; };
+  // --- ข้อมูลตัวอย่าง (เหมือน sql/020_sample_data.sql) ---
+  const m1 = add('municipality', { code: 'DEMO1', name: 'เทศบาลตัวอย่าง หนึ่ง', max_recorders: 3, photo_endpoint_url: '' });
+  const m2 = add('municipality', { code: 'DEMO2', name: 'เทศบาลตัวอย่าง สอง', max_recorders: 3, photo_endpoint_url: '' });
+  const users = [
+    add('app_user', { username: 'owner', display_name: 'เจ้าของโครงการ (สาธิต)', role: 'super_admin', municipality_id: null }),
+    add('app_user', { username: 'demo1-admin', display_name: 'admin เทศบาลหนึ่ง', role: 'admin', municipality_id: m1.id }),
+    add('app_user', { username: 'demo1-rec1', display_name: 'ผู้บันทึก หนึ่ง', role: 'recorder', municipality_id: m1.id }),
+    add('app_user', { username: 'demo2-admin', display_name: 'admin เทศบาลสอง', role: 'admin', municipality_id: m2.id }),
+    add('app_user', { username: 'demo2-rec1', display_name: 'ผู้บันทึก สอง', role: 'recorder', municipality_id: m2.id })
+  ];
+  const bt120 = add('bin_type', { name: 'ตัวอย่าง ถัง 120 ลิตร', liters: 120, color: 'เขียว', sort_order: 1 });
+  const bt240 = add('bin_type', { name: 'ตัวอย่าง ถัง 240 ลิตร', liters: 240, color: 'น้ำเงิน', sort_order: 2 });
+  const bt4000 = add('bin_type', { name: 'ตัวอย่าง คอนเทนเนอร์ 4,000 ลิตร', liters: 4000, color: 'เหลือง', sort_order: 3 });
+  const tt = add('truck_type', { name: 'ตัวอย่าง รถอัดท้าย 6 ลบ.ม.', capacity_liters: 6000, sort_order: 1 });
+  add('truck_type', { name: 'ตัวอย่าง รถอัดท้าย 12 ลบ.ม.', capacity_liters: 12000, sort_order: 2 });
+  const pt = add('place_type', { name: 'จุดทิ้งขยะ', sort_order: 1 }); add('place_type', { name: 'ตลาด', sort_order: 2 }); add('place_type', { name: 'ร้านค้า', sort_order: 3 });
+  [['≤120 ลิตร', 0, 120, '#2E7D32'], ['121–240 ลิตร', 120.01, 240, '#F9A825'], ['241–480 ลิตร', 240.01, 480, '#EF6C00'], ['481–1,000 ลิตร', 480.01, 1000, '#C62828'], ['>1,000 ลิตร', 1000.01, null, '#6A1B9A']]
+    .forEach((t, i) => add('capacity_tier', { label: t[0], min_liters: t[1], max_liters: t[2], color: t[3], sort_order: i + 1 }));
+  D.app_setting.push({ key: 'kg_per_liter', value: '', description: 'ตัวคูณแปลงลิตรเป็นกิโลกรัม' }, { key: 'default_photo_endpoint_url', value: '', description: 'ลิงก์สคริปต์รับรูปค่ากลาง' }, { key: 'system_name', value: 'ระบบข้อมูลจุดวางถังขยะ (สาธิต)', description: 'ชื่อระบบ' }, { key: 'max_photos_per_place', value: '3', description: 'จำนวนรูปสูงสุดต่อจุด' });
+  const r1 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ก', road_type: 'สายหลัก' });
+  const r2 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ข', road_type: 'สายรอง' });
+  const r3 = add('road', { municipality_id: m1.id, name: 'ถนนตัวอย่าง ค', road_type: 'สายรอง' });
+  const r4 = add('road', { municipality_id: m2.id, name: 'ถนนตัวอย่าง ง', road_type: 'สายหลัก' });
+  const s1 = add('soi', { municipality_id: m1.id, road_id: r1.id, name: 'ซอย 1' });
+  const t1 = add('truck', { municipality_id: m1.id, truck_type_id: tt.id, code: 'รถ 01', plate_no: 'ตัวอย่าง-1', capacity_liters: null });
+  const t2 = add('truck', { municipality_id: m1.id, truck_type_id: tt.id, code: 'รถ 02', plate_no: 'ตัวอย่าง-2', capacity_liters: null });
+  const rt1 = add('route', { municipality_id: m1.id, truck_id: t1.id, name: 'สาย 1 (ก+ข)', schedule_note: 'ทุกวัน 05:00' });
+  add('route_road', { municipality_id: m1.id, route_id: rt1.id, road_id: r1.id, seq: 1 }); add('route_road', { municipality_id: m1.id, route_id: rt1.id, road_id: r2.id, seq: 2 });
+  const rt2 = add('route', { municipality_id: m1.id, truck_id: t2.id, name: 'สาย 2 (ค)', schedule_note: 'จันทร์/พุธ/ศุกร์' });
+  add('route_road', { municipality_id: m1.id, route_id: rt2.id, road_id: r3.id, seq: 1 });
+  const rt3 = add('route', { municipality_id: m1.id, truck_id: t2.id, name: 'เทศกาลตัวอย่าง (ช่วยเก็บถนน ก)', route_kind: 'temporary', valid_from: '2026-12-30', valid_to: '2027-01-02', schedule_note: 'เฉพาะช่วงปีใหม่' });
+  add('route_road', { municipality_id: m1.id, route_id: rt3.id, road_id: r1.id, seq: 1 });
+  const mkPlace = (m, name, road, i, soi, lat, lng) => add('place', { municipality_id: m.id, place_code: `${road.name}-${i}`, name, place_type_id: pt.id, road_id: road.id, soi_id: soi ? soi.id : null, lat, lng, created_by: users[2].id });
+  const bins = [[bt120, 1], [bt120, 2], [bt240, 2], [bt240, 4], [bt4000, 1], null];
+  for (let i = 1; i <= 6; i++) { const p = mkPlace(m1, `จุดตัวอย่าง ก-${i}`, r1, i, i === 6 ? s1 : null, 15 + i * 0.001, 100 + i * 0.001); if (bins[i - 1]) add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bins[i - 1][0].id, amount: bins[i - 1][1], asset_no: i === 5 ? 'ตัวอย่าง-ครุภัณฑ์-001' : null }); }
+  for (let i = 1; i <= 3; i++) { const p = mkPlace(m1, `จุดตัวอย่าง ข-${i}`, r2, i, null, 15.01 + i * 0.001, 100.01 + i * 0.001); add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bt120.id, amount: i }); }
+  for (let i = 1; i <= 2; i++) { const p = mkPlace(m1, `จุดตัวอย่าง ค-${i}`, r3, i, null, 15.02 + i * 0.001, 100.02 + i * 0.001); add('bin', { municipality_id: m1.id, place_id: p.id, bin_type_id: bt240.id, amount: 1 }); }
+  for (let i = 1; i <= 2; i++) { const p = mkPlace(m2, `จุดตัวอย่าง ง-${i}`, r4, i, null, 15.1 + i * 0.001, 100.1 + i * 0.001); add('bin', { municipality_id: m2.id, place_id: p.id, bin_type_id: bt120.id, amount: 2 }); }
+
+  let me = null;
+  const byId = (t, id) => D[t].find(r => r.id === id);
+  const tier = L => { const t = D.capacity_tier.slice().sort((a, b) => a.sort_order - b.sort_order).find(t => L >= t.min_liters && (t.max_liters == null || L <= t.max_liters)); return t || {}; };
+  const placeAgg = pid => { const bs = D.bin.filter(b => b.place_id === pid && b.status === 'active'); return { bin_rows: bs.length, total_bins: bs.reduce((s, b) => s + b.amount, 0), total_liters: bs.reduce((s, b) => s + b.amount * byId('bin_type', b.bin_type_id).liters, 0) }; };
+  const views = {
+    v_bin: () => D.bin.map(b => { const bt = byId('bin_type', b.bin_type_id); return { ...b, bin_type_name: bt.name, bin_type_color: b.color || bt.color, bin_color: b.color || null, liters_per_bin: bt.liters, liters: b.amount * bt.liters }; }),
+    v_place: () => D.place.map(p => { const a = placeAgg(p.id), m = byId('municipality', p.municipality_id), r = byId('road', p.road_id), s = p.soi_id ? byId('soi', p.soi_id) : null, t = tier(a.total_liters), ptt = byId('place_type', p.place_type_id); return { ...p, ...a, created_by_name: (byId('app_user', p.created_by) || {}).display_name, updated_by_name: (byId('app_user', p.updated_by) || {}).display_name, municipality_code: m.code, municipality_name: m.name, road_name: r.name, soi_name: s ? s.name : null, place_type_name: ptt ? ptt.name : null, tier_label: t.label, tier_color: t.color, photo_count: D.place_photo.filter(x => x.place_id === p.id && x.status === 'active').length }; }),
+    v_road_summary: () => D.road.map(r => { const ps = D.place.filter(p => p.road_id === r.id && p.status === 'active'); const ag = ps.map(p => placeAgg(p.id)); const m = byId('municipality', r.municipality_id); return { municipality_id: r.municipality_id, municipality_code: m.code, municipality_name: m.name, road_id: r.id, road_name: r.name, road_type: r.road_type, road_status: r.status, places: ps.length, total_bins: ag.reduce((s, a) => s + a.total_bins, 0), total_liters: ag.reduce((s, a) => s + a.total_liters, 0) }; }),
+    v_bin_type_summary: () => { const out = {}; for (const b of D.bin) { const p = byId('place', b.place_id); if (b.status !== 'active' || p.status !== 'active') continue; const bt = byId('bin_type', b.bin_type_id), k = b.municipality_id + bt.id; out[k] = out[k] || { municipality_id: b.municipality_id, municipality_code: byId('municipality', b.municipality_id).code, bin_type_id: bt.id, bin_type_name: bt.name, bin_type_color: bt.color, liters_per_bin: bt.liters, bin_rows: 0, total_bins: 0, total_liters: 0 }; out[k].bin_rows++; out[k].total_bins += b.amount; out[k].total_liters += b.amount * bt.liters; } return Object.values(out); },
+    v_municipality_summary: () => D.municipality.map(m => { const ps = D.place.filter(p => p.municipality_id === m.id && p.status === 'active'); const ag = ps.map(p => placeAgg(p.id)); return { municipality_id: m.id, municipality_code: m.code, municipality_name: m.name, status: m.status, places: ps.length, bin_rows: ag.reduce((s, a) => s + a.bin_rows, 0), total_bins: ag.reduce((s, a) => s + a.total_bins, 0), total_liters: ag.reduce((s, a) => s + a.total_liters, 0), roads_with_places: new Set(ps.map(p => p.road_id)).size }; }),
+    v_route_place: () => { const out = []; for (const rt of D.route) for (const rr of D.route_road.filter(x => x.route_id === rt.id)) { const r = byId('road', rr.road_id); const ps = D.place.filter(p => p.road_id === r.id && p.status === 'active'); if (!ps.length) out.push({ route_id: rt.id, municipality_id: rt.municipality_id, route_name: rt.name, truck_id: rt.truck_id, road_seq: rr.seq, road_id: r.id, road_name: r.name, place_id: null }); for (const p of ps) { const a = placeAgg(p.id); out.push({ route_id: rt.id, municipality_id: rt.municipality_id, route_name: rt.name, truck_id: rt.truck_id, road_seq: rr.seq, road_id: r.id, road_name: r.name, place_id: p.id, place_code: p.place_code, place_name: p.name, lat: p.lat, lng: p.lng, total_bins: a.total_bins, total_liters: a.total_liters }); } } return out; },
+    v_route_summary: () => D.route.map(rt => { const t = byId('truck', rt.truck_id), ttp = t.truck_type_id ? byId('truck_type', t.truck_type_id) : null, cap = t.capacity_liters || (ttp && ttp.capacity_liters) || null; const vp = views.v_route_place().filter(x => x.route_id === rt.id); const L = vp.reduce((s, x) => s + (x.total_liters || 0), 0); const kg = parseFloat((D.app_setting.find(s => s.key === 'kg_per_liter') || {}).value); const myRoads = D.route_road.filter(x => x.route_id === rt.id).map(x => x.road_id); const shared = myRoads.filter(rid => D.route_road.some(x => x.road_id === rid && x.route_id !== rt.id && byId('route', x.route_id).status === 'active')).length; return { route_id: rt.id, municipality_id: rt.municipality_id, municipality_code: byId('municipality', rt.municipality_id).code, route_name: rt.name, route_kind: rt.route_kind || 'regular', valid_from: rt.valid_from || null, valid_to: rt.valid_to || null, shared_roads: shared, schedule_note: rt.schedule_note, status: rt.status, truck_id: t.id, truck_code: t.code, plate_no: t.plate_no, truck_capacity_liters: cap, roads: new Set(vp.map(x => x.road_id)).size, places: vp.filter(x => x.place_id).length, total_bins: vp.reduce((s, x) => s + (x.total_bins || 0), 0), total_liters: L, load_pct: cap ? Math.round(1000 * L / cap) / 10 : null, est_weight_kg: isNaN(kg) ? null : Math.round(L * kg * 10) / 10 }; })
+  };
+  const GLOBAL = ['bin_type', 'truck_type', 'place_type', 'capacity_tier', 'app_setting'];
+  const scope = (name, rows) => {
+    if (!me) throw new Error('ไม่ได้ล็อกอิน');
+    if (me.role === 'super_admin' || GLOBAL.includes(name)) return rows;
+    if (name === 'app_user') return rows.filter(r => r.id === me.id || (me.role === 'admin' && r.municipality_id === me.municipality_id));
+    if (name === 'municipality' || name === 'v_municipality_summary') return rows.filter(r => (r.id || r.municipality_id) === me.municipality_id);
+    return rows.filter(r => r.municipality_id === me.municipality_id);
+  };
+  const filt = (rows, o = {}) => {
+    let out = rows.filter(r => Object.entries(o.eq || {}).every(([k, v]) => r[k] === v) && Object.entries(o.in || {}).every(([k, v]) => v.includes(r[k])));
+    if (o.order) { const [k, asc] = o.order; out = out.slice().sort((a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0) * (asc === false ? -1 : 1)); }
+    if (o.limit) out = out.slice(0, o.limit);
+    return out.map(r => ({ ...r }));
+  };
+  return {
+    name: 'demo',
+    async session() { return me ? { user: { id: me.id }, access_token: 'demo' } : null; },
+    async login(username, password) { const u = D.app_user.find(x => x.username === username.trim().toLowerCase()); if (!u || password !== 'demo') throw new Error('ชื่อล็อกอินหรือรหัสผ่านไม่ถูกต้อง (สาธิต: รหัสผ่านคือ demo)'); me = u; return { ...u }; },
+    async logout() { me = null; },
+    async me() { return me ? { ...me } : null; },
+    async changePassword() { },
+    async list(name, o) { const rows = views[name] ? views[name]() : D[name]; return filt(scope(name, rows), o); },
+    async insert(table, row) {
+      if (!me) throw new Error('ไม่ได้ล็อกอิน');
+      const r = { ...row };
+      if (['place', 'road', 'soi', 'truck', 'route'].includes(table) && !r.municipality_id) r.municipality_id = me.municipality_id;
+      if (table === 'bin' || table === 'place_photo') r.municipality_id = byId('place', r.place_id).municipality_id;
+      if (table === 'place_photo') { const mx = parseInt((D.app_setting.find(s => s.key === 'max_photos_per_place') || {}).value || '3'); if (D.place_photo.filter(x => x.place_id === r.place_id && x.status === 'active').length >= mx) throw new Error(`จุดนี้มีรูปครบ ${mx} รูปแล้ว ให้ admin ยกเลิกรูปเก่าก่อนจึงเพิ่มได้`); }
+      if (table === 'route_road') r.municipality_id = byId('route', r.route_id).municipality_id;
+      if (table === 'place' && !r.place_code) { const road = byId('road', r.road_id); const n = D.place.filter(p => p.road_id === r.road_id).map(p => parseInt((p.place_code.match(/-(\d+)$/) || [])[1] || 0)).reduce((a, b) => Math.max(a, b), 0) + 1; r.place_code = `${road.name}-${n}`; }
+      r.created_by = me.id; r.updated_by = me.id;
+      return { ...add(table, r) };
+    },
+    async update(table, id, patch, pk = 'id') {
+      const r = D[table].find(x => x[pk] === id); if (!r) throw new Error('ไม่พบข้อมูล');
+      if (me.role === 'recorder' && patch.status === 'inactive' && ['place', 'bin'].includes(table)) throw new Error('ผู้บันทึกยกเลิกไม่ได้ ต้องให้ admin ของเทศบาลทำ');
+      Object.assign(r, patch, { updated_at: now(), updated_by: me.id }); return { ...r };
+    },
+    async remove(table, id) { const i = D[table].findIndex(r => r.id === id); if (i >= 0) D[table].splice(i, 1); },
+    async engine(action, payload) {
+      const pw = () => Math.random().toString(36).slice(2, 12);
+      if (action === 'create_municipality') { const m = add('municipality', { code: payload.code.toUpperCase(), name: payload.name, max_recorders: 3 }); const a = add('app_user', { username: payload.code + '-admin', display_name: 'admin ' + payload.name, role: 'admin', municipality_id: m.id }); const r = add('app_user', { username: payload.code + '-rec1', display_name: 'ผู้บันทึก ' + payload.name, role: 'recorder', municipality_id: m.id }); return { ok: true, municipality: m, accounts: [{ ...a, password: 'demo' }, { ...r, password: 'demo' }] }; }
+      if (action === 'create_user') { const mid = me.role === 'super_admin' ? payload.municipality_id : me.municipality_id; const cnt = D.app_user.filter(u => u.municipality_id === mid && u.role === 'recorder' && u.status === 'active').length; const max = byId('municipality', mid).max_recorders; if (payload.role === 'recorder' && cnt >= max) throw new Error(`บัญชีผู้บันทึกของเทศบาลนี้ครบเพดาน ${max} บัญชีแล้ว`); const u = add('app_user', { username: payload.username, display_name: payload.display_name, role: payload.role, municipality_id: mid }); return { ok: true, account: { ...u, password: 'demo' } }; }
+      if (action === 'reset_password') return { ok: true, username: byId('app_user', payload.user_id).username, password: pw() };
+      throw new Error('สาธิต: ไม่รองรับ ' + action);
+    },
+    async uploadPhoto(endpointUrl, payload) { return { ok: true, file_id: 'demo-' + Date.now(), url: 'data:' + (payload.mime || 'image/jpeg') + ';base64,' + payload.data }; }
+  };
+};
+
+const api = IS_DEMO ? DemoBackend() : SupaBackend();
+
+// =====================================================================
+// คิวพักข้อมูลในเครื่อง (ข้อกำหนดบังคับ: ทำงานตอนสัญญาณอ่อน)
+//   รายการ: { id, kind: 'place'|'bin'|'photo', payload, tempId?, placeRef?, status, error, created_at }
+//   placeRef = id จริง หรือ tempId ของจุดที่ยังรอส่ง → ตอนส่งจะแปลงเป็น id จริงตามลำดับ
+// =====================================================================
+const Queue = {
+  KEY: 'ubwast_queue_v1',
+  load() { try { return JSON.parse(localStorage.getItem(this.KEY) || '[]'); } catch { return []; } },
+  save(items) { localStorage.setItem(this.KEY, JSON.stringify(items)); this.refreshBadge(); },
+  push(item) { const items = this.load(); items.push({ id: 'q' + Date.now() + Math.random().toString(36).slice(2, 6), status: 'pending', created_at: new Date().toISOString(), ...item }); this.save(items); return items[items.length - 1]; },
+  remove(id) { this.save(this.load().filter(i => i.id !== id)); },
+  bytes() { return (localStorage.getItem(this.KEY) || '').length; },
+  refreshBadge() { const n = this.load().length; $('#queueCount').textContent = n; $('#btnQueue').classList.toggle('hidden', n === 0); },
+  syncing: false,
+  async sync() {
+    if (this.syncing || !navigator.onLine) return;
+    this.syncing = true;
+    const items = this.load(); const idMap = {};
+    for (const it of items) {
+      if (it.status === 'done') continue;
+      try {
+        if (it.kind === 'place') { const row = await api.insert('place', it.payload); idMap[it.tempId] = row.id; it.realId = row.id; }
+        if (it.kind === 'bin') { const pid = idMap[it.placeRef] || it.placeRef; if (String(pid).startsWith('tmp')) throw new Error('จุดยังไม่ถูกส่ง'); await api.insert('bin', { ...it.payload, place_id: pid }); }
+        if (it.kind === 'photo') { const pid = idMap[it.placeRef] || it.placeRef; if (String(pid).startsWith('tmp')) throw new Error('จุดยังไม่ถูกส่ง'); await savePhoto(pid, it.payload); }
+        it.status = 'done';
+      } catch (e) {
+        it.status = 'error'; it.error = String(e.message || e);
+        if (isNetworkError(e)) break;   // ไม่มีสัญญาณ หยุดรอรอบหน้า
+      }
+    }
+    this.save(items.filter(i => i.status !== 'done'));
+    this.syncing = false;
+    if (items.some(i => i.status === 'done')) toast('ส่งข้อมูลที่ค้างแล้ว');
+  }
+};
+window.addEventListener('online', () => Queue.sync());
+
+// =====================================================================
+// ตัวช่วยโหลดตารางแม่ / ขอบเขตเทศบาล
+// =====================================================================
+async function loadMasters(force) {
+  if (S.cache.loaded && !force) return;
+  const [bin_type, truck_type, place_type, capacity_tier, app_setting, munis] = await Promise.all([
+    api.list('bin_type', { order: ['sort_order'] }), api.list('truck_type', { order: ['sort_order'] }), api.list('place_type', { order: ['sort_order'] }),
+    api.list('capacity_tier', { order: ['sort_order'] }), api.list('app_setting', { order: ['key'] }), api.list('municipality', { order: ['code'] })]);
+  Object.assign(S.cache, { bin_type, truck_type, place_type, capacity_tier, app_setting, loaded: true });
+  S.munis = munis;
+  const sysName = (app_setting.find(s => s.key === 'system_name') || {}).value; if (sysName) { $('#title').textContent = sysName; document.title = sysName; }
+  if (!S.scopeMuni) S.scopeMuni = S.me.municipality_id || (munis[0] && munis[0].id) || null;
+}
+const scopeEq = () => (S.scopeMuni ? { municipality_id: S.scopeMuni } : {});
+const muniOf = id => S.munis.find(m => m.id === id) || {};
+const isSuper = () => S.me && S.me.role === 'super_admin';
+const isAdmin = () => S.me && (S.me.role === 'admin' || isSuper());
+const setting = k => (S.cache.app_setting.find(s => s.key === k) || {}).value || '';
+function scopeSelector() {
+  if (!isSuper()) return '';
+  return `<div class="card row"><label style="margin:0">เทศบาลที่กำลังดู</label><select style="max-width:320px" onchange="S.scopeMuni=this.value||null;render()">
+    <option value="">ทุกเทศบาล (เฉพาะแดชบอร์ด)</option>${S.munis.map(m => `<option value="${m.id}" ${m.id === S.scopeMuni ? 'selected' : ''}>${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></div>`;
+}
+
+// =====================================================================
+// เราเตอร์และเมนู
+// =====================================================================
+const TABS = () => [
+  ['#map', 'แผนที่'], ['#places', 'จุด'], ['#dashboard', 'แดชบอร์ด'], ['#routes', 'เส้นทางรถ'],
+  ...(isAdmin() ? [['#admin', 'จัดการเทศบาล']] : []),
+  ...(isSuper() ? [['#super', 'ส่วนกลาง']] : [])
+];
+function renderTabs() {
+  $('#tabs').innerHTML = S.me ? TABS().map(([h, l]) => `<a href="${h}" class="${location.hash.startsWith(h) ? 'active' : ''}">${l}</a>`).join('') : '';
+}
+window.addEventListener('hashchange', render);
+async function render() {
+  S.charts.forEach(c => c.destroy()); S.charts = [];
+  const view = $('#view');
+  try {
+    if (!S.me) { S.me = await api.me(); }
+    if (!S.me) { renderTabs(); $('#who').textContent = ''; return pageLogin(view); }
+    await loadMasters();
+    $('#who').textContent = `${S.me.display_name} · ${roleLabel(S.me.role)}${S.me.municipality_id ? ' · ' + (muniOf(S.me.municipality_id).code || '') : ''}`;
+    Queue.refreshBadge();
+    const h = location.hash || '#map'; renderTabs();
+    if (h.startsWith('#map')) return pageMap(view);
+    if (h.startsWith('#places')) return pagePlaces(view);
+    if (h.startsWith('#place-edit/')) return pagePlaceEdit(view, h.split('/')[1]);
+    if (h.startsWith('#place/')) return pagePlace(view, h.split('/')[1]);
+    if (h.startsWith('#dashboard')) return pageDashboard(view);
+    if (h.startsWith('#routes')) return pageRoutes(view);
+    if (h.startsWith('#admin')) return pageAdmin(view);
+    if (h.startsWith('#super')) return pageSuper(view);
+    if (h.startsWith('#queue')) return pageQueue(view);
+    if (h.startsWith('#me')) return pageMe(view);
+    return pageMap(view);
+  } catch (e) { view.innerHTML = `<div class="card"><b>เกิดข้อผิดพลาด</b><div class="muted">${esc(e.message || e)}</div><button class="secondary" onclick="render()">ลองใหม่</button></div>`; console.error(e); }
+}
+const roleLabel = r => ({ super_admin: 'super admin', admin: 'admin เทศบาล', recorder: 'ผู้บันทึก' }[r] || r);
+
+// =====================================================================
+// หน้า: ล็อกอิน
+// =====================================================================
+function pageLogin(view) {
+  view.innerHTML = `<div class="card login">
+    <h2 style="margin-top:0">เข้าสู่ระบบ</h2>
+    ${IS_DEMO ? `<div class="banner info">โหมดสาธิต: ชื่อล็อกอิน owner · demo1-admin · demo1-rec1 · demo2-admin · demo2-rec1 รหัสผ่าน demo</div>` : ''}
+    <label>ชื่อล็อกอิน</label><input id="u" autocomplete="username" autocapitalize="none">
+    <label>รหัสผ่าน</label><input id="p" type="password" autocomplete="current-password">
+    <div style="margin-top:14px"><button id="btnLogin" style="width:100%">เข้าสู่ระบบ</button></div>
+    <p class="muted">ลืมรหัสผ่าน: ติดต่อ admin ของเทศบาลหรือเจ้าของโครงการเพื่อรีเซ็ต (ระบบไม่มีการส่งอีเมล)</p>
+  </div>`;
+  const doLogin = async () => {
+    const b = $('#btnLogin'); b.disabled = true;
+    try { S.me = await api.login($('#u').value, $('#p').value); if (!S.me) throw new Error('บัญชีนี้ยังไม่ได้ผูกกับระบบ (ไม่มีแถวใน app_user)'); if (S.me.status !== 'active') throw new Error('บัญชีถูกปิดใช้งาน'); go('#map'); render(); }
+    catch (e) { toast(e.message || 'เข้าสู่ระบบไม่สำเร็จ', true); } finally { b.disabled = false; }
+  };
+  $('#btnLogin').onclick = doLogin; $('#p').onkeydown = e => { if (e.key === 'Enter') doLogin(); };
+}
+
+// =====================================================================
+// หน้า: บัญชีของฉัน
+// =====================================================================
+function pageMe(view) {
+  view.innerHTML = `<div class="card"><h3 style="margin-top:0">บัญชีของฉัน</h3>
+    <div>${esc(S.me.display_name)} <span class="pill">${roleLabel(S.me.role)}</span></div>
+    <div class="muted">ชื่อล็อกอิน ${esc(S.me.username)}${S.me.municipality_id ? ' · ' + esc(muniOf(S.me.municipality_id).name || '') : ''}</div>
+    <h4>เปลี่ยนรหัสผ่าน</h4>
+    <label>รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)</label><input id="pw1" type="password"><label>พิมพ์ซ้ำ</label><input id="pw2" type="password">
+    <div class="row" style="margin-top:12px"><button onclick="changePw()">บันทึกรหัสผ่าน</button><button class="danger" onclick="logout()">ออกจากระบบ</button></div>
+    <p class="muted">แอปนี้: ${IS_DEMO ? 'โหมดสาธิต' : 'เชื่อมต่อ ' + esc(CONFIG.SUPABASE_URL)} · ห้องเครื่อง: ${CONFIG.ENGINE_URL ? 'ตั้งค่าแล้ว' : 'ยังไม่ตั้งค่า'}</p></div>`;
+}
+async function changePw() { const a = $('#pw1').value, b = $('#pw2').value; if (a.length < 8) return toast('รหัสผ่านสั้นเกินไป', true); if (a !== b) return toast('รหัสผ่านไม่ตรงกัน', true); try { await api.changePassword(a); toast('เปลี่ยนรหัสผ่านแล้ว'); } catch (e) { toast(e.message, true); } }
+async function logout() { await api.logout(); S.me = null; S.cache = {}; S.scopeMuni = null; go('#'); render(); }
+
+// แผนที่พื้นหลัง: ใช้ CONFIG.TILES ก่อน ถ้าแผ่นแผนที่โหลดไม่ได้ (เช่น ถูกบล็อก 403) สลับไป TILES_FALLBACK อัตโนมัติ
+// หมายเหตุ: OSM ส่งภาพ "Access blocked" มาพร้อมรหัส 403 ซึ่งเบราว์เซอร์ถือว่าโหลดรูปสำเร็จ จึงตรวจด้วย fetch ก่อน ไม่ใช้ tileerror
+let _tilesOk = null;   // null = ยังไม่ตรวจ · true/false = ผลตรวจ (จำไว้ตลอดการเปิดหน้า)
+async function tilesAvailable() {
+  if (_tilesOk !== null) return _tilesOk;
+  if (location.protocol === 'file:') return (_tilesOk = false);   // file:// ไม่ส่ง Referer → OSM บล็อกตามนโยบาย
+  try { const probe = CONFIG.TILES.url.replace('{z}', '1').replace('{x}', '1').replace('{y}', '0'); const r = await fetch(probe, { referrerPolicy: 'origin' }); _tilesOk = r.ok; }
+  catch { _tilesOk = false; }
+  return _tilesOk;
+}
+async function addBaseLayer(map) {
+  const opt = t => ({ maxZoom: t.maxZoom || 19, attribution: t.attribution, referrerPolicy: 'origin' });
+  const useMain = !CONFIG.TILES_FALLBACK || await tilesAvailable();
+  const t = useMain ? CONFIG.TILES : CONFIG.TILES_FALLBACK;
+  L.tileLayer(t.url, opt(t)).addTo(map);
+  if (!useMain && !sessionStorage.getItem('ubwast_tile_notice')) { sessionStorage.setItem('ubwast_tile_notice', '1'); toast('ใช้แผนที่พื้นหลังสำรอง (แผนที่หลักใช้ได้เมื่อเปิดผ่านเว็บโฮสติ้ง)'); }
+}
+
+// =====================================================================
+// หน้า: แผนที่
+// =====================================================================
+async function pageMap(view) {
+  view.innerHTML = `${scopeSelector()}<div class="legend card" style="padding:8px 12px">${S.cache.capacity_tier.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</div>
+    <div id="map"></div>${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
+  const places = (await api.list('v_place', { eq: { status: 'active', ...scopeEq() } })).filter(p => p.lat != null && p.lng != null);
+  const map = L.map('map'); S.map = map; addBaseLayer(map);
+  const group = L.featureGroup().addTo(map);
+  for (const p of places) {
+    L.circleMarker([p.lat, p.lng], { radius: 9, color: '#fff', weight: 1.5, fillColor: p.tier_color || '#2E7D32', fillOpacity: .95 })
+      .bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${esc(p.road_name)}${p.soi_name ? ' ' + esc(p.soi_name) : ''}<br>${fmt(p.total_bins)} ใบ · ${fmt(p.total_liters)} ลิตร<br><a href="#place/${p.id}">เปิดรายละเอียด</a>`)
+      .addTo(group);
+  }
+  if (places.length) map.fitBounds(group.getBounds().pad(0.2)); else map.setView([CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng], CONFIG.MAP_FALLBACK.zoom);
+  if (!places.length) toast('ยังไม่มีจุดที่มีพิกัดในขอบเขตนี้');
+}
+
+// =====================================================================
+// หน้า: รายการจุด
+// =====================================================================
+async function pagePlaces(view) {
+  const rows = await api.list('v_place', { eq: scopeEq(), order: ['place_code'] });
+  view.innerHTML = `${scopeSelector()}<div class="card"><div class="row"><input id="q" placeholder="ค้นหา รหัส/ชื่อ/ถนน" style="flex:1;min-width:200px"><button class="secondary small" onclick="exportCsv(S._places,'places')">ส่งออก CSV</button></div>
+    <div class="muted" style="margin:6px 0">${rows.length} จุด</div><div id="list"></div></div>
+    ${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
+  S._places = rows;
+  const draw = () => { const q = $('#q').value.trim().toLowerCase(); const f = rows.filter(r => !q || [r.place_code, r.name, r.road_name, r.soi_name].join(' ').toLowerCase().includes(q));
+    $('#list').innerHTML = `<table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ถนน</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th></th></tr></thead><tbody>${f.map(r => `<tr><td><i class="dot" style="background:${r.tier_color}"></i><a href="#place/${r.id}">${esc(r.place_code)}</a></td><td>${esc(r.name)}${r.status !== 'active' ? ' <span class="pill">ยกเลิก</span>' : ''}</td><td>${esc(r.road_name)}${r.soi_name ? ' ' + esc(r.soi_name) : ''}</td><td style="text-align:right">${fmt(r.total_bins)}</td><td style="text-align:right">${fmt(r.total_liters)}</td><td>${r.photo_count ? '📷' + r.photo_count : ''}</td></tr>`).join('')}</tbody></table>`; };
+  $('#q').oninput = draw; draw();
+}
+
+// =====================================================================
+// หน้า: รายละเอียดจุด + ถัง + รูป
+// =====================================================================
+async function pagePlace(view, id) {
+  const [p] = await api.list('v_place', { eq: { id } }); if (!p) return view.innerHTML = '<div class="card">ไม่พบจุด</div>';
+  const bins = await api.list('v_bin', { eq: { place_id: id }, order: ['created_at'] });
+  const photos = await api.list('place_photo', { eq: { place_id: id, status: 'active' }, order: ['seq'] });
+  const canEdit = S.me.role !== 'super_admin' || S.scopeMuni === p.municipality_id;
+  view.innerHTML = `<div class="card">
+    <div class="row" style="justify-content:space-between"><h3 style="margin:0"><i class="dot" style="background:${p.tier_color}"></i>${esc(p.place_code)}</h3>${p.status !== 'active' ? '<span class="pill">ยกเลิกแล้ว</span>' : ''}</div>
+    <div style="font-size:18px">${esc(p.name)}</div>
+    <div class="muted">${esc(p.place_type_name || '')} · ${esc(p.road_name)}${p.soi_name ? ' ' + esc(p.soi_name) : ''} · ${esc(p.municipality_name)}</div>
+    <div class="muted">พิกัด ${p.lat ?? '-'}, ${p.lng ?? '-'} ${p.lat != null ? `· <a target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=18/${p.lat}/${p.lng}">เปิดแผนที่</a>` : ''}</div>
+    <div class="kpis" style="margin-top:10px"><div class="kpi"><div class="v">${fmt(p.total_bins)}</div><div class="l">ใบ</div></div><div class="kpi"><div class="v">${fmt(p.total_liters)}</div><div class="l">ลิตร · ${esc(p.tier_label || '')}</div></div></div>
+    <div class="row" style="margin-top:10px">${canEdit ? `<button class="secondary" onclick="go('#place-edit/${p.id}')">แก้ไขจุด</button>` : ''}${canEdit && isAdmin() && p.status === 'active' ? `<button class="danger" onclick="cancelRow('place','${p.id}')">ยกเลิกจุดนี้</button>` : ''}</div>
+    <p class="muted">บันทึกโดย ${esc(p.created_by_name || p.created_by || '-')} เมื่อ ${thDate(p.created_at)} · แก้ล่าสุดโดย ${esc(p.updated_by_name || '-')} ${thDate(p.updated_at)}</p>
+  </div>
+  <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">ถัง (${bins.length} แถว)</h4>${canEdit ? `<button class="small" onclick="binForm('${p.id}')">＋ เพิ่มถัง</button>` : ''}</div>
+    <table><thead><tr><th>ประเภท</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th>ครุภัณฑ์</th><th></th></tr></thead><tbody>
+    ${bins.map(b => `<tr style="${b.status !== 'active' ? 'opacity:.5' : ''}"><td>${esc(b.bin_type_name)} <span class="muted">${esc(b.bin_type_color || '')}</span></td><td style="text-align:right">${b.amount}</td><td style="text-align:right">${fmt(b.liters)}</td><td>${esc(b.asset_no || '')}</td>
+      <td>${canEdit && b.status === 'active' ? `<button class="small secondary" onclick="binForm('${p.id}','${b.id}')">แก้</button> ${isAdmin() ? `<button class="small danger" onclick="cancelRow('bin','${b.id}')">ยกเลิก</button>` : ''}` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">ยังไม่มีถัง</td></tr>'}</tbody></table></div>
+  <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">รูป (${photos.length}/${maxPhotos()})</h4>${canEdit && photos.length < maxPhotos() ? `<label class="btn small" style="display:inline-block;margin:0">＋ ถ่าย/เลือกรูป<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addPhoto('${p.id}', this.files[0])"></label>` : (canEdit ? `<span class="muted">ครบ ${maxPhotos()} รูปแล้ว${isAdmin() ? ' · ยกเลิกรูปเก่าเพื่อเพิ่มใหม่' : ''}</span>` : '')}</div>
+    <div class="photos" style="margin-top:8px">${photos.map(ph => `<div style="text-align:center"><a href="${esc(ph.url)}" target="_blank" rel="noopener"><img src="${esc(ph.url)}" alt="รูป ${ph.seq}" loading="lazy"></a>${canEdit && isAdmin() ? `<br><button class="small danger" style="margin-top:4px" onclick="cancelRow('place_photo','${ph.id}')">ยกเลิกรูป</button>` : ''}</div>`).join('') || '<span class="muted">ยังไม่มีรูป</span>'}</div></div>`;
+}
+const maxPhotos = () => parseInt(setting('max_photos_per_place') || '3') || 3;
+async function cancelRow(table, id) {
+  if (!confirm('ยืนยันยกเลิกรายการนี้? (ข้อมูลยังอยู่ แต่จะไม่นับในยอดรวม)')) return;
+  try { await api.update(table, id, { status: 'inactive' }); toast('ยกเลิกแล้ว'); render(); } catch (e) { toast(e.message, true); }
+}
+
+// ---- ฟอร์มจุด ----
+async function pagePlaceEdit(view, id) {
+  const isNew = id === 'new';
+  const muniId = S.me.municipality_id || S.scopeMuni;
+  const roads = await api.list('road', { eq: { municipality_id: muniId, status: 'active' }, order: ['name'] });
+  const sois = await api.list('soi', { eq: { municipality_id: muniId, status: 'active' }, order: ['name'] });
+  const p = isNew ? { status: 'active' } : (await api.list('place', { eq: { id } }))[0];
+  if (!roads.length) return view.innerHTML = `<div class="card">เทศบาลนี้ยังไม่มีถนนในระบบ ให้ admin ของเทศบาลเพิ่มถนนก่อนที่เมนู "จัดการเทศบาล"</div>`;
+  view.innerHTML = `<div class="card"><h3 style="margin-top:0">${isNew ? 'เพิ่มจุด' : 'แก้ไขจุด ' + esc(p.place_code)}</h3>
+    <label>ชื่ออ้างอิง (เช่น หน้าวัด… หน้าโรงเรียน…) *</label><input id="f_name" value="${esc(p.name || '')}">
+    <label>ประเภทจุด</label><select id="f_type">${S.cache.place_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}" ${t.id === p.place_type_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+    <label>ถนน *</label><select id="f_road" onchange="fillSoi()">${roads.map(r => `<option value="${r.id}" ${r.id === p.road_id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+    <label>ซอย (ถ้ามี)</label><select id="f_soi"></select>
+    <label>พิกัด</label><div class="row"><input id="f_lat" placeholder="lat" value="${p.lat ?? ''}" style="flex:1"><input id="f_lng" placeholder="lng" value="${p.lng ?? ''}" style="flex:1"><button class="secondary" onclick="getGps()">📍 ใช้ GPS</button></div><div id="gpsInfo" class="muted"></div>
+    ${isNew ? `<label>รหัสจุด (เว้นว่าง = ระบบตั้งให้ "ชื่อถนน-ลำดับ")</label><input id="f_code" placeholder="อัตโนมัติ">` : ''}
+    <label>หมายเหตุ</label><textarea id="f_note" rows="2">${esc(p.note || '')}</textarea>
+    ${isNew ? `<h4>ถังในจุดนี้ (เพิ่มได้หลายแถว)</h4><div id="binRows"></div><button class="secondary small" onclick="addBinRow()">＋ เพิ่มแถวถัง</button>
+      <h4>รูป (ไม่บังคับ)</h4><input type="file" accept="image/*" capture="environment" multiple id="f_photos"><div class="muted">รูปจะถูกย่อให้เล็กลงก่อนส่ง</div>` : ''}
+    <div class="row" style="margin-top:16px"><button id="btnSave" onclick="savePlace('${isNew ? '' : p.id}')">บันทึก</button><button class="secondary" onclick="history.back()">ยกเลิก</button></div>
+    ${!navigator.onLine ? '<div class="banner warn" style="margin-top:10px">ไม่มีสัญญาณ: จะเก็บไว้ในเครื่องและส่งเมื่อมีสัญญาณ</div>' : ''}</div>`;
+  S._sois = sois; S._p = p; fillSoi(); if (isNew) addBinRow();
+}
+function fillSoi() { const rid = $('#f_road').value; const list = S._sois.filter(s => s.road_id === rid); $('#f_soi').innerHTML = `<option value="">—</option>` + list.map(s => `<option value="${s.id}" ${s.id === S._p.soi_id ? 'selected' : ''}>${esc(s.name)}</option>`).join(''); }
+function addBinRow() { const d = document.createElement('div'); d.className = 'row'; d.style.marginBottom = '6px';
+  d.innerHTML = `<select class="b_type" style="flex:2;min-width:160px">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select><input class="b_amt" type="number" min="1" value="1" style="flex:1;min-width:70px" placeholder="ใบ"><input class="b_asset" style="flex:2;min-width:120px" placeholder="เลขครุภัณฑ์"><button class="small danger" onclick="this.parentNode.remove()">ลบ</button>`;
+  $('#binRows').appendChild(d); }
+function getGps() {
+  if (!navigator.geolocation) return toast('อุปกรณ์นี้ไม่รองรับ GPS', true);
+  $('#gpsInfo').textContent = 'กำลังอ่านตำแหน่ง…';
+  navigator.geolocation.getCurrentPosition(pos => { $('#f_lat').value = pos.coords.latitude.toFixed(6); $('#f_lng').value = pos.coords.longitude.toFixed(6); $('#gpsInfo').textContent = `ความคลาดเคลื่อน ±${Math.round(pos.coords.accuracy)} เมตร`; },
+    err => { $('#gpsInfo').textContent = ''; toast('อ่าน GPS ไม่ได้: ' + err.message, true); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+}
+async function savePlace(id) {
+  const name = $('#f_name').value.trim(); if (!name) return toast('กรอกชื่ออ้างอิง', true);
+  const lat = $('#f_lat').value === '' ? null : parseFloat($('#f_lat').value), lng = $('#f_lng').value === '' ? null : parseFloat($('#f_lng').value);
+  if ((lat == null) !== (lng == null)) return toast('กรอกพิกัดให้ครบทั้งสองค่า หรือเว้นว่างทั้งคู่', true);
+  const payload = { name, place_type_id: $('#f_type').value || null, road_id: $('#f_road').value, soi_id: $('#f_soi').value || null, lat, lng, note: $('#f_note').value.trim() || null };
+  if (!S.me.municipality_id) payload.municipality_id = S.scopeMuni;   // super admin ต้องระบุเทศบาล
+  const b = $('#btnSave'); b.disabled = true;
+  try {
+    if (id) { await api.update('place', id, payload); toast('บันทึกแล้ว'); go('#place/' + id); return; }
+    const code = $('#f_code').value.trim(); if (code) payload.place_code = code;
+    const binRows = [...document.querySelectorAll('#binRows .row')].map(r => ({ bin_type_id: $('.b_type', r).value, amount: parseInt($('.b_amt', r).value || '0'), asset_no: $('.b_asset', r).value.trim() || null })).filter(x => x.amount > 0);
+    const files = [...($('#f_photos').files || [])];
+    const photoPayloads = []; for (const f of files) photoPayloads.push(await compressImage(f));
+    const queueAll = (why) => {
+      const tempId = 'tmp' + Date.now();
+      Queue.push({ kind: 'place', tempId, payload, label: `${name} (${why})` });
+      binRows.forEach(x => Queue.push({ kind: 'bin', placeRef: tempId, payload: x, label: 'ถังของ ' + name }));
+      photoPayloads.forEach(ph => Queue.push({ kind: 'photo', placeRef: tempId, payload: ph, label: 'รูปของ ' + name }));
+      if (Queue.bytes() > CONFIG.QUEUE_WARN_BYTES) toast('คิวพักข้อมูลในเครื่องใกล้เต็ม ควรส่งเมื่อมีสัญญาณโดยเร็ว', true);
+      toast('เก็บไว้ในเครื่องแล้ว จะส่งเมื่อมีสัญญาณ'); go('#places');
+    };
+    if (!navigator.onLine) return queueAll('ไม่มีสัญญาณ');
+    let row;
+    try { row = await api.insert('place', payload); } catch (e) { if (isNetworkError(e)) return queueAll('ส่งไม่สำเร็จ'); throw e; }
+    for (const x of binRows) { try { await api.insert('bin', { ...x, place_id: row.id }); } catch (e) { if (isNetworkError(e)) Queue.push({ kind: 'bin', placeRef: row.id, payload: x, label: 'ถังของ ' + name }); else toast('ถังบางแถวบันทึกไม่ได้: ' + e.message, true); } }
+    for (const ph of photoPayloads) { try { await savePhoto(row.id, ph); } catch (e) { if (isNetworkError(e)) Queue.push({ kind: 'photo', placeRef: row.id, payload: ph, label: 'รูปของ ' + name }); else toast('รูปบางรูปส่งไม่ได้: ' + e.message, true); } }
+    toast('บันทึกจุด ' + row.place_code + ' แล้ว'); go('#place/' + row.id);
+  } catch (e) { toast(e.message, true); } finally { b.disabled = false; }
+}
+
+// ---- ฟอร์มถัง (ในหน้ารายละเอียด) ----
+function binForm(placeId, binId) {
+  const b = binId ? null : { amount: 1 };
+  openModal(`<h3 style="margin-top:0">${binId ? 'แก้ไขถัง' : 'เพิ่มถัง'}</h3>
+    <label>ประเภทถัง</label><select id="m_type">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>
+    <label>จำนวนใบ</label><input id="m_amt" type="number" min="1" value="1"><label>สีถัง (ว่าง = ตามประเภท)</label><input id="m_color" placeholder="เช่น เขียว"><label>เลขครุภัณฑ์</label><input id="m_asset"><label>หมายเหตุ</label><input id="m_note">
+    <div class="row" style="margin-top:12px"><button id="m_save">บันทึก</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div>`);
+  if (binId) api.list('bin', { eq: { id: binId } }).then(([x]) => { $('#m_type').value = x.bin_type_id; $('#m_amt').value = x.amount; $('#m_color').value = x.color || ''; $('#m_asset').value = x.asset_no || ''; $('#m_note').value = x.note || ''; });
+  $('#m_save').onclick = async () => {
+    const payload = { bin_type_id: $('#m_type').value, amount: parseInt($('#m_amt').value || '0'), color: $('#m_color').value.trim() || null, asset_no: $('#m_asset').value.trim() || null, note: $('#m_note').value.trim() || null };
+    if (payload.amount < 1) return toast('จำนวนใบต้องมากกว่า 0', true);
+    try { if (binId) await api.update('bin', binId, payload); else { try { await api.insert('bin', { ...payload, place_id: placeId }); } catch (e) { if (!isNetworkError(e)) throw e; Queue.push({ kind: 'bin', placeRef: placeId, payload, label: 'ถัง (เพิ่มภายหลัง)' }); toast('ไม่มีสัญญาณ เก็บไว้ส่งภายหลัง'); } } closeModal(); render(); } catch (e) { toast(e.message, true); }
+  };
+}
+
+// ---- รูป ----
+async function compressImage(file) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); });
+  const scale = Math.min(1, CONFIG.PHOTO_MAX_PX / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  const dataUrl = c.toDataURL('image/jpeg', CONFIG.PHOTO_QUALITY); URL.revokeObjectURL(img.src);
+  return { mime: 'image/jpeg', data: dataUrl.split(',')[1], filename: (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg' };
+}
+async function savePhoto(placeId, ph) {
+  const [p] = await api.list('place', { eq: { id: placeId } });
+  const muni = muniOf(p.municipality_id);
+  const endpoint = muni.photo_endpoint_url || setting('default_photo_endpoint_url') || '';
+  const existing = await api.list('place_photo', { eq: { place_id: placeId, status: 'active' } });
+  if (existing.length >= maxPhotos()) throw new Error(`จุดนี้มีรูปครบ ${maxPhotos()} รูปแล้ว`);   // ตรวจก่อนส่งรูป (ฐานข้อมูลตรวจซ้ำอีกชั้น)
+  const up = await api.uploadPhoto(endpoint, { ...ph, municipality_code: muni.code, place_code: p.place_code, filename: `${p.place_code}_${Date.now()}.jpg` });
+  const row = await api.insert('place_photo', { place_id: placeId, seq: existing.length + 1, storage_kind: 'gdrive', file_id: up.file_id, url: up.url, taken_at: new Date().toISOString() });
+  row._size = up.size; return row;
+}
+async function addPhoto(placeId, file) {
+  if (!file) return; toast('กำลังย่อและส่งรูป…');
+  try { const ph = await compressImage(file); try { const row = await savePhoto(placeId, ph); toast('เพิ่มรูปแล้ว' + (row._size ? ` (${Math.round(row._size / 1024)} KB)` : '')); } catch (e) { if (!isNetworkError(e)) throw e; Queue.push({ kind: 'photo', placeRef: placeId, payload: ph, label: 'รูป (เพิ่มภายหลัง)' }); toast('ไม่มีสัญญาณ เก็บรูปไว้ส่งภายหลัง'); } render(); } catch (e) { toast(e.message, true); }
+}
+
+// =====================================================================
+// หน้า: คิวรอส่ง
+// =====================================================================
+function pageQueue(view) {
+  const items = Queue.load();
+  view.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">รายการรอส่ง (${items.length})</h3><button onclick="Queue.sync().then(render)" ${navigator.onLine ? '' : 'disabled'}>ส่งตอนนี้</button></div>
+    <div class="muted">ขนาดที่เก็บในเครื่อง ${fmt(Math.round(Queue.bytes() / 1024))} KB · ${navigator.onLine ? 'มีสัญญาณ' : 'ไม่มีสัญญาณ'}</div>
+    <table><thead><tr><th>ชนิด</th><th>รายการ</th><th>สถานะ</th><th></th></tr></thead><tbody>${items.map(i => `<tr><td>${{ place: 'จุด', bin: 'ถัง', photo: 'รูป' }[i.kind]}</td><td>${esc(i.label || '')}<div class="muted">${thDate(i.created_at)}</div></td><td>${i.status === 'error' ? `<span style="color:var(--danger)">${esc(i.error)}</span>` : 'รอส่ง'}</td><td><button class="small danger" onclick="if(confirm('ลบรายการนี้ออกจากคิว? ข้อมูลจะหาย')){Queue.remove('${i.id}');render()}">ลบ</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">ไม่มีรายการค้าง</td></tr>'}</tbody></table></div>`;
+}
+
+// =====================================================================
+// หน้า: แดชบอร์ด
+// =====================================================================
+async function pageDashboard(view) {
+  const all = await api.list('v_municipality_summary', { order: ['municipality_code'] });
+  const sums = S.scopeMuni ? all.filter(m => m.municipality_id === S.scopeMuni) : all;
+  const tot = sums.reduce((a, m) => ({ places: a.places + +m.places, bins: a.bins + +m.total_bins, liters: a.liters + +m.total_liters, roads: a.roads + +m.roads_with_places }), { places: 0, bins: 0, liters: 0, roads: 0 });
+  const roads = (await api.list('v_road_summary', { eq: scopeEq() })).filter(r => +r.places > 0).sort((a, b) => b.total_liters - a.total_liters);
+  const types = await api.list('v_bin_type_summary', { eq: scopeEq() });
+  const typeAgg = {}; for (const t of types) { typeAgg[t.bin_type_name] = typeAgg[t.bin_type_name] || { bins: 0, liters: 0 }; typeAgg[t.bin_type_name].bins += +t.total_bins; typeAgg[t.bin_type_name].liters += +t.total_liters; }
+  const kg = parseFloat(setting('kg_per_liter'));
+  view.innerHTML = `${scopeSelector()}
+    <div class="kpis"><div class="kpi"><div class="v">${fmt(tot.places)}</div><div class="l">จุด</div></div><div class="kpi"><div class="v">${fmt(tot.bins)}</div><div class="l">ถัง (ใบ)</div></div><div class="kpi"><div class="v">${fmt(tot.liters)}</div><div class="l">ลิตร${!isNaN(kg) ? ` ≈ ${fmt(tot.liters * kg)} กก.` : ''}</div></div><div class="kpi"><div class="v">${fmt(tot.roads)}</div><div class="l">ถนนที่มีจุด</div></div></div>
+    ${!S.scopeMuni && isSuper() ? `<div class="card"><h4 style="margin-top:0">รายเทศบาล</h4><table><thead><tr><th>เทศบาล</th><th style="text-align:right">จุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">ถนน</th></tr></thead><tbody>${all.map(m => `<tr><td>${esc(m.municipality_code)} ${esc(m.municipality_name)}</td><td style="text-align:right">${fmt(m.places)}</td><td style="text-align:right">${fmt(m.total_bins)}</td><td style="text-align:right">${fmt(m.total_liters)}</td><td style="text-align:right">${fmt(m.roads_with_places)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    <div class="grid2"><div class="card"><h4 style="margin-top:0">ความจุรวมรายถนน (10 อันดับ)</h4><canvas id="cRoad"></canvas><button class="secondary small" style="margin-top:8px" onclick="exportCsv(S._roads,'roads')">ส่งออก CSV รายถนน</button></div>
+    <div class="card"><h4 style="margin-top:0">สัดส่วนความจุตามประเภทถัง</h4><canvas id="cType"></canvas><button class="secondary small" style="margin-top:8px" onclick="exportCsv(S._types,'bin_types')">ส่งออก CSV รายประเภท</button></div></div>
+    <div class="card"><h4 style="margin-top:0">สีหมุด</h4><div class="legend">${S.cache.capacity_tier.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</div></div>`;
+  S._roads = roads; S._types = types;
+  const top = roads.slice(0, 10);
+  S.charts.push(new Chart($('#cRoad'), { type: 'bar', data: { labels: top.map(r => r.road_name + (S.scopeMuni ? '' : ' (' + r.municipality_code + ')')), datasets: [{ label: 'ลิตร', data: top.map(r => +r.total_liters), backgroundColor: '#1b6e3a' }] }, options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } } }));
+  const names = Object.keys(typeAgg);
+  S.charts.push(new Chart($('#cType'), { type: 'doughnut', data: { labels: names, datasets: [{ data: names.map(n => typeAgg[n].liters), backgroundColor: ['#1b6e3a', '#F9A825', '#EF6C00', '#C62828', '#6A1B9A', '#0277bd', '#5d4037', '#546e7a'] }] }, options: { plugins: { legend: { position: 'bottom' } } } }));
+}
+function exportCsv(rows, name) {
+  if (!rows || !rows.length) return toast('ไม่มีข้อมูล', true);
+  const cols = Object.keys(rows[0]); const csv = '﻿' + [cols.join(','), ...rows.map(r => cols.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = `ubwast_${name}_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+}
+
+// =====================================================================
+// หน้า: เส้นทางรถ
+// =====================================================================
+async function pageRoutes(view) {
+  if (!S.scopeMuni) return view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลก่อน</div>';
+  const routes = await api.list('v_route_summary', { eq: { municipality_id: S.scopeMuni }, order: ['route_name'] });
+  const sel = (location.hash.split('/')[1]) || (routes[0] && routes[0].route_id);
+  const kindLabel = r => r.route_kind === 'temporary' ? `ชั่วคราว${r.valid_from || r.valid_to ? ` ${r.valid_from || '…'} ถึง ${r.valid_to || '…'}` : ''}` : 'ประจำ';
+  view.innerHTML = `${scopeSelector()}<div class="card"><label style="margin-top:0">เลือกเส้นทาง / รถ</label><select onchange="go('#routes/'+this.value)">${routes.map(r => `<option value="${r.route_id}" ${r.route_id === sel ? 'selected' : ''}>${esc(r.route_name)} · ${esc(r.truck_code)}${r.status !== 'active' ? ' (ยกเลิก)' : ''} · ${kindLabel(r)}</option>`).join('')}</select>
+    ${!routes.length ? '<div class="muted">ยังไม่มีเส้นทาง ให้ admin เพิ่มที่เมนู "จัดการเทศบาล"</div>' : ''}<div id="routeInfo"></div></div><div id="map"></div>`;
+  const r = routes.find(x => x.route_id === sel); if (!r) return;
+  const over = r.load_pct != null && r.load_pct > 100;
+  $('#routeInfo').innerHTML = `<div class="kpis" style="margin-top:10px"><div class="kpi"><div class="v">${fmt(r.roads)}</div><div class="l">ถนน</div></div><div class="kpi"><div class="v">${fmt(r.places)}</div><div class="l">จุด</div></div><div class="kpi"><div class="v">${fmt(r.total_liters)}</div><div class="l">ลิตร${r.est_weight_kg != null ? ` ≈ ${fmt(r.est_weight_kg)} กก.` : ''}</div></div><div class="kpi"><div class="v" style="${over ? 'color:var(--danger)' : ''}">${r.load_pct == null ? '-' : fmt(r.load_pct) + '%'}</div><div class="l">ของความจุรถ ${r.truck_capacity_liters ? fmt(r.truck_capacity_liters) + ' ล.' : '(ไม่ได้ระบุ)'}</div></div></div>
+    <div class="muted" style="margin-top:6px"><span class="pill">${kindLabel(r)}</span> ${esc(r.schedule_note || '')}${over ? ' · <b style="color:var(--danger)">เกินความจุรถ</b>' : ''}</div>
+    ${+r.shared_roads > 0 ? `<div class="banner info" style="margin-top:8px">เพื่อทราบ: ถนน ${fmt(r.shared_roads)} สายในเส้นทางนี้ มีรถคันอื่นรับผิดชอบด้วย (ยอดลิตรจึงนับซ้ำกันระหว่างเส้นทาง)</div>` : ''}
+    <div class="row" style="margin-top:8px"><button class="secondary small" onclick="printDriverReport('${r.route_id}')">🖨 รายงานแจ้งคนขับ</button></div>`;
+  const stops = (await api.list('v_route_place', { eq: { route_id: sel } })).filter(x => x.place_id).sort((a, b) => a.road_seq - b.road_seq || String(a.place_code).localeCompare(String(b.place_code), 'th'));
+  const map = L.map('map'); addBaseLayer(map);
+  const all = (await api.list('v_place', { eq: { status: 'active', municipality_id: S.scopeMuni } })).filter(p => p.lat != null);
+  const inRoute = new Set(stops.map(s => s.place_id));
+  const g = L.featureGroup().addTo(map);
+  for (const p of all) L.circleMarker([p.lat, p.lng], { radius: inRoute.has(p.id) ? 10 : 5, color: '#fff', weight: 1, fillColor: inRoute.has(p.id) ? (p.tier_color || '#1b6e3a') : '#9ca3af', fillOpacity: inRoute.has(p.id) ? .95 : .5 }).bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${fmt(p.total_liters)} ลิตร`).addTo(g);
+  const line = stops.filter(s => s.lat != null).map(s => [s.lat, s.lng]);
+  if (line.length > 1) L.polyline(line, { color: '#1b6e3a', weight: 3, dashArray: '6 6' }).addTo(g);
+  if (all.length) map.fitBounds(g.getBounds().pad(0.2)); else map.setView([CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng], CONFIG.MAP_FALLBACK.zoom);
+  S._routeStops = stops; S._route = r;
+  $('#routeInfo').insertAdjacentHTML('beforeend', `<details style="margin-top:8px"><summary>ลำดับจุดในเส้นทาง (${stops.length})</summary><table><thead><tr><th>#</th><th>ถนน</th><th>จุด</th><th style="text-align:right">ลิตร</th></tr></thead><tbody>${stops.map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.road_name)}</td><td><a href="#place/${s.place_id}">${esc(s.place_code)}</a> ${esc(s.place_name)}</td><td style="text-align:right">${fmt(s.total_liters)}</td></tr>`).join('')}</tbody></table></details><div class="muted">เส้นประเชื่อมจุดตามลำดับถนน ไม่ใช่เส้นทางวิ่งจริงบนถนน</div>`);
+}
+
+// รายงานแจ้งคนขับ: หน้าพิมพ์ (DEC-082) — เปิดหน้าต่างใหม่แล้วสั่งพิมพ์/บันทึกเป็น PDF จากเบราว์เซอร์
+function printDriverReport(routeId) {
+  const r = S._route, stops = S._routeStops || []; if (!r || r.route_id !== routeId) return toast('เปิดเส้นทางก่อน', true);
+  const muni = muniOf(r.municipality_id); const kind = r.route_kind === 'temporary' ? `งานชั่วคราว ${r.valid_from || ''}${r.valid_to ? ' ถึง ' + r.valid_to : ''}` : 'งานประจำ';
+  let seq = 0, lastRoad = null;
+  const rows = stops.map(s => { if (s.road_name !== lastRoad) { lastRoad = s.road_name; seq = 0; } seq++; return `<tr><td>${esc(s.road_name)}</td><td>${seq}</td><td>${esc(s.place_code)}</td><td>${esc(s.place_name)}</td><td style="text-align:right">${fmt(s.total_bins)}</td><td style="text-align:right">${fmt(s.total_liters)}</td><td></td></tr>`; }).join('');
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายงานเส้นทาง ${esc(r.route_name)}</title>
+    <style>body{font:14px/1.4 system-ui,"Noto Sans Thai",sans-serif;margin:20px;color:#000}h1{font-size:18px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eee}.meta{color:#333}@media print{button{display:none}}</style></head><body>
+    <button onclick="window.print()">พิมพ์ / บันทึก PDF</button>
+    <h1>${esc(setting('system_name') || 'ระบบข้อมูลจุดวางถังขยะ')} — รายงานเส้นทางเดินรถ</h1>
+    <div class="meta">${esc(muni.name || '')} · เส้นทาง <b>${esc(r.route_name)}</b> · รถ <b>${esc(r.truck_code)}</b> ${esc(r.plate_no || '')} · ${kind}${r.schedule_note ? ' · ' + esc(r.schedule_note) : ''}</div>
+    <div class="meta">ถนน ${fmt(r.roads)} สาย · จุด ${fmt(r.places)} จุด · รวม ${fmt(r.total_bins)} ใบ · ${fmt(r.total_liters)} ลิตร${r.truck_capacity_liters ? ` · ความจุรถ ${fmt(r.truck_capacity_liters)} ลิตร (${fmt(r.load_pct)}%)` : ''} · พิมพ์เมื่อ ${thDate(new Date().toISOString())}</div>
+    <table><thead><tr><th>ถนน</th><th>#</th><th>รหัสจุด</th><th>จุด</th><th>ใบ</th><th>ลิตร</th><th style="width:90px">เก็บแล้ว ✓</th></tr></thead><tbody>${rows || '<tr><td colspan="7">ไม่มีจุดในเส้นทาง</td></tr>'}</tbody></table></body></html>`;
+  const w = window.open('', '_blank'); if (!w) return toast('เบราว์เซอร์กันหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัป', true);
+  w.document.write(html); w.document.close();
+}
+
+// =====================================================================
+// ตัวช่วย CRUD ทั่วไป (ใช้กับหน้า admin / super)
+//   spec: { table, title, cols: [{key,label,type,options?,required?}], eq?, canDelete?, extraBtn? }
+// =====================================================================
+async function crudSection(spec) {
+  const rows = await api.list(spec.table, { eq: spec.eq || {}, order: spec.order || [spec.cols[0].key] });
+  spec._rows = rows; const id = 'sec_' + spec.table;
+  const cell = (r, c) => c.type === 'select' ? esc((c.options().find(o => o.value === r[c.key]) || {}).label || '') : c.type === 'status' ? (r[c.key] === 'active' ? '<span class="pill">ใช้งาน</span>' : '<span class="pill" style="background:#fee2e2">ปิด</span>') : c.type === 'color' ? `<i class="dot" style="background:${esc(r[c.key])}"></i>${esc(r[c.key])}` : esc(r[c.key] ?? '');
+  return `<div class="card" id="${id}"><div class="row" style="justify-content:space-between"><h4 style="margin:0">${spec.title} (${rows.length})</h4><div class="row">${spec.extraBtn || ''}${spec.noAdd ? '' : `<button class="small" onclick="crudForm('${spec.table}')">＋ เพิ่ม</button>`}</div></div>
+    <div style="overflow:auto"><table><thead><tr>${spec.cols.filter(c => !c.hide).map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map(r => `<tr>${spec.cols.filter(c => !c.hide).map(c => `<td>${cell(r, c)}</td>`).join('')}<td style="white-space:nowrap"><button class="small secondary" onclick="crudForm('${spec.table}','${r.id || r.key}')">แก้</button>${spec.rowBtns ? spec.rowBtns(r) : ''}</td></tr>`).join('') || `<tr><td colspan="${spec.cols.length + 1}" class="muted">ยังไม่มีข้อมูล</td></tr>`}</tbody></table></div></div>`;
+}
+const SPECS = {};
+function crudForm(table, id) {
+  const spec = SPECS[table]; const r = id ? spec._rows.find(x => (x.id || x.key) === id) : {};
+  openModal(`<h3 style="margin-top:0">${id ? 'แก้ไข' : 'เพิ่ม'} ${spec.title}</h3>${spec.cols.filter(c => !(c.readonly && id) && !(c.onlyEdit && !id)).map(c => `<label>${c.label}${c.required ? ' *' : ''}</label>` + (c.type === 'select' ? `<select id="c_${c.key}">${(c.nullable ? '<option value="">—</option>' : '') + c.options().map(o => `<option value="${o.value}" ${o.value === r[c.key] ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>` : c.type === 'status' ? `<select id="c_${c.key}"><option value="active" ${r[c.key] !== 'inactive' ? 'selected' : ''}>ใช้งาน</option><option value="inactive" ${r[c.key] === 'inactive' ? 'selected' : ''}>ปิดใช้งาน</option></select>` : c.type === 'textarea' ? `<textarea id="c_${c.key}" rows="2">${esc(r[c.key] ?? '')}</textarea>` : `<input id="c_${c.key}" type="${c.type === 'number' ? 'number' : 'text'}" step="any" value="${esc(r[c.key] ?? '')}" ${c.readonly && id ? 'readonly' : ''}>`)).join('')}
+    <div class="row" style="margin-top:12px"><button id="c_save">บันทึก</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div>`);
+  $('#c_save').onclick = async () => {
+    const patch = {};
+    for (const c of spec.cols) { const el = $('#c_' + c.key); if (!el) continue; let v = el.value; if (c.type === 'number') v = v === '' ? null : parseFloat(v); if (v === '' && (c.nullable || c.type === 'select')) v = null; if (c.required && (v == null || v === '')) return toast('กรอก ' + c.label, true); patch[c.key] = v; }
+    if (spec.beforeSave) { const err = spec.beforeSave(patch, r); if (err) return toast(err, true); }
+    try { if (id) await api.update(spec.table, r[spec.pk || 'id'], patch, spec.pk || 'id'); else await api.insert(spec.table, { ...(spec.defaults ? spec.defaults() : {}), ...patch }); closeModal(); toast('บันทึกแล้ว'); S.cache.loaded = false; render(); } catch (e) { toast(e.message, true); }
+  };
+}
+function openModal(html) { closeModal(); const d = document.createElement('div'); d.className = 'modal-bg'; d.id = 'modal'; d.innerHTML = `<div class="modal">${html}</div>`; d.onclick = e => { if (e.target === d) closeModal(); }; document.body.appendChild(d); }
+function closeModal() { const m = $('#modal'); if (m) m.remove(); }
+
+// =====================================================================
+// หน้า: จัดการเทศบาล (admin ของเทศบาล และ super admin ในขอบเขตที่เลือก)
+// =====================================================================
+async function pageAdmin(view) {
+  if (!S.scopeMuni) return view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลก่อน</div>';
+  const mid = S.scopeMuni; const muni = muniOf(mid);
+  const roads = await api.list('road', { eq: { municipality_id: mid }, order: ['name'] });
+  const trucks = await api.list('truck', { eq: { municipality_id: mid }, order: ['code'] });
+  SPECS.road = { table: 'road', title: 'ถนน', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'name', label: 'ชื่อถนน', required: true }, { key: 'road_type', label: 'ประเภท' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.soi = { table: 'soi', title: 'ซอย', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'road_id', label: 'ถนน', type: 'select', required: true, options: () => roads.map(r => ({ value: r.id, label: r.name })) }, { key: 'name', label: 'ชื่อซอย', required: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.truck = { table: 'truck', title: 'รถเก็บขยะ', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'code', label: 'รหัส/ชื่อรถ', required: true }, { key: 'plate_no', label: 'ทะเบียน' }, { key: 'truck_type_id', label: 'ประเภทรถ', type: 'select', nullable: true, options: () => S.cache.truck_type.map(t => ({ value: t.id, label: `${t.name} (${fmt(t.capacity_liters)} ล.)` })) }, { key: 'capacity_liters', label: 'ความจุเฉพาะคัน (ลิตร, ว่าง = ตามประเภท)', type: 'number', nullable: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.route = { table: 'route', title: 'เส้นทางเดินรถ', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'name', label: 'ชื่อเส้นทาง', required: true }, { key: 'truck_id', label: 'รถ', type: 'select', required: true, options: () => trucks.map(t => ({ value: t.id, label: t.code })) }, { key: 'route_kind', label: 'ชนิด', type: 'select', options: () => [{ value: 'regular', label: 'ประจำ' }, { value: 'temporary', label: 'ชั่วคราว (เทศกาล/เฉพาะกิจ)' }] }, { key: 'valid_from', label: 'เริ่ม (ปี-เดือน-วัน ค.ศ. เฉพาะงานชั่วคราว)', nullable: true }, { key: 'valid_to', label: 'สิ้นสุด (ปี-เดือน-วัน ค.ศ.)', nullable: true }, { key: 'schedule_note', label: 'วัน/เวลาเก็บ' }, { key: 'status', label: 'สถานะ', type: 'status' }],
+    beforeSave: p => { for (const k of ['valid_from', 'valid_to']) if (p[k] && !/^\d{4}-\d{2}-\d{2}$/.test(p[k])) return 'รูปแบบวันที่ต้องเป็น ปี-เดือน-วัน เช่น 2026-12-30'; if (p.valid_from && p.valid_to && p.valid_to < p.valid_from) return 'วันสิ้นสุดต้องไม่ก่อนวันเริ่ม'; },
+    rowBtns: r => ` <button class="small secondary" onclick="routeRoads('${r.id}')">ถนนในเส้นทาง</button>` };
+  SPECS.app_user = { table: 'app_user', title: 'บัญชีผู้ใช้', eq: { municipality_id: mid }, noAdd: true, cols: [{ key: 'display_name', label: 'ชื่อแสดง', required: true }, { key: 'username', label: 'ชื่อล็อกอิน', readonly: true }, { key: 'role', label: 'บทบาท', type: 'select', readonly: true, options: () => [{ value: 'admin', label: 'admin เทศบาล' }, { value: 'recorder', label: 'ผู้บันทึก' }] }, { key: 'status', label: 'สถานะ', type: 'status' }], extraBtn: `<button class="small" onclick="userForm('${mid}')">＋ เพิ่มผู้บันทึก</button>`, rowBtns: r => r.id !== S.me.id ? ` <button class="small secondary" onclick="resetPw('${r.id}','${esc(r.username)}')">รีเซ็ตรหัส</button>` : '' };
+  SPECS.municipality = { table: 'municipality', title: 'ตั้งค่าเทศบาล', eq: { id: mid }, noAdd: true, cols: [{ key: 'code', label: 'รหัส', readonly: true }, { key: 'name', label: 'ชื่อ', readonly: !isSuper() }, { key: 'photo_endpoint_url', label: 'ลิงก์สคริปต์รับรูป (ว่าง = Drive ของเจ้าของโครงการ)', nullable: true }, { key: 'photo_folder_id', label: 'รหัสโฟลเดอร์ Drive (ไม่บังคับ)', nullable: true }, { key: 'note', label: 'หมายเหตุ', type: 'textarea', nullable: true }] };
+  view.innerHTML = scopeSelector() + `<div class="banner info">เทศบาล ${esc(muni.code)} · ${esc(muni.name)} · เพดานผู้บันทึก ${muni.max_recorders} บัญชี</div>` + (await crudSection(SPECS.road)) + (await crudSection(SPECS.soi)) + (await crudSection(SPECS.truck)) + (await crudSection(SPECS.route)) + (await crudSection(SPECS.app_user)) + (await crudSection(SPECS.municipality));
+}
+async function routeRoads(routeId) {
+  const mid = S.scopeMuni; const roads = await api.list('road', { eq: { municipality_id: mid, status: 'active' }, order: ['name'] });
+  const rr = (await api.list('route_road', { eq: { route_id: routeId }, order: ['seq'] }));
+  const draw = () => openModal(`<h3 style="margin-top:0">ถนนในเส้นทาง (ตามลำดับ)</h3><ol id="rrList">${rr.map((x, i) => `<li>${esc((roads.find(r => r.id === x.road_id) || {}).name || '?')} <button class="small secondary" onclick="rrMove(${i},-1)">↑</button> <button class="small secondary" onclick="rrMove(${i},1)">↓</button> <button class="small danger" onclick="rrDel(${i})">ลบ</button></li>`).join('') || '<li class="muted">ยังไม่มีถนน</li>'}</ol>
+    <label>เพิ่มถนน</label><div class="row"><select id="rrAdd" style="flex:1">${roads.filter(r => !rr.some(x => x.road_id === r.id)).map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('')}</select><button class="small" onclick="rrAddRoad()">เพิ่ม</button></div>
+    <div class="row" style="margin-top:12px"><button onclick="rrSave()">บันทึกลำดับ</button><button class="secondary" onclick="closeModal()">ปิด</button></div><div class="muted">จุดทุกจุดบนถนนที่เลือกจะนับเข้าเส้นทางนี้โดยอัตโนมัติ</div>`);
+  window.rrMove = (i, d) => { const j = i + d; if (j < 0 || j >= rr.length) return; [rr[i], rr[j]] = [rr[j], rr[i]]; draw(); };
+  window.rrDel = i => { rr.splice(i, 1); draw(); };
+  window.rrAddRoad = () => { const id = $('#rrAdd').value; if (!id) return; rr.push({ route_id: routeId, road_id: id, _new: true }); draw(); };
+  window.rrSave = async () => {
+    try {
+      const existing = await api.list('route_road', { eq: { route_id: routeId } });
+      for (const e of existing) if (!rr.some(x => x.id === e.id)) await api.remove('route_road', e.id);
+      for (let i = 0; i < rr.length; i++) { if (rr[i].id) await api.update('route_road', rr[i].id, { seq: i + 1 }); else await api.insert('route_road', { route_id: routeId, road_id: rr[i].road_id, seq: i + 1 }); }
+      closeModal(); toast('บันทึกเส้นทางแล้ว');
+    } catch (e) { toast(e.message, true); }
+  };
+  draw();
+}
+function userForm(mid) {
+  const superRole = isSuper() ? `<label>บทบาท</label><select id="u_role"><option value="recorder">ผู้บันทึก</option><option value="admin">admin เทศบาล</option></select>` : '';
+  openModal(`<h3 style="margin-top:0">เพิ่มบัญชี</h3><label>ชื่อล็อกอิน (a-z 0-9 . _ - เช่น ubn-rec2)</label><input id="u_name" autocapitalize="none"><label>ชื่อแสดง</label><input id="u_disp">${superRole}
+    <div class="row" style="margin-top:12px"><button id="u_save">สร้างบัญชี</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div><div class="muted">รหัสผ่านจะถูกสุ่มและแสดงครั้งเดียว ให้จดส่งต่อผู้ใช้</div>`);
+  $('#u_save').onclick = async () => {
+    const b = $('#u_save'); b.disabled = true; b.textContent = 'กำลังสร้าง…';   // กันกดซ้ำ (MIS-005b)
+    try { const r = await api.engine('create_user', { username: $('#u_name').value.trim(), display_name: $('#u_disp').value.trim(), role: isSuper() ? $('#u_role').value : 'recorder', municipality_id: mid }); showCredentials([r.account]); } catch (e) { toast(e.message, true); b.disabled = false; b.textContent = 'สร้างบัญชี'; }
+  };
+}
+async function resetPw(userId, username) {
+  if (!confirm(`รีเซ็ตรหัสผ่านของ ${username}?`)) return;
+  try { const r = await api.engine('reset_password', { user_id: userId }); showCredentials([{ username: r.username, password: r.password }]); } catch (e) { toast(e.message, true); }
+}
+function showCredentials(accs) {
+  openModal(`<h3 style="margin-top:0">บัญชีที่สร้าง/รีเซ็ต — แสดงครั้งเดียว</h3>${accs.map(a => `<div class="card"><div>ชื่อล็อกอิน: <b class="mono">${esc(a.username)}</b></div><div>รหัสผ่าน: <b class="mono">${esc(a.password)}</b></div>${a.role ? `<div class="muted">${roleLabel(a.role)}</div>` : ''}</div>`).join('')}
+    <div class="banner warn">จดหรือถ่ายภาพหน้านี้ก่อนปิด ระบบจะไม่แสดงรหัสผ่านนี้อีก</div><button onclick="closeModal();S.cache.loaded=false;render()">ปิด</button>`);
+}
+
+// =====================================================================
+// หน้า: ส่วนกลาง (super admin)
+// =====================================================================
+async function pageSuper(view) {
+  SPECS.municipality = { table: 'municipality', title: 'เทศบาล', noAdd: true, order: ['code'], cols: [{ key: 'code', label: 'รหัส', readonly: true }, { key: 'name', label: 'ชื่อ', required: true }, { key: 'max_recorders', label: 'เพดานผู้บันทึก', type: 'number', required: true }, { key: 'status', label: 'สถานะ', type: 'status' }, { key: 'photo_endpoint_url', label: 'ลิงก์สคริปต์รับรูป', nullable: true, hide: true }, { key: 'note', label: 'หมายเหตุ', type: 'textarea', nullable: true, hide: true }], extraBtn: `<button class="small" onclick="muniForm()">＋ สร้างเทศบาล (พร้อม 2 บัญชี)</button>`, rowBtns: r => ` <button class="small secondary" onclick="S.scopeMuni='${r.id}';go('#admin')">จัดการ</button>` };
+  SPECS.bin_type = { table: 'bin_type', title: 'ประเภทถัง', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'liters', label: 'ความจุต่อใบ (ลิตร)', type: 'number', required: true }, { key: 'color', label: 'สี' }, { key: 'detail', label: 'รายละเอียด', nullable: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.truck_type = { table: 'truck_type', title: 'ประเภทรถ', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'capacity_liters', label: 'ความจุ (ลิตร)', type: 'number', nullable: true }, { key: 'detail', label: 'รายละเอียด', nullable: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.place_type = { table: 'place_type', title: 'ประเภทจุด', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.capacity_tier = { table: 'capacity_tier', title: 'เกณฑ์สีหมุด', order: ['sort_order'], cols: [{ key: 'label', label: 'ป้าย', required: true }, { key: 'min_liters', label: 'ตั้งแต่ (ลิตร)', type: 'number', required: true }, { key: 'max_liters', label: 'ถึง (ลิตร, ว่าง = ไม่จำกัด)', type: 'number', nullable: true }, { key: 'color', label: 'รหัสสี', type: 'color', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }] };
+  SPECS.app_setting = { table: 'app_setting', title: 'ค่าตั้งค่าส่วนกลาง', noAdd: true, pk: 'key', order: ['key'], cols: [{ key: 'key', label: 'ค่า', readonly: true }, { key: 'value', label: 'ค่าที่ตั้ง', nullable: true }, { key: 'description', label: 'คำอธิบาย', readonly: true }] };
+  view.innerHTML = `<div class="banner info">ส่วนกลาง: ค่าที่นี่ใช้เหมือนกันทุกเทศบาล (DEC-079)</div>` + (await crudSection(SPECS.municipality)) + (await crudSection(SPECS.bin_type)) + (await crudSection(SPECS.truck_type)) + (await crudSection(SPECS.place_type)) + (await crudSection(SPECS.capacity_tier)) + (await crudSection(SPECS.app_setting));
+}
+function muniForm() {
+  openModal(`<h3 style="margin-top:0">สร้างเทศบาลใหม่</h3><label>รหัสย่อ (a-z/0-9 2–12 ตัว ใช้ประกอบชื่อล็อกอิน เช่น ubn)</label><input id="mu_code" autocapitalize="none"><label>ชื่อเทศบาล</label><input id="mu_name"><label>หมายเหตุ</label><input id="mu_note">
+    <div class="row" style="margin-top:12px"><button id="mu_save">สร้าง</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div><div class="muted">ระบบจะสร้างบัญชี admin และผู้บันทึก 1 บัญชีให้อัตโนมัติ (DEC-079)</div>`);
+  $('#mu_save').onclick = async () => { const b = $('#mu_save'); b.disabled = true; b.textContent = 'กำลังสร้าง…'; try { const r = await api.engine('create_municipality', { code: $('#mu_code').value.trim(), name: $('#mu_name').value.trim(), note: $('#mu_note').value.trim() }); showCredentials(r.accounts); } catch (e) { toast(e.message, true); b.disabled = false; b.textContent = 'สร้าง'; } };
+}
+
+// =====================================================================
+// เริ่มทำงาน
+// =====================================================================
+Queue.refreshBadge();
+render();
+if (navigator.onLine) setTimeout(() => Queue.sync(), 3000);
+</script>
+</body>
+</html>
