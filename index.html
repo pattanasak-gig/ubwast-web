@@ -13,7 +13,11 @@
 // =====================================================================
 // CONFIG — ค่าที่เจ้าของโครงการแก้ได้ที่นี่ที่เดียว (ห้ามใส่ secret key ในไฟล์นี้)
 // =====================================================================
+// DEC-100 คีย์ Esri (ArcGIS Location Platform · บัญชี pattanasak_ubru · คีย์ชื่อ ubwast-web · สิทธิ์ basemaps เท่านั้น · จำกัด referrer pattanasak-gig.github.io)
+// เป็นค่ากึ่งสาธารณะที่ตั้งใจฝังในหน้าเว็บ ไม่ใช่กุญแจลับ · แผนฟรี 2,000,000 tiles/เดือน · หมดอายุตาม ESRI_KEY_EXPIRES ต้องต่ออายุที่ location.arcgis.com → Developer credentials
+const ESRI_API_KEY = 'AAPTaz2yquT3mlhd2KhO06JTObQ..5rwTSeqqDn5CZE5c_TFew0ZOqIYDnUL0n6f_CwMe1mydOLm94XyZpTdGpwqP4ICukNktygiAAgqKr1meMxiXzq_UbJrSCupTJjxJSxnoZ1IEntrrj-KQpbnjUdPd_ZgKX1lxGr4IqNmJABAftrlqtnWoDsM5j8rQ0AntYTCjDYi4Vu6oIF3OShnQicYxwSoDAuNLYMqrFgkpdSsEAK01XEFYzslf3YMrgc1vvJ8Ca2miOUbz9FOqtzg-UIQMgUYLAT1_KkeQUgaP';
 const CONFIG = {
+  ESRI_KEY_EXPIRES: '2027-10-22',       // วันหมดอายุคีย์ Esri (ค.ศ.) · ระบบเตือนเจ้าของโครงการล่วงหน้า 30 วันในหน้าส่วนกลาง
   SUPABASE_URL: 'https://cbmaqzocmgvbjubdvfsz.supabase.co',
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_WWVj5eL3Cw3cfNK4rEY5hw_kcvrrGcO',
   LOGIN_EMAIL_DOMAIN: 'ubwast.local',   // ต้องตรงกับ LOGIN_EMAIL_DOMAIN ในห้องเครื่อง Apps Script
@@ -22,10 +26,10 @@ const CONFIG = {
   MAP_FALLBACK: { lat: 15.0, lng: 100.0, zoom: 6 },   // ใช้เมื่อยังไม่มีจุดใดมีพิกัด (ค่ากลางของประเทศ ไม่ผูกเมือง)
   // แผนที่พื้นหลัง (tile) — เปลี่ยนผู้ให้บริการได้ที่นี่ · OSM ต้องการ Referer จึงอาจถูกบล็อกเมื่อเปิดจาก file:// (MIS-007)
   TILES: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attribution: '© OpenStreetMap contributors', maxZoom: 19 },
-  // ตัวสำรองอัตโนมัติเมื่อแผ่นแผนที่หลักโหลดไม่ได้ · เงื่อนไขการใช้ของผู้ให้บริการสำรองยังไม่ได้ตรวจ ใช้ชั่วคราวระหว่างพัฒนา
-  TILES_FALLBACK: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles © Esri', maxZoom: 19 },
+  // ตัวสำรองอัตโนมัติเมื่อแผ่นแผนที่หลักโหลดไม่ได้ · DEC-100: Esri Static Basemap Tiles (arcgis/streets) แบบมีคีย์ ตรงเงื่อนไข · ไทล์ 512px
+  TILES_FALLBACK: { url: 'https://static-map-tiles-api.arcgis.com/arcgis/rest/services/static-basemap-tiles-service/v1/arcgis/streets/static/tile/{z}/{y}/{x}?token=' + ESRI_API_KEY, attribution: 'Powered by <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> · © Esri, TomTom, Garmin, FAO, NOAA, USGS, © OpenStreetMap contributors', maxZoom: 19, tileSize: 512, zoomOffset: -1 },
   ROUTING_URL: 'https://router.project-osrm.org',   // DEC-091 บริการคำนวณเส้นทางบนถนน (OSRM สาธิต · ใช้ไม่เชิงพาณิชย์ · ≤1 คำขอ/วินาที · ไม่รับประกัน) · เรียกเฉพาะตอน admin กด "ลากเส้นตามถนน" แล้วเก็บผลในฐานข้อมูล
-  TILES_SATELLITE: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Imagery © Esri' },   // ภาพดาวเทียม · เงื่อนไขการใช้ของ Esri ยังไม่ได้ตรวจอย่างเป็นทางการ (DEC-087/096)
+  TILES_SATELLITE: { url: 'https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=' + ESRI_API_KEY, attribution: 'Powered by <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a> · Imagery © Esri, Vantor, Earthstar Geographics, and the GIS User Community', maxZoom: 19 },   // ภาพดาวเทียม World Imagery ผ่าน ArcGIS Location Platform (DEC-100 ตรวจเงื่อนไขแล้ว 22 ต.ค. 2569)
   OVERPASS_URLS: ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'],   // DEC-096 ดึงถนน/ซอยจาก OpenStreetMap ตอนสร้างเทศบาล (fair use · ข้อมูล ODbL)
   PHOTO_MAX_PX: 1280,                   // ย่อรูปด้านยาวสุดก่อนส่ง (ประหยัดพื้นที่ Drive และเวลาส่ง)
   PHOTO_QUALITY: 0.8,
@@ -84,6 +88,7 @@ const CONFIG = {
   .photos img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
   .banner { padding: 8px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 10px; }
   .banner.warn { background:#fff7ed; color: var(--warn); border:1px solid #fed7aa; }
+  .banner.err { background:#fef2f2; color: var(--danger); border:1px solid #fecaca; }
   .banner.info { background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe; }
   .login { max-width: 380px; margin: 40px auto; }
   .modal-bg { position: fixed; inset:0; background: rgba(0,0,0,.4); z-index: 90; display:flex; align-items:flex-end; justify-content:center; }
@@ -554,6 +559,7 @@ async function logout() { await api.logout(); S.me = null; S.cache = {}; S.scope
 // แผนที่พื้นหลัง: ใช้ CONFIG.TILES ก่อน ถ้าแผ่นแผนที่โหลดไม่ได้ (เช่น ถูกบล็อก 403) สลับไป TILES_FALLBACK อัตโนมัติ
 // หมายเหตุ: OSM ส่งภาพ "Access blocked" มาพร้อมรหัส 403 ซึ่งเบราว์เซอร์ถือว่าโหลดรูปสำเร็จ จึงตรวจด้วย fetch ก่อน ไม่ใช้ tileerror
 let _tilesOk = null;   // null = ยังไม่ตรวจ · true/false = ผลตรวจ (จำไว้ตลอดการเปิดหน้า)
+const esriKeyDaysLeft = () => CONFIG.ESRI_KEY_EXPIRES ? Math.floor((new Date(CONFIG.ESRI_KEY_EXPIRES + 'T23:59:59+07:00') - Date.now()) / 86400000) : 9999;
 async function tilesAvailable() {
   if (_tilesOk !== null) return _tilesOk;
   if (location.protocol === 'file:') return (_tilesOk = false);   // file:// ไม่ส่ง Referer → OSM บล็อกตามนโยบาย
@@ -580,10 +586,13 @@ async function saveMapView() {
   try { await api.update('municipality', S.scopeMuni, { map_bounds: mb }); toast('บันทึกพื้นที่เริ่มต้นแล้ว'); S.cache.loaded = false; } catch (e) { fail(e); }
 }
 async function addBaseLayer(map) {
-  const opt = t => ({ maxZoom: t.maxZoom || 19, attribution: t.attribution, referrerPolicy: 'origin' });
+  const opt = t => ({ maxZoom: t.maxZoom || 19, attribution: t.attribution, referrerPolicy: 'origin', tileSize: t.tileSize || 256, zoomOffset: t.zoomOffset || 0 });
   const useMain = !CONFIG.TILES_FALLBACK || await tilesAvailable();
   const t = useMain ? CONFIG.TILES : CONFIG.TILES_FALLBACK;
-  const street = L.tileLayer(t.url, opt(t)); const sat = L.tileLayer(CONFIG.TILES_SATELLITE.url, { maxZoom: 19, attribution: CONFIG.TILES_SATELLITE.attribution });
+  const street = L.tileLayer(t.url, opt(t)); const sat = L.tileLayer(CONFIG.TILES_SATELLITE.url, opt(CONFIG.TILES_SATELLITE));
+  // DEC-100 ถ้าภาพจาก Esri โหลดไม่ได้ (คีย์หมดอายุ/ถูกเพิกถอน/เกินโควตา) แจ้งครั้งเดียวต่อการเปิดหน้า ข้อมูลอื่นไม่กระทบ
+  const esriFail = () => { if (sessionStorage.getItem('ubwast_esri_fail')) return; sessionStorage.setItem('ubwast_esri_fail', '1'); toastErr('ภาพแผนที่จาก Esri โหลดไม่ได้', `หมุดและข้อมูลยังใช้ได้ตามปกติ สลับกลับไป "แผนที่" ได้ · คีย์ Esri ${esriKeyDaysLeft() < 0 ? 'หมดอายุแล้ว' : 'อาจหมดอายุหรือเกินโควตา'} ให้เจ้าของโครงการต่ออายุที่ location.arcgis.com (กำหนด ${esc(CONFIG.ESRI_KEY_EXPIRES || '-')})`); };
+  sat.on('tileerror', esriFail); if (!useMain) street.on('tileerror', esriFail);
   let pref = 'street'; try { pref = localStorage.getItem('ubwast_basemap') || 'street'; } catch {}
   (pref === 'sat' ? sat : street).addTo(map);
   L.control.layers({ 'แผนที่': street, 'ดาวเทียม': sat }, null, { position: 'topright' }).addTo(map);   // DEC-096 ทุกแผนที่สลับดาวเทียมได้ จำตัวเลือกล่าสุด
@@ -1380,6 +1389,7 @@ function printCredentials() {
 // =====================================================================
 async function pageSuper(view) {
   const tab = (location.hash.split('/')[1] || 'munis');
+  const dl = esriKeyDaysLeft(); S._esriBanner = dl <= 30 ? `<div class="banner ${dl < 0 ? 'err' : 'warn'}"><b>คีย์แผนที่ Esri ${dl < 0 ? 'หมดอายุแล้ว' : 'จะหมดอายุใน ' + dl + ' วัน'}</b> (${esc(CONFIG.ESRI_KEY_EXPIRES)}) · ภาพดาวเทียมและแผนที่สำรองจะหยุดทำงาน ข้อมูลไม่กระทบ · ต่ออายุ: location.arcgis.com → Developer credentials → ubwast-web → ตั้งวันหมดอายุใหม่ → คัดลอกคีย์ใหม่ส่ง Claude เพื่อใส่ใน CONFIG</div>` : '';
   SPECS.municipality = { table: 'municipality', title: 'เทศบาล', help: 'super-muni', intro: 'สร้างเทศบาลใหม่ด้วยปุ่มด้านขวา ระบบสร้างบัญชี admin 1 + ผู้บันทึก 3 ให้ทันที · กด "จัดการ" เพื่อเข้าไปทำงานในฐานะ admin ของเทศบาลนั้น', noAdd: true, order: ['code'], cols: [{ key: 'code', label: 'รหัส', readonly: true }, { key: 'name', label: 'ชื่อ', required: true }, { key: 'max_recorders', label: 'เพดานผู้บันทึก', type: 'number', required: true }, { key: 'status', label: 'สถานะ', type: 'status' }, { key: 'photo_endpoint_url', label: 'ลิงก์สคริปต์รับรูป', nullable: true, hide: true }, { key: 'note', label: 'หมายเหตุ', type: 'textarea', nullable: true, hide: true }], extraBtn: `<button class="small" onclick="muniForm()">＋ สร้างเทศบาล (พร้อม 4 บัญชี)</button>`, rowBtns: r => ` <button class="small secondary" onclick="S.scopeMuni='${r.id}';go('#admin')">จัดการ</button>` };
   SPECS.bin_type = { table: 'bin_type', title: 'ประเภทถัง', help: 'super-masters', intro: 'ใช้ร่วมกันทุกเทศบาล · ลิตรต่อใบใช้คำนวณความจุ · ราคา/อายุใช้คำนวณมูลค่าทรัพย์สิน (ราคา 0 = ยังไม่กำหนด)', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'liters', label: 'ความจุต่อใบ (ลิตร)', type: 'number', required: true }, { key: 'color', label: 'สี' }, { key: 'unit_cost', label: 'ราคามาตรฐานต่อใบ (บาท · 0 = ยังไม่กำหนด ไม่นำมาคำนวณมูลค่า)', type: 'number', required: true }, { key: 'useful_life_years', label: 'อายุใช้งาน (ปี · 0 = วัสดุ ไม่คิดค่าเสื่อม)', type: 'number', required: true }, { key: 'detail', label: 'รายละเอียด', nullable: true, hide: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number', hide: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
   SPECS.truck_type = { table: 'truck_type', title: 'ประเภทรถ', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'capacity_liters', label: 'ความจุ (ลิตร)', type: 'number', nullable: true }, { key: 'detail', label: 'รายละเอียด', nullable: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
@@ -1392,7 +1402,7 @@ async function pageSuper(view) {
   else if (tab === 'settings') body = superSettings();
   else if (tab === 'guide') body = superGuide();
   else body = await crudSection(SPECS.municipality);
-  view.innerHTML = `<div class="banner info">ส่วนกลาง: ค่าที่นี่ใช้เหมือนกันทุกเทศบาล (DEC-079)</div>${(setting('asset_prices_status') || 'ประมาณการ') !== 'ยืนยันแล้ว' ? `<div class="banner warn">ราคามาตรฐานต่อใบและอายุใช้งานของประเภทถังเป็น <b>ค่าประมาณการตั้งต้น</b> (DEC-089) · ตรวจแล้วแก้ที่แท็บ "ตารางแม่ → ประเภทถัง" จากนั้นที่แท็บ "ค่าตั้งค่า" เลือก "ยืนยันแล้ว" เพื่อปิดป้ายเตือนบนแดชบอร์ด</div>` : ''}` + nav + body;
+  view.innerHTML = `${S._esriBanner || ''}<div class="banner info">ส่วนกลาง: ค่าที่นี่ใช้เหมือนกันทุกเทศบาล (DEC-079)</div>${(setting('asset_prices_status') || 'ประมาณการ') !== 'ยืนยันแล้ว' ? `<div class="banner warn">ราคามาตรฐานต่อใบและอายุใช้งานของประเภทถังเป็น <b>ค่าประมาณการตั้งต้น</b> (DEC-089) · ตรวจแล้วแก้ที่แท็บ "ตารางแม่ → ประเภทถัง" จากนั้นที่แท็บ "ค่าตั้งค่า" เลือก "ยืนยันแล้ว" เพื่อปิดป้ายเตือนบนแดชบอร์ด</div>` : ''}` + nav + body;
 }
 // ค่าตั้งค่าส่วนกลาง: แต่ละค่ามีคำอธิบาย ผลกระทบ และตัวเลือกให้เลือก (แทนการพิมพ์ค่าดิบ)
 const SETTINGS_META = {
