@@ -387,8 +387,9 @@ function scopeSelector() {
 // =====================================================================
 const TABS = () => [
   ['#map', 'แผนที่'], ['#places', 'จุด'], ...(isAdmin() ? [['#dashboard', 'แดชบอร์ด']] : []), ['#routes', 'เส้นทางรถ'],   // DEC-090: แดชบอร์ดเฉพาะ admin เทศบาล (เห็นเทศบาลตน) และ super admin
-  ...(isAdmin() ? [['#admin', 'จัดการเทศบาล']] : []),
-  ...(isSuper() ? [['#super', 'ส่วนกลาง']] : [])
+  ...(isAdmin() ? [['#reports', 'รายงาน'], ['#admin', 'จัดการเทศบาล']] : []),
+  ...(isSuper() ? [['#super', 'ส่วนกลาง']] : []),
+  ['#help', 'ช่วยเหลือ']
 ];
 function renderTabs() {
   $('#tabs').innerHTML = S.me ? TABS().map(([h, l]) => `<a href="${h}" class="${location.hash.startsWith(h) ? 'active' : ''}">${l}</a>`).join('') : '';
@@ -414,6 +415,8 @@ async function render() {
     if (h.startsWith('#super')) return pageSuper(view);
     if (h.startsWith('#queue')) return pageQueue(view);
     if (h.startsWith('#me')) return pageMe(view);
+    if (h.startsWith('#reports')) return isAdmin() ? pageReports(view) : pageMap(view);
+    if (h.startsWith('#help')) return pageHelp(view);
     return pageMap(view);
   } catch (e) { view.innerHTML = `<div class="card"><b>เกิดข้อผิดพลาด</b><div class="muted">${esc(e.message || e)}</div><button class="secondary" onclick="render()">ลองใหม่</button></div>`; console.error(e); }
   finally { setTimeout(() => bindLabels(view), 0); }
@@ -444,7 +447,7 @@ function pageLogin(view) {
 // หน้า: บัญชีของฉัน
 // =====================================================================
 function pageMe(view) {
-  view.innerHTML = `<div class="card"><h3 style="margin-top:0">บัญชีของฉัน</h3>
+  view.innerHTML = `<div class="card"><h3 style="margin-top:0">บัญชีของฉัน ${helpBtn('me')}</h3>
     <div>${esc(S.me.display_name)} <span class="pill">${roleLabel(S.me.role)}</span></div>
     <div class="muted">ชื่อล็อกอิน ${esc(S.me.username)}${S.me.municipality_id ? ' · ' + esc(muniOf(S.me.municipality_id).name || '') : ''}</div>
     <h4>เปลี่ยนรหัสผ่าน</h4>
@@ -482,7 +485,7 @@ async function addBaseLayer(map) {
 // หน้า: แผนที่
 // =====================================================================
 async function pageMap(view) {
-  view.innerHTML = `${scopeSelector()}<div class="legend card" style="padding:8px 12px">${S.cache.capacity_tier.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</div>
+  view.innerHTML = `${scopeSelector()}<div class="legend card" style="padding:8px 12px;justify-content:space-between"><span class="legend">${S.cache.capacity_tier.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</span>${helpBtn('map')}</div>
     <div id="map"></div>${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
   const places = (await api.list('v_place', { eq: { status: 'active', ...scopeEq() } })).filter(p => p.lat != null && p.lng != null);
   const map = mkMap('map'); S.map = map; addBaseLayer(map);
@@ -502,7 +505,7 @@ async function pageMap(view) {
 async function pagePlaces(view) {
   const rows = await api.list('v_place', { eq: scopeEq(), order: ['place_code'] });
   view.innerHTML = `${scopeSelector()}<div class="card"><div class="row"><input id="q" aria-label="ค้นหา รหัส ชื่อ หรือถนน" placeholder="ค้นหา รหัส/ชื่อ/ถนน" style="flex:1;min-width:200px"><button class="secondary small" onclick="exportCsv(S._places,'places')">ส่งออก CSV</button></div>
-    <div class="muted" style="margin:6px 0">${rows.length} จุด</div><div id="list"></div></div>
+    <div class="row" style="justify-content:space-between;margin:6px 0"><span class="muted">${rows.length} จุด</span>${helpBtn('places')}</div><div id="list"></div></div>
     ${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
   S._places = rows;
   const draw = () => { const q = $('#q').value.trim().toLowerCase(); const f = rows.filter(r => !q || [r.place_code, r.name, r.road_name, r.soi_name].join(' ').toLowerCase().includes(q));
@@ -558,8 +561,8 @@ async function pagePlaceEdit(view, id) {
   const sois = await api.list('soi', { eq: { municipality_id: muniId, status: 'active' }, order: ['name'] });
   const p = isNew ? { status: 'active' } : (await api.list('place', { eq: { id } }))[0];
   if (!roads.length) return view.innerHTML = `<div class="card">เทศบาลนี้ยังไม่มีถนนในระบบ ให้ admin ของเทศบาลเพิ่มถนนก่อนที่เมนู "จัดการเทศบาล"</div>`;
-  view.innerHTML = `<div class="card"><h3 style="margin-top:0">${isNew ? 'เพิ่มจุด' : 'แก้ไขจุด ' + esc(p.place_code)}</h3>
-    <label>ชื่ออ้างอิง (เช่น หน้าวัด… หน้าโรงเรียน…) *</label><input id="f_name" value="${esc(p.name || '')}">
+  view.innerHTML = `<div class="card"><h3 style="margin-top:0">${isNew ? 'เพิ่มจุด' : 'แก้ไขจุด ' + esc(p.place_code)} ${helpBtn('place-edit')}</h3>
+    <label>ชื่ออ้างอิง (เช่น หน้าวัด… หน้าโรงเรียน…) *</label><input id="f_name" maxlength="200" value="${esc(p.name || '')}">
     <label>ประเภทจุด</label><select id="f_type">${S.cache.place_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}" ${t.id === p.place_type_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <label>ถนน *</label><select id="f_road" onchange="fillSoi()">${roads.map(r => `<option value="${r.id}" ${r.id === p.road_id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
     <label>ซอย (ถ้ามี)</label><select id="f_soi"></select>
@@ -675,7 +678,7 @@ async function addPhoto(placeId, file) {
 // =====================================================================
 function pageQueue(view) {
   const items = Queue.load();
-  view.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">รายการรอส่ง (${items.length})</h3><button onclick="Queue.sync().then(render)" ${navigator.onLine ? '' : 'disabled'}>ส่งตอนนี้</button></div>
+  view.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">รายการรอส่ง (${items.length}) ${helpBtn('queue')}</h3><button onclick="Queue.sync().then(render)" ${navigator.onLine ? '' : 'disabled'}>ส่งตอนนี้</button></div>
     <div class="muted">ขนาดที่เก็บในเครื่อง ${fmt(Math.round(Queue.bytes() / 1024))} KB · ${navigator.onLine ? 'มีสัญญาณ' : 'ไม่มีสัญญาณ'}</div>
     <table><thead><tr><th>ชนิด</th><th>รายการ</th><th>สถานะ</th><th></th></tr></thead><tbody>${items.map(i => `<tr><td>${{ place: 'จุด', bin: 'ถัง', photo: 'รูป' }[i.kind]}</td><td>${esc(i.label || '')}<div class="muted">${thDate(i.created_at)}</div></td><td>${i.status === 'error' ? `<span style="color:var(--danger)">${esc(i.error)}</span>` : 'รอส่ง'}</td><td><button class="small danger" onclick="if(confirm('ลบรายการนี้ออกจากคิว? ข้อมูลจะหาย')){Queue.remove('${i.id}');render()}">ลบ</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">ไม่มีรายการค้าง</td></tr>'}</tbody></table></div>`;
 }
@@ -945,7 +948,7 @@ async function pageRoutes(view) {
   const routes = await api.list('v_route_summary', { eq: { municipality_id: S.scopeMuni }, order: ['route_name'] });
   const sel = (location.hash.split('/')[1]) || (routes[0] && routes[0].route_id);
   const kindLabel = r => r.route_kind === 'temporary' ? `ชั่วคราว${r.valid_from || r.valid_to ? ` ${r.valid_from || '…'} ถึง ${r.valid_to || '…'}` : ''}` : 'ประจำ';
-  view.innerHTML = `${scopeSelector()}<div class="card"><label style="margin-top:0">เลือกเส้นทาง / รถ</label><select onchange="go('#routes/'+this.value)">${routes.map(r => `<option value="${r.route_id}" ${r.route_id === sel ? 'selected' : ''}>${esc(r.route_name)} · ${esc(r.truck_code)}${r.status !== 'active' ? ' (ยกเลิก)' : ''} · ${kindLabel(r)}</option>`).join('')}</select>
+  view.innerHTML = `${scopeSelector()}<div class="card"><div class="row" style="justify-content:space-between"><label style="margin-top:0">เลือกเส้นทาง / รถ</label>${helpBtn('routes')}</div><select onchange="go('#routes/'+this.value)">${routes.map(r => `<option value="${r.route_id}" ${r.route_id === sel ? 'selected' : ''}>${esc(r.route_name)} · ${esc(r.truck_code)}${r.status !== 'active' ? ' (ยกเลิก)' : ''} · ${kindLabel(r)}</option>`).join('')}</select>
     ${!routes.length ? '<div class="muted">ยังไม่มีเส้นทาง ให้ admin เพิ่มที่เมนู "จัดการเทศบาล"</div>' : ''}<div id="routeInfo"></div></div>
     <div class="card" style="padding:8px 12px"><div class="row" style="justify-content:space-between"><label class="pick-opt" style="padding:0"><input type="checkbox" id="rtAll" ${S._routesAll !== false ? 'checked' : ''} onchange="S._routesAll=this.checked;render()"> แสดงทุกเส้นทางของเทศบาล (สีตามความจุรวมของเส้นทาง)</label><span id="rtLegend" class="legend"></span></div></div><div id="map"></div>`;
   const r = routes.find(x => x.route_id === sel); if (!r) return;
@@ -1002,17 +1005,28 @@ function printDriverReport(routeId) {
 // ตัวช่วย CRUD ทั่วไป (ใช้กับหน้า admin / super)
 //   spec: { table, title, cols: [{key,label,type,options?,required?}], eq?, canDelete?, extraBtn? }
 // =====================================================================
+S._crud = S._crud || {};
+function crudState(table, patch) { Object.assign(S._crud[table], patch); render(); }
 async function crudSection(spec) {
   const rows = await api.list(spec.table, { eq: spec.eq || {}, order: spec.order || [spec.cols[0].key] });
   spec._rows = rows; const id = 'sec_' + spec.table;
+  const st = S._crud[spec.table] = S._crud[spec.table] || { page: 0, size: 20, q: '' };
+  const keys = spec.searchKeys || spec.cols.filter(c => !c.type || c.type === 'textarea').map(c => c.key);
+  const q = (st.q || '').trim().toLowerCase();
+  const filtered = q ? rows.filter(r => keys.some(k => String(r[k] ?? '').toLowerCase().includes(q))) : rows;
+  const pages = Math.max(1, Math.ceil(filtered.length / st.size)); st.page = Math.min(st.page, pages - 1);
+  const slice = filtered.slice(st.page * st.size, (st.page + 1) * st.size);
   const cell = (r, c) => c.type === 'select' ? esc((c.options().find(o => o.value === r[c.key]) || {}).label || '') : c.type === 'status' ? (r[c.key] === 'active' ? '<span class="pill">ใช้งาน</span>' : '<span class="pill" style="background:#fee2e2">ปิด</span>') : c.type === 'color' ? `<i class="dot" style="background:${esc(r[c.key])}"></i>${esc(r[c.key])}` : esc(r[c.key] ?? '');
-  return `<div class="card" id="${id}"><div class="row" style="justify-content:space-between"><h4 style="margin:0">${spec.title} (${rows.length})</h4><div class="row">${spec.extraBtn || ''}${spec.noAdd ? '' : `<button class="small" onclick="crudForm('${spec.table}')">＋ เพิ่ม</button>`}</div></div>
-    <div style="overflow:auto"><table><thead><tr>${spec.cols.filter(c => !c.hide).map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map(r => `<tr>${spec.cols.filter(c => !c.hide).map(c => `<td>${cell(r, c)}</td>`).join('')}<td style="white-space:nowrap"><button class="small secondary" onclick="crudForm('${spec.table}','${r.id || r.key}')">แก้</button>${spec.rowBtns ? spec.rowBtns(r) : ''}</td></tr>`).join('') || `<tr><td colspan="${spec.cols.length + 1}" class="muted">ยังไม่มีข้อมูล</td></tr>`}</tbody></table></div></div>`;
+  return `<div class="card" id="${id}"><div class="row" style="justify-content:space-between"><h4 style="margin:0">${spec.title} (${fmt(rows.length)})${spec.help ? ' ' + helpBtn(spec.help) : ''}</h4><div class="row">${spec.extraBtn || ''}${spec.noAdd ? '' : `<button class="small" onclick="crudForm('${spec.table}')">＋ เพิ่ม</button>`}</div></div>
+    ${spec.intro ? `<div class="muted" style="margin:4px 0 8px">${spec.intro}</div>` : ''}
+    ${rows.length > 10 ? `<div class="row" style="margin:6px 0"><input type="search" aria-label="ค้นหาใน${esc(spec.title)}" placeholder="ค้นหา…" value="${esc(st.q || '')}" style="flex:1;min-width:160px" onchange="crudState('${spec.table}',{q:this.value,page:0})"><label class="muted" style="margin:0">แสดงหน้าละ <select style="width:auto;display:inline-block" onchange="crudState('${spec.table}',{size:+this.value,page:0})"><option ${st.size === 20 ? 'selected' : ''}>20</option><option ${st.size === 50 ? 'selected' : ''}>50</option></select></label></div>` : ''}
+    <div style="overflow:auto"><table><thead><tr>${spec.cols.filter(c => !c.hide).map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead><tbody>${slice.map(r => `<tr>${spec.cols.filter(c => !c.hide).map(c => `<td>${cell(r, c)}</td>`).join('')}<td style="white-space:nowrap"><button class="small secondary" onclick="crudForm('${spec.table}','${r.id || r.key}')">แก้</button>${spec.rowBtns ? spec.rowBtns(r) : ''}</td></tr>`).join('') || `<tr><td colspan="${spec.cols.length + 1}" class="muted">${q ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีข้อมูล'}</td></tr>`}</tbody></table></div>
+    ${filtered.length > st.size ? `<div class="row" style="justify-content:center;margin-top:8px"><button class="small secondary" ${st.page === 0 ? 'disabled' : ''} onclick="crudState('${spec.table}',{page:${st.page - 1}})">‹ ก่อนหน้า</button><span class="muted">หน้า ${st.page + 1}/${pages} · ${fmt(filtered.length)} รายการ</span><button class="small secondary" ${st.page >= pages - 1 ? 'disabled' : ''} onclick="crudState('${spec.table}',{page:${st.page + 1}})">ถัดไป ›</button></div>` : ''}</div>`;
 }
 const SPECS = {};
 function crudForm(table, id) {
   const spec = SPECS[table]; const r = id ? spec._rows.find(x => (x.id || x.key) === id) : {};
-  openModal(`<h3 style="margin-top:0">${id ? 'แก้ไข' : 'เพิ่ม'} ${spec.title}</h3>${spec.cols.filter(c => !(c.readonly && id) && !(c.onlyEdit && !id)).map(c => `<label>${c.label}${c.required ? ' *' : ''}</label>` + (c.type === 'select' ? `<select id="c_${c.key}">${(c.nullable ? '<option value="">—</option>' : '') + c.options().map(o => `<option value="${o.value}" ${o.value === r[c.key] ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>` : c.type === 'status' ? `<select id="c_${c.key}"><option value="active" ${r[c.key] !== 'inactive' ? 'selected' : ''}>ใช้งาน</option><option value="inactive" ${r[c.key] === 'inactive' ? 'selected' : ''}>ปิดใช้งาน</option></select>` : c.type === 'textarea' ? `<textarea id="c_${c.key}" rows="2">${esc(r[c.key] ?? '')}</textarea>` : `<input id="c_${c.key}" type="${c.type === 'number' ? 'number' : 'text'}" step="any" value="${esc(r[c.key] ?? '')}" ${c.readonly && id ? 'readonly' : ''}>`)).join('')}
+  openModal(`<h3 style="margin-top:0">${id ? 'แก้ไข' : 'เพิ่ม'} ${spec.title}</h3>${spec.cols.filter(c => !(c.readonly && id) && !(c.onlyEdit && !id)).map(c => `<label>${c.label}${c.required ? ' *' : ''}</label>` + (c.type === 'select' ? `<select id="c_${c.key}">${(c.nullable ? '<option value="">—</option>' : '') + c.options().map(o => `<option value="${o.value}" ${o.value === r[c.key] ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>` : c.type === 'status' ? `<select id="c_${c.key}"><option value="active" ${r[c.key] !== 'inactive' ? 'selected' : ''}>ใช้งาน</option><option value="inactive" ${r[c.key] === 'inactive' ? 'selected' : ''}>ปิดใช้งาน</option></select>` : c.type === 'textarea' ? `<textarea id="c_${c.key}" rows="2">${esc(r[c.key] ?? '')}</textarea>` : `<input id="c_${c.key}" type="${c.type === 'number' ? 'number' : 'text'}" ${c.type === 'number' ? '' : 'maxlength="200"'} step="any" value="${esc(r[c.key] ?? '')}" ${c.readonly && id ? 'readonly' : ''}>`)).join('')}
     <div class="row" style="margin-top:12px"><button id="c_save">บันทึก</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div>`);
   $('#c_save').onclick = async () => {
     const patch = {};
@@ -1039,17 +1053,59 @@ function closeModal() { const m = $('#modal'); if (m) m.remove(); }
 async function pageAdmin(view) {
   if (!S.scopeMuni) return view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลก่อน</div>';
   const mid = S.scopeMuni; const muni = muniOf(mid);
+  const tab = (location.hash.split('/')[1] || 'start');
   const roads = await api.list('road', { eq: { municipality_id: mid }, order: ['name'] });
   const trucks = await api.list('truck', { eq: { municipality_id: mid }, order: ['code'] });
-  SPECS.road = { table: 'road', title: 'ถนน', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'name', label: 'ชื่อถนน', required: true }, { key: 'road_type', label: 'ประเภท' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
-  SPECS.soi = { table: 'soi', title: 'ซอย', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'road_id', label: 'ถนน', type: 'select', required: true, options: () => roads.map(r => ({ value: r.id, label: r.name })) }, { key: 'name', label: 'ชื่อซอย', required: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
-  SPECS.truck = { table: 'truck', title: 'รถเก็บขยะ', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'code', label: 'รหัส/ชื่อรถ', required: true }, { key: 'plate_no', label: 'ทะเบียน' }, { key: 'truck_type_id', label: 'ประเภทรถ', type: 'select', nullable: true, options: () => S.cache.truck_type.map(t => ({ value: t.id, label: `${t.name} (${fmt(t.capacity_liters)} ล.)` })) }, { key: 'capacity_liters', label: 'ความจุเฉพาะคัน (ลิตร, ว่าง = ตามประเภท)', type: 'number', nullable: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
-  SPECS.route = { table: 'route', title: 'เส้นทางเดินรถ', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'name', label: 'ชื่อเส้นทาง', required: true }, { key: 'truck_id', label: 'รถ', type: 'select', required: true, options: () => trucks.map(t => ({ value: t.id, label: t.code })) }, { key: 'route_kind', label: 'ชนิด', type: 'select', options: () => [{ value: 'regular', label: 'ประจำ' }, { value: 'temporary', label: 'ชั่วคราว (เทศกาล/เฉพาะกิจ)' }] }, { key: 'valid_from', label: 'เริ่ม (ปี-เดือน-วัน ค.ศ. เฉพาะงานชั่วคราว)', nullable: true }, { key: 'valid_to', label: 'สิ้นสุด (ปี-เดือน-วัน ค.ศ.)', nullable: true }, { key: 'schedule_note', label: 'วัน/เวลาเก็บ' }, { key: 'status', label: 'สถานะ', type: 'status' }],
+  SPECS.road = { table: 'road', title: 'ถนน', help: 'admin-roads', intro: 'ถนน = แกนหลักของระบบ ทุกจุดต้องผูกกับถนน 1 สาย · ชื่อถนนใช้ประกอบรหัสจุด (เช่น "แจ้งสนิท-2") · ปิดใช้งานถนนได้ แต่ลบไม่ได้ถ้ามีจุดอ้างอิง', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'name', label: 'ชื่อถนน', required: true }, { key: 'road_type', label: 'ประเภท' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.soi = { table: 'soi', title: 'ซอย', help: 'admin-roads', intro: 'ซอยเป็นข้อมูลเสริมของถนน (ไม่บังคับ) ผู้บันทึกเลือกซอยได้ตอนเพิ่มจุด', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'road_id', label: 'ถนน', type: 'select', required: true, options: () => roads.map(r => ({ value: r.id, label: r.name })) }, { key: 'name', label: 'ชื่อซอย', required: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.truck = { table: 'truck', title: 'รถเก็บขยะ', help: 'admin-fleet', intro: 'ใส่รถทุกคันที่ใช้เก็บขน · ความจุรถใช้คำนวณ % ภาระของเส้นทาง', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'code', label: 'รหัส/ชื่อรถ', required: true }, { key: 'plate_no', label: 'ทะเบียน' }, { key: 'truck_type_id', label: 'ประเภทรถ', type: 'select', nullable: true, options: () => S.cache.truck_type.map(t => ({ value: t.id, label: `${t.name} (${fmt(t.capacity_liters)} ล.)` })) }, { key: 'capacity_liters', label: 'ความจุเฉพาะคัน (ลิตร, ว่าง = ตามประเภท)', type: 'number', nullable: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  SPECS.route = { table: 'route', title: 'เส้นทางเดินรถ', help: 'admin-routes', intro: '1 เส้นทาง = รถ 1 คัน + ถนนที่รับผิดชอบ · หลังสร้างแล้วกด "ถนนในเส้นทาง" เลือกถนน จากนั้น "ลำดับจุด / เส้นถนน" เพื่อจัดลำดับและลากเส้นบนแผนที่', eq: { municipality_id: mid }, defaults: () => ({ municipality_id: mid }), cols: [{ key: 'name', label: 'ชื่อเส้นทาง', required: true }, { key: 'truck_id', label: 'รถ', type: 'select', required: true, options: () => trucks.map(t => ({ value: t.id, label: t.code })) }, { key: 'route_kind', label: 'ชนิด', type: 'select', options: () => [{ value: 'regular', label: 'ประจำ' }, { value: 'temporary', label: 'ชั่วคราว (เทศกาล/เฉพาะกิจ)' }] }, { key: 'valid_from', label: 'เริ่ม (ปี-เดือน-วัน ค.ศ. เฉพาะงานชั่วคราว)', nullable: true }, { key: 'valid_to', label: 'สิ้นสุด (ปี-เดือน-วัน ค.ศ.)', nullable: true }, { key: 'schedule_note', label: 'วัน/เวลาเก็บ' }, { key: 'status', label: 'สถานะ', type: 'status' }],
     beforeSave: p => { for (const k of ['valid_from', 'valid_to']) if (p[k] && !/^\d{4}-\d{2}-\d{2}$/.test(p[k])) return 'รูปแบบวันที่ต้องเป็น ปี-เดือน-วัน เช่น 2026-12-30'; if (p.valid_from && p.valid_to && p.valid_to < p.valid_from) return 'วันสิ้นสุดต้องไม่ก่อนวันเริ่ม'; },
     rowBtns: r => ` <button class="small secondary" onclick="routeRoads('${r.id}')">ถนนในเส้นทาง</button> <button class="small secondary" onclick="routeStops('${r.id}')">ลำดับจุด / เส้นถนน</button>` };
-  SPECS.app_user = { table: 'app_user', title: 'บัญชีผู้ใช้', eq: { municipality_id: mid }, noAdd: true, cols: [{ key: 'display_name', label: 'ชื่อแสดง', required: true }, { key: 'username', label: 'ชื่อล็อกอิน', readonly: true }, { key: 'role', label: 'บทบาท', type: 'select', readonly: true, options: () => [{ value: 'admin', label: 'admin เทศบาล' }, { value: 'recorder', label: 'ผู้บันทึก' }] }, { key: 'status', label: 'สถานะ', type: 'status' }], extraBtn: `<button class="small" onclick="userForm('${mid}')">＋ เพิ่มผู้บันทึก</button>`, rowBtns: r => r.id !== S.me.id ? ` <button class="small secondary" onclick="resetPw('${r.id}','${esc(r.username)}')">รีเซ็ตรหัส</button>` : '' };
-  SPECS.municipality = { table: 'municipality', title: 'ตั้งค่าเทศบาล', eq: { id: mid }, noAdd: true, cols: [{ key: 'code', label: 'รหัส', readonly: true }, { key: 'name', label: 'ชื่อ', readonly: !isSuper() }, { key: 'photo_endpoint_url', label: 'ลิงก์สคริปต์รับรูป (ว่าง = Drive ของเจ้าของโครงการ)', nullable: true }, { key: 'photo_folder_id', label: 'รหัสโฟลเดอร์ Drive (ไม่บังคับ)', nullable: true }, { key: 'note', label: 'หมายเหตุ', type: 'textarea', nullable: true }] };
-  view.innerHTML = scopeSelector() + `<div class="banner info">เทศบาล ${esc(muni.code)} · ${esc(muni.name)} · เพดานผู้บันทึก ${muni.max_recorders} บัญชี</div>` + (await crudSection(SPECS.road)) + (await crudSection(SPECS.soi)) + (await crudSection(SPECS.truck)) + (await crudSection(SPECS.route)) + (await crudSection(SPECS.app_user)) + (await crudSection(SPECS.municipality));
+  SPECS.app_user = { table: 'app_user', title: 'บัญชีผู้ใช้', help: 'admin-users', intro: 'ผู้บันทึกเพิ่ม/แก้จุดและถังได้ ยกเลิกไม่ได้ · admin ยกเลิกได้และจัดการถนน รถ เส้นทาง · ลืมรหัสผ่าน → กด "รีเซ็ตรหัส" แล้วแจ้งรหัสใหม่', eq: { municipality_id: mid }, noAdd: true, cols: [{ key: 'display_name', label: 'ชื่อแสดง', required: true }, { key: 'username', label: 'ชื่อล็อกอิน', readonly: true }, { key: 'role', label: 'บทบาท', type: 'select', readonly: true, options: () => [{ value: 'admin', label: 'admin เทศบาล' }, { value: 'recorder', label: 'ผู้บันทึก' }] }, { key: 'status', label: 'สถานะ', type: 'status' }], extraBtn: `<button class="small" onclick="userForm('${mid}')">＋ เพิ่มผู้บันทึก</button>`, rowBtns: r => r.id !== S.me.id ? ` <button class="small secondary" onclick="resetPw('${r.id}','${esc(r.username)}')">รีเซ็ตรหัส</button>` : '' };
+  const tabs = [['start', 'เริ่มต้นใช้งาน'], ['roads', 'ถนนและซอย'], ['fleet', 'รถและเส้นทาง'], ['users', 'บัญชีผู้ใช้'], ['settings', 'ตั้งค่าเทศบาล']];
+  const nav = `<nav class="subtabs">${tabs.map(([k, l]) => `<a href="#admin/${k}" class="${tab === k ? 'active' : ''}">${l}</a>`).join('')}</nav>`;
+  let body = '';
+  if (tab === 'roads') body = (await crudSection(SPECS.road)) + (await crudSection(SPECS.soi));
+  else if (tab === 'fleet') body = (await crudSection(SPECS.truck)) + (await crudSection(SPECS.route));
+  else if (tab === 'users') body = await crudSection(SPECS.app_user);
+  else if (tab === 'settings') body = adminSettings(muni);
+  else body = adminStart(muni);
+  view.innerHTML = scopeSelector() + `<div class="banner info">เทศบาล ${esc(muni.code)} · ${esc(muni.name)} · เพดานผู้บันทึก ${muni.max_recorders} บัญชี</div>` + nav + body;
+}
+// แท็บ "เริ่มต้นใช้งาน": รายการตรวจทีละขั้นสำหรับ admin เทศบาลใหม่ (คำนวณสถานะสดจากข้อมูลจริง)
+function adminStart(muni) {
+  const steps = [
+    ['เปลี่ยนรหัสผ่านของท่าน', 'เมนู "บัญชี" มุมขวาบน → เปลี่ยนรหัสผ่าน', 'เข้าใช้ครั้งถัดไปด้วยรหัสใหม่ได้', '#me'],
+    ['ตรวจรายชื่อถนน', 'แท็บ "ถนนและซอย" → ค้นหา/แก้ชื่อ/ปิดถนนที่ไม่ใช้', 'ถนนทุกสายที่มีจุดวางถังอยู่ในรายการ', '#admin/roads'],
+    ['เพิ่มรถเก็บขยะ', 'แท็บ "รถและเส้นทาง" → รถเก็บขยะ → เพิ่ม', 'รถทุกคันมีรหัส/ทะเบียนและประเภท', '#admin/fleet'],
+    ['สร้างเส้นทางเดินรถ', 'แท็บ "รถและเส้นทาง" → เส้นทาง → เพิ่ม → "ถนนในเส้นทาง"', 'ทุกเส้นทางมีรถและถนนอย่างน้อย 1 สาย', '#admin/fleet'],
+    ['แจกบัญชีผู้บันทึก', 'แท็บ "บัญชีผู้ใช้" → รีเซ็ตรหัสถ้าลืม → ส่งชื่อล็อกอินและรหัสให้เจ้าหน้าที่', 'ผู้บันทึกล็อกอินบนมือถือได้', '#admin/users'],
+    ['ผู้บันทึกลงพื้นที่', 'มือถือ → เมนู "จุด" → ปุ่ม "เพิ่มจุด" → GPS · ถัง · รูป', 'จุดปรากฏบนแผนที่พร้อมสีตามความจุ', '#help'],
+    ['จัดลำดับจุดและลากเส้นถนน', 'แท็บ "รถและเส้นทาง" → เส้นทาง → "ลำดับจุด / เส้นถนน" → จัดอัตโนมัติ → ลากเส้นตามถนน', 'หน้า "เส้นทางรถ" แสดงเส้นทึบและเลขลำดับ', '#admin/fleet'],
+    ['ดูแดชบอร์ดและพิมพ์รายงาน', 'เมนู "แดชบอร์ด" และ "รายงาน"', 'รายงานผู้บริหาร 1 หน้า พิมพ์เป็น PDF ได้', '#reports']
+  ];
+  return `<div class="card"><h4 style="margin-top:0">เริ่มต้นใช้งานสำหรับ admin เทศบาล ${helpBtn('admin-start')}</h4><div class="muted">ทำตามลำดับ 1 → 8 · แต่ละข้อบอก ทำอะไร · ที่ไหน · ค่าที่ต้องได้ · กด "ไป" เพื่อเปิดหน้านั้น</div>
+    <ol style="padding-left:22px;margin:10px 0 0">${steps.map(([what, where, expect, href]) => `<li style="margin:10px 0"><b>${what}</b><div class="muted">ที่ไหน: ${where}</div><div class="muted">ค่าที่ต้องได้: ${expect}</div><a class="btn secondary small" href="${href}" style="display:inline-block;margin-top:4px;text-decoration:none">ไป</a></li>`).join('')}</ol>
+    <div class="banner info" style="margin-top:12px">ติดปัญหา: กดไอคอน (?) ที่มีอยู่ทุกหน้า หรือเมนู "ช่วยเหลือ" · ถ้ายังแก้ไม่ได้ ติดต่อเจ้าของโครงการ</div></div>`;
+}
+// แท็บ "ตั้งค่าเทศบาล": อธิบายและให้เลือก แทนการกรอกลิงก์เปล่า ๆ
+function adminSettings(muni) {
+  const own = !!muni.photo_endpoint_url;
+  return `<div class="card"><h4 style="margin-top:0">ที่เก็บรูปถ่ายของเทศบาล ${helpBtn('admin-settings')}</h4>
+    <div class="muted">รูปที่ผู้บันทึกถ่ายจะถูกย่อแล้วส่งไปเก็บใน Google Drive · เลือกได้ 2 แบบ · เปลี่ยนภายหลังได้ รูปเดิมยังอยู่ที่เดิมและเปิดดูได้ตามปกติ</div>
+    <label class="pick-opt" style="margin-top:8px"><input type="radio" name="photoMode" value="central" ${own ? '' : 'checked'} onchange="$('#ownBox').classList.toggle('hidden', this.checked)"> <span><b>ใช้ที่เก็บกลางของโครงการ</b> (ค่าเริ่มต้น แนะนำ) — ไม่ต้องตั้งค่าอะไร รูปเก็บในโฟลเดอร์ของเทศบาลบน Drive ของเจ้าของโครงการ</span></label>
+    <label class="pick-opt"><input type="radio" name="photoMode" value="own" ${own ? 'checked' : ''} onchange="$('#ownBox').classList.toggle('hidden', !this.checked)"> <span><b>ใช้ Google Drive ของเทศบาลเอง</b> — ต้องให้เจ้าของโครงการช่วยติดตั้งสคริปต์รับรูปในบัญชี Google ของเทศบาลก่อน แล้วนำลิงก์ที่ได้มาวางด้านล่าง</span></label>
+    <div id="ownBox" class="${own ? '' : 'hidden'}" style="margin-left:30px"><label for="mu_url">ลิงก์สคริปต์รับรูปของเทศบาล (ขึ้นต้นด้วย https://script.google.com/macros/s/…/exec)</label><input id="mu_url" value="${esc(muni.photo_endpoint_url || '')}" placeholder="https://script.google.com/macros/s/…/exec"><label for="mu_folder">รหัสโฟลเดอร์ Drive (ไม่บังคับ · ว่าง = สคริปต์สร้างโฟลเดอร์ให้)</label><input id="mu_folder" value="${esc(muni.photo_folder_id || '')}"></div>
+    <label for="mu_note2">หมายเหตุของเทศบาล (เห็นเฉพาะ admin)</label><textarea id="mu_note2" rows="2">${esc(muni.note || '')}</textarea>
+    <div class="row" style="margin-top:12px"><button onclick="saveMuniSettings('${muni.id}')">บันทึกการตั้งค่า</button></div>
+    <div class="muted" style="margin-top:8px">ข้อมูลอื่นของเทศบาล (ชื่อ รหัส เพดานบัญชี) แก้ได้เฉพาะเจ้าของโครงการที่เมนู "ส่วนกลาง"</div></div>`;
+}
+async function saveMuniSettings(mid) {
+  const own = document.querySelector('input[name=photoMode]:checked').value === 'own';
+  const url = own ? $('#mu_url').value.trim() : '';
+  if (own && !/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) return toast('ลิงก์สคริปต์ต้องขึ้นต้นด้วย https://script.google.com/macros/s/ และลงท้ายด้วย /exec', true);
+  try { await api.update('municipality', mid, { photo_endpoint_url: url || null, photo_folder_id: own ? ($('#mu_folder').value.trim() || null) : null, note: $('#mu_note2').value.trim() || null }); toast('บันทึกการตั้งค่าแล้ว'); S.cache.loaded = false; render(); } catch (e) { toast(e.message, true); }
 }
 async function routeRoads(routeId) {
   const mid = S.scopeMuni; const roads = await api.list('road', { eq: { municipality_id: mid, status: 'active' }, order: ['name'] });
@@ -1082,7 +1138,7 @@ async function routeStops(routeId) {
     <div class="muted">เส้นเปิด: รถวิ่งจากจุดที่ 1 ถึงจุดสุดท้าย ไม่วนกลับ · ${saved.length && !dirty ? 'ลำดับที่บันทึกไว้' : 'ลำดับนี้ยังไม่บันทึก' + (saved.length ? '' : ' (จัดอัตโนมัติแบบจุดใกล้ถัดไป จากจุดตะวันตกสุด)')}</div>
     <div class="row" style="margin:8px 0"><button class="small secondary" type="button" onclick="rsAuto()">จัดอัตโนมัติ</button><button class="small secondary" type="button" onclick="rsReverse()">สลับทิศ</button></div>
     <ol id="rsList" style="padding-left:22px;max-height:40vh;overflow:auto">${list.map((x, i) => `<li style="margin:4px 0"><a href="#place/${x.place_id}">${esc(x.place_code)}</a> ${esc(x.place_name)}${x.lat == null ? ' <span class="pill" style="background:#fee2e2">ไม่มีพิกัด</span>' : ''} <button class="small secondary" type="button" onclick="rsMove(${i},-1)" aria-label="เลื่อนขึ้น">↑</button> <button class="small secondary" type="button" onclick="rsMove(${i},1)" aria-label="เลื่อนลง">↓</button> <button class="small danger" type="button" onclick="rsDel(${i})">เอาออก</button></li>`).join('') || '<li class="muted">ยังไม่มีจุด</li>'}</ol>
-    <label for="rsAdd">เพิ่มจุดเข้าลำดับ</label><div class="row"><select id="rsAdd" style="flex:1">${candidates.filter(c => !list.some(x => x.place_id === c.place_id)).map(c => `<option value="${c.place_id}">${esc(c.place_code)} ${esc(c.place_name)}</option>`).join('')}</select><button class="small" type="button" onclick="rsAddStop()">เพิ่ม</button></div>
+    ${candidates.filter(c => !list.some(x => x.place_id === c.place_id)).length ? `<label for="rsAdd">เพิ่มจุดเข้าลำดับ</label><div class="row"><select id="rsAdd" style="flex:1">${candidates.filter(c => !list.some(x => x.place_id === c.place_id)).map(c => `<option value="${c.place_id}">${esc(c.place_code)} ${esc(c.place_name)}</option>`).join('')}</select><button class="small" type="button" onclick="rsAddStop()">เพิ่ม</button></div>` : `<div class="muted" style="margin-top:8px">ทุกจุดบนถนนของเส้นทางนี้อยู่ในลำดับแล้ว (จุดใหม่ที่ผู้บันทึกเพิ่มบนถนนเหล่านี้จะมาปรากฏที่นี่)</div>`}
     <div class="row" style="margin-top:12px"><button type="button" onclick="rsSave()">บันทึกลำดับ</button><button type="button" class="secondary" onclick="rsSnap()">ลากเส้นตามถนน</button>${rt.path ? `<button type="button" class="danger" onclick="rsClearPath()">ลบเส้น</button>` : ''}<button type="button" class="secondary" onclick="closeModal()">ปิด</button></div>
     <div class="muted" style="margin-top:6px">${rt.path ? `มีเส้นบนถนนแล้ว ${fmt(Math.round((rt.path_distance_m || 0) / 100) / 10)} กม. (${thDate(rt.path_at)}) · กด "ลากเส้นตามถนน" อีกครั้งเมื่อแก้ลำดับ` : 'ยังไม่มีเส้นบนถนน หน้าเส้นทางจะวาดเส้นประตรงระหว่างจุด'}<br>"ลากเส้นตามถนน" บันทึกลำดับแล้วขอเส้นจากบริการ OSRM (แผนที่ OpenStreetMap · ใช้ไม่เชิงพาณิชย์ · ไม่รับประกันว่าตอบทุกครั้ง) 1 ครั้ง แล้วเก็บไว้ในระบบ ไม่เรียกซ้ำตอนแสดงผล</div>`);
   window.rsMove = (i, d) => { const j = i + d; if (j < 0 || j >= list.length) return; [list[i], list[j]] = [list[j], list[i]]; dirty = true; draw(); };
@@ -1116,7 +1172,7 @@ async function routeStops(routeId) {
 }
 function userForm(mid) {
   const superRole = isSuper() ? `<label>บทบาท</label><select id="u_role"><option value="recorder">ผู้บันทึก</option><option value="admin">admin เทศบาล</option></select>` : '';
-  openModal(`<h3 style="margin-top:0">เพิ่มบัญชี</h3><label>ชื่อล็อกอิน (a-z 0-9 . _ - เช่น ubn-rec2)</label><input id="u_name" autocapitalize="none"><label>ชื่อแสดง</label><input id="u_disp">${superRole}
+  openModal(`<h3 style="margin-top:0">เพิ่มบัญชี</h3><label>ชื่อล็อกอิน (a-z 0-9 . _ - เช่น ubn-rec2)</label><input id="u_name" autocapitalize="none"><label>ชื่อแสดง</label><input id="u_disp" maxlength="200">${superRole}
     <div class="row" style="margin-top:12px"><button id="u_save">สร้างบัญชี</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div><div class="muted">รหัสผ่านจะถูกสุ่มและแสดงครั้งเดียว ให้จดส่งต่อผู้ใช้</div>`);
   $('#u_save').onclick = async () => {
     const b = $('#u_save'); b.disabled = true; b.textContent = 'กำลังสร้าง…';   // กันกดซ้ำ (MIS-005b)
@@ -1127,27 +1183,209 @@ async function resetPw(userId, username) {
   if (!confirm(`รีเซ็ตรหัสผ่านของ ${username}?`)) return;
   try { const r = await api.engine('reset_password', { user_id: userId }); showCredentials([{ username: r.username, password: r.password }]); } catch (e) { toast(e.message, true); }
 }
-function showCredentials(accs) {
-  openModal(`<h3 style="margin-top:0">บัญชีที่สร้าง/รีเซ็ต — แสดงครั้งเดียว</h3>${accs.map(a => `<div class="card"><div>ชื่อล็อกอิน: <b class="mono">${esc(a.username)}</b></div><div>รหัสผ่าน: <b class="mono">${esc(a.password)}</b></div>${a.role ? `<div class="muted">${roleLabel(a.role)}</div>` : ''}</div>`).join('')}
-    <div class="banner warn">จดหรือถ่ายภาพหน้านี้ก่อนปิด ระบบจะไม่แสดงรหัสผ่านนี้อีก</div><button onclick="closeModal();S.cache.loaded=false;render()">ปิด</button>`);
+function showCredentials(accs, ctx = {}) {
+  S._lastCreds = { accs, ctx };
+  openModal(`<h3 style="margin-top:0">บัญชีที่สร้าง/รีเซ็ต — แสดงครั้งเดียว</h3>${ctx.municipality ? `<div class="muted">เทศบาล ${esc(ctx.municipality)} (${esc(ctx.code)})</div>` : ''}${accs.map(a => `<div class="card"><div>ชื่อล็อกอิน: <b class="mono">${esc(a.username)}</b></div><div>รหัสผ่าน: <b class="mono">${esc(a.password)}</b></div>${a.role ? `<div class="muted">${roleLabel(a.role)}</div>` : ''}</div>`).join('')}
+    ${(ctx.problems || []).length ? `<div class="banner warn">สร้างไม่ครบ: ${ctx.problems.map(esc).join(' · ')} → เพิ่มภายหลังได้ที่ จัดการเทศบาล → บัญชีผู้ใช้</div>` : ''}
+    <div class="banner warn">จด ถ่ายภาพ หรือกด "พิมพ์ใบส่งมอบ" ก่อนปิด ระบบจะไม่แสดงรหัสผ่านนี้อีก (ลืม → รีเซ็ตรหัสได้)</div><div class="row"><button class="secondary" onclick="printCredentials()">พิมพ์ใบส่งมอบ</button><button onclick="closeModal();S.cache.loaded=false;render()">ปิด</button></div>`);
+}
+function printCredentials() {
+  const { accs, ctx } = S._lastCreds || { accs: [] }; const sys = setting('system_name') || 'ระบบข้อมูลจุดวางถังขยะ';
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ใบส่งมอบบัญชี</title><style>body{font:15px/1.5 system-ui,"Noto Sans Thai",sans-serif;margin:24px;color:#000}h1{font-size:20px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #999;padding:6px 8px;text-align:left}th{background:#eee}.mono{font-family:Consolas,monospace;font-size:16px}ol{padding-left:22px}@media print{button{display:none}}</style></head><body>
+    <button onclick="window.print()">พิมพ์ / บันทึก PDF</button><h1>${esc(sys)} — ใบส่งมอบบัญชีผู้ใช้</h1><div>${ctx.municipality ? `เทศบาล <b>${esc(ctx.municipality)}</b> (${esc(ctx.code)}) · ` : ''}ออกเมื่อ ${thDate(new Date().toISOString())} · เว็บ: ${esc(location.origin + location.pathname)}</div>
+    <table><thead><tr><th>บทบาท</th><th>ชื่อล็อกอิน</th><th>รหัสผ่านตั้งต้น</th><th>มอบให้ (ชื่อ-สกุล)</th><th>ลงชื่อรับ</th></tr></thead><tbody>${accs.map(a => `<tr><td>${roleLabel(a.role || '')}</td><td class="mono">${esc(a.username)}</td><td class="mono">${esc(a.password)}</td><td></td><td></td></tr>`).join('')}</tbody></table>
+    <h3>วิธีเริ่มใช้งาน</h3><ol><li>เปิดเว็บด้านบนบนโทรศัพท์หรือคอมพิวเตอร์ → ล็อกอินด้วยชื่อและรหัสผ่านในตาราง</li><li>ไปที่เมนู "บัญชี" มุมขวาบน → เปลี่ยนรหัสผ่านเป็นของตนเอง (แนะนำ)</li><li>admin: เมนู "จัดการเทศบาล" → แท็บ "เริ่มต้นใช้งาน" ทำตามลำดับ 1–8</li><li>ผู้บันทึก: เมนู "จุด" → ปุ่ม "เพิ่มจุด" → กด "ใช้ GPS" → ใส่ถัง → ถ่ายรูป → บันทึก</li><li>ลืมรหัสผ่าน: แจ้ง admin ของเทศบาลให้กด "รีเซ็ตรหัส" (ระบบไม่มีการส่งอีเมล)</li><li>ติดปัญหา: กดไอคอน (?) ในแต่ละหน้า หรือเมนู "ช่วยเหลือ"</li></ol>
+    <p>เอกสารนี้มีรหัสผ่าน เก็บเป็นความลับ ทำลายหลังผู้ใช้เปลี่ยนรหัสผ่านแล้ว</p></body></html>`;
+  const w = window.open('', '_blank'); if (!w) return toast('เบราว์เซอร์กันหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัป', true); w.document.write(html); w.document.close();
 }
 
 // =====================================================================
 // หน้า: ส่วนกลาง (super admin)
 // =====================================================================
 async function pageSuper(view) {
-  SPECS.municipality = { table: 'municipality', title: 'เทศบาล', noAdd: true, order: ['code'], cols: [{ key: 'code', label: 'รหัส', readonly: true }, { key: 'name', label: 'ชื่อ', required: true }, { key: 'max_recorders', label: 'เพดานผู้บันทึก', type: 'number', required: true }, { key: 'status', label: 'สถานะ', type: 'status' }, { key: 'photo_endpoint_url', label: 'ลิงก์สคริปต์รับรูป', nullable: true, hide: true }, { key: 'note', label: 'หมายเหตุ', type: 'textarea', nullable: true, hide: true }], extraBtn: `<button class="small" onclick="muniForm()">＋ สร้างเทศบาล (พร้อม 2 บัญชี)</button>`, rowBtns: r => ` <button class="small secondary" onclick="S.scopeMuni='${r.id}';go('#admin')">จัดการ</button>` };
-  SPECS.bin_type = { table: 'bin_type', title: 'ประเภทถัง', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'liters', label: 'ความจุต่อใบ (ลิตร)', type: 'number', required: true }, { key: 'color', label: 'สี' }, { key: 'unit_cost', label: 'ราคามาตรฐานต่อใบ (บาท · 0 = ยังไม่กำหนด ไม่นำมาคำนวณมูลค่า)', type: 'number', required: true }, { key: 'useful_life_years', label: 'อายุใช้งาน (ปี · 0 = วัสดุ ไม่คิดค่าเสื่อม)', type: 'number', required: true }, { key: 'detail', label: 'รายละเอียด', nullable: true, hide: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number', hide: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
+  const tab = (location.hash.split('/')[1] || 'munis');
+  SPECS.municipality = { table: 'municipality', title: 'เทศบาล', help: 'super-muni', intro: 'สร้างเทศบาลใหม่ด้วยปุ่มด้านขวา ระบบสร้างบัญชี admin 1 + ผู้บันทึก 3 ให้ทันที · กด "จัดการ" เพื่อเข้าไปทำงานในฐานะ admin ของเทศบาลนั้น', noAdd: true, order: ['code'], cols: [{ key: 'code', label: 'รหัส', readonly: true }, { key: 'name', label: 'ชื่อ', required: true }, { key: 'max_recorders', label: 'เพดานผู้บันทึก', type: 'number', required: true }, { key: 'status', label: 'สถานะ', type: 'status' }, { key: 'photo_endpoint_url', label: 'ลิงก์สคริปต์รับรูป', nullable: true, hide: true }, { key: 'note', label: 'หมายเหตุ', type: 'textarea', nullable: true, hide: true }], extraBtn: `<button class="small" onclick="muniForm()">＋ สร้างเทศบาล (พร้อม 2 บัญชี)</button>`, rowBtns: r => ` <button class="small secondary" onclick="S.scopeMuni='${r.id}';go('#admin')">จัดการ</button>` };
+  SPECS.bin_type = { table: 'bin_type', title: 'ประเภทถัง', help: 'super-masters', intro: 'ใช้ร่วมกันทุกเทศบาล · ลิตรต่อใบใช้คำนวณความจุ · ราคา/อายุใช้คำนวณมูลค่าทรัพย์สิน (ราคา 0 = ยังไม่กำหนด)', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'liters', label: 'ความจุต่อใบ (ลิตร)', type: 'number', required: true }, { key: 'color', label: 'สี' }, { key: 'unit_cost', label: 'ราคามาตรฐานต่อใบ (บาท · 0 = ยังไม่กำหนด ไม่นำมาคำนวณมูลค่า)', type: 'number', required: true }, { key: 'useful_life_years', label: 'อายุใช้งาน (ปี · 0 = วัสดุ ไม่คิดค่าเสื่อม)', type: 'number', required: true }, { key: 'detail', label: 'รายละเอียด', nullable: true, hide: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number', hide: true }, { key: 'status', label: 'สถานะ', type: 'status' }] };
   SPECS.truck_type = { table: 'truck_type', title: 'ประเภทรถ', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'capacity_liters', label: 'ความจุ (ลิตร)', type: 'number', nullable: true }, { key: 'detail', label: 'รายละเอียด', nullable: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
   SPECS.place_type = { table: 'place_type', title: 'ประเภทจุด', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
-  SPECS.capacity_tier = { table: 'capacity_tier', title: 'เกณฑ์สีหมุด', order: ['sort_order'], cols: [{ key: 'label', label: 'ป้าย', required: true }, { key: 'min_liters', label: 'ตั้งแต่ (ลิตร)', type: 'number', required: true }, { key: 'max_liters', label: 'ถึง (ลิตร, ว่าง = ไม่จำกัด)', type: 'number', nullable: true }, { key: 'color', label: 'รหัสสี', type: 'color', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }] };
-  SPECS.app_setting = { table: 'app_setting', title: 'ค่าตั้งค่าส่วนกลาง', noAdd: true, pk: 'key', order: ['key'], cols: [{ key: 'key', label: 'ค่า', readonly: true }, { key: 'value', label: 'ค่าที่ตั้ง', nullable: true }, { key: 'description', label: 'คำอธิบาย', readonly: true }] };
-  view.innerHTML = `<div class="banner info">ส่วนกลาง: ค่าที่นี่ใช้เหมือนกันทุกเทศบาล (DEC-079)</div>${(setting('asset_prices_status') || 'ประมาณการ') !== 'ยืนยันแล้ว' ? `<div class="banner warn">ราคามาตรฐานต่อใบและอายุใช้งานของประเภทถังเป็น <b>ค่าประมาณการตั้งต้น</b> (DEC-089) · ตรวจแล้วแก้ที่ตาราง "ประเภทถัง" จากนั้นตั้งค่า asset_prices_status = ยืนยันแล้ว เพื่อปิดป้ายเตือนบนแดชบอร์ด</div>` : ''}` + (await crudSection(SPECS.municipality)) + (await crudSection(SPECS.bin_type)) + (await crudSection(SPECS.truck_type)) + (await crudSection(SPECS.place_type)) + (await crudSection(SPECS.capacity_tier)) + (await crudSection(SPECS.app_setting));
+  SPECS.capacity_tier = { table: 'capacity_tier', title: 'เกณฑ์สีหมุด', intro: 'ระดับความจุของจุด 5 ระดับ ใช้สีเดียวกันทั้งระบบ · แก้แล้วมีผลทันทีทุกหน้า', order: ['sort_order'], cols: [{ key: 'label', label: 'ป้าย', required: true }, { key: 'min_liters', label: 'ตั้งแต่ (ลิตร)', type: 'number', required: true }, { key: 'max_liters', label: 'ถึง (ลิตร, ว่าง = ไม่จำกัด)', type: 'number', nullable: true }, { key: 'color', label: 'รหัสสี', type: 'color', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }] };
+  const tabs = [['munis', 'เทศบาล'], ['masters', 'ตารางแม่'], ['settings', 'ค่าตั้งค่า'], ['guide', 'คู่มือเจ้าของโครงการ']];
+  const nav = `<nav class="subtabs">${tabs.map(([k, l]) => `<a href="#super/${k}" class="${tab === k ? 'active' : ''}">${l}</a>`).join('')}</nav>`;
+  let body = '';
+  if (tab === 'masters') body = (await crudSection(SPECS.bin_type)) + (await crudSection(SPECS.truck_type)) + (await crudSection(SPECS.place_type)) + (await crudSection(SPECS.capacity_tier));
+  else if (tab === 'settings') body = superSettings();
+  else if (tab === 'guide') body = superGuide();
+  else body = await crudSection(SPECS.municipality);
+  view.innerHTML = `<div class="banner info">ส่วนกลาง: ค่าที่นี่ใช้เหมือนกันทุกเทศบาล (DEC-079)</div>${(setting('asset_prices_status') || 'ประมาณการ') !== 'ยืนยันแล้ว' ? `<div class="banner warn">ราคามาตรฐานต่อใบและอายุใช้งานของประเภทถังเป็น <b>ค่าประมาณการตั้งต้น</b> (DEC-089) · ตรวจแล้วแก้ที่แท็บ "ตารางแม่ → ประเภทถัง" จากนั้นที่แท็บ "ค่าตั้งค่า" เลือก "ยืนยันแล้ว" เพื่อปิดป้ายเตือนบนแดชบอร์ด</div>` : ''}` + nav + body;
+}
+// ค่าตั้งค่าส่วนกลาง: แต่ละค่ามีคำอธิบาย ผลกระทบ และตัวเลือกให้เลือก (แทนการพิมพ์ค่าดิบ)
+const SETTINGS_META = {
+  asset_prices_status: { label: 'สถานะราคามาตรฐานถัง', type: 'choice', options: [['ประมาณการ', 'ประมาณการ — ยังไม่ได้ตรวจ แดชบอร์ดทรัพย์สินแสดงป้ายเตือน'], ['ยืนยันแล้ว', 'ยืนยันแล้ว — ตรวจราคา/อายุที่ "ตารางแม่ → ประเภทถัง" แล้ว ป้ายเตือนหายไป']], effect: 'มีผลกับป้ายเตือนเท่านั้น ไม่เปลี่ยนตัวเลข' },
+  max_photos_per_place: { label: 'จำนวนรูปสูงสุดต่อจุด', type: 'choice', options: [['1', '1 รูป'], ['2', '2 รูป'], ['3', '3 รูป (แนะนำ)'], ['4', '4 รูป'], ['5', '5 รูป']], effect: 'กันพื้นที่ Drive และเวลาส่ง · ลดจำนวนแล้วรูปเดิมที่เกินไม่ถูกลบ บังคับทั้งฐานข้อมูลและหน้าเว็บ' },
+  kg_per_liter: { label: 'ตัวคูณแปลงลิตรเป็นกิโลกรัม', type: 'number', placeholder: 'เช่น 0.25', effect: 'ว่าง = ไม่แสดงน้ำหนักประมาณการ · ใส่แล้วทุกหน้าจะแสดง "≈ กก." ข้างตัวเลขลิตร · ค่านี้ต้องมีที่มาทางวิชาการ (เช่น ความหนาแน่นขยะชุมชนจากการชั่งจริง) จดที่มาไว้ในบันทึกมติ' },
+  bin_colors: { label: 'รายการสีถังให้เลือกในฟอร์ม', type: 'tags', effect: 'คั่นด้วยจุลภาค · ลบสีออกไม่กระทบถังเดิมที่บันทึกสีนั้นไว้ (ยังแสดงและเลือกได้ในแถวนั้น)' },
+  system_name: { label: 'ชื่อระบบที่แสดงบนหัวเว็บและรายงาน', type: 'text', effect: 'เปลี่ยนได้ทุกเมื่อ ไม่กระทบข้อมูล' },
+  default_photo_endpoint_url: { label: 'ลิงก์สคริปต์รับรูปค่ากลาง', type: 'text', effect: 'ว่าง = ใช้ห้องเครื่องหลักตามค่า CONFIG ของเว็บ (เก็บรูปลง Drive ของเจ้าของโครงการ) · เปลี่ยนเฉพาะเมื่อย้ายห้องเครื่อง ใส่ผิดแล้วทุกเทศบาลที่ใช้ค่ากลางจะส่งรูปไม่ได้', danger: true }
+};
+function superSettings() {
+  const rows = S.cache.app_setting.slice().sort((a, b) => (SETTINGS_META[a.key] ? 0 : 1) - (SETTINGS_META[b.key] ? 0 : 1));
+  const ctrl = r => { const m = SETTINGS_META[r.key] || { type: 'text', label: r.key };
+    if (m.type === 'choice') return m.options.map(([v, l]) => `<label class="pick-opt"><input type="radio" name="st_${r.key}" value="${esc(v)}" ${String(r.value) === v ? 'checked' : ''}> ${esc(l)}</label>`).join('');
+    if (m.type === 'number') return `<input type="number" step="any" inputmode="decimal" id="st_${r.key}" value="${esc(r.value ?? '')}" placeholder="${m.placeholder || ''}">`;
+    if (m.type === 'tags') return `<input id="st_${r.key}" value="${esc(r.value ?? '')}"><div class="legend" style="margin-top:6px">${String(r.value || '').split(',').map(x => x.trim()).filter(Boolean).map(x => `<span class="pill">${esc(x)}</span>`).join('')}</div>`;
+    return `<input id="st_${r.key}" value="${esc(r.value ?? '')}">`; };
+  return `<div class="card"><h4 style="margin-top:0">ค่าตั้งค่าส่วนกลาง ${helpBtn('super-settings')}</h4><div class="muted">แต่ละค่ามีคำอธิบายผลกระทบ · กด "บันทึก" ทีละค่า · ค่าที่มีเครื่องหมาย ⚠ กระทบทุกเทศบาลทันที</div></div>
+    ${rows.map(r => { const m = SETTINGS_META[r.key] || { label: r.key, effect: r.description || '' }; return `<div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">${m.danger ? '⚠ ' : ''}${esc(m.label)}</h4><span class="muted mono" style="font-size:12px">${esc(r.key)}</span></div><div class="muted" style="margin:4px 0 8px">${esc(m.effect)}</div>${ctrl(r)}<div class="row" style="margin-top:8px"><button class="small" onclick="saveSetting('${r.key}')">บันทึก</button><span class="muted">ค่าปัจจุบัน: ${esc(r.value || '(ว่าง)')}</span></div></div>`; }).join('')}`;
+}
+async function saveSetting(key) {
+  const m = SETTINGS_META[key] || { type: 'text' };
+  let v = m.type === 'choice' ? (document.querySelector(`input[name=st_${key}]:checked`) || {}).value : $('#st_' + key).value;
+  if (v == null) return toast('เลือกค่าก่อน', true);
+  v = String(v).trim();
+  if (m.type === 'number' && v !== '' && isNaN(parseFloat(v))) return toast('ต้องเป็นตัวเลข', true);
+  if (key === 'default_photo_endpoint_url' && v && !/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(v)) return toast('ลิงก์ต้องขึ้นต้นด้วย https://script.google.com/macros/s/ และลงท้ายด้วย /exec', true);
+  if (m.danger && !confirm('ค่านี้กระทบทุกเทศบาลทันที ยืนยันบันทึก?')) return;
+  try { await api.update('app_setting', key, { value: v }, 'key'); toast('บันทึกแล้ว'); S.cache.loaded = false; render(); } catch (e) { toast(e.message, true); }
+}
+function superGuide() {
+  const items = [
+    ['สร้างเทศบาลใหม่', 'แท็บ "เทศบาล" → "สร้างเทศบาล" → รหัสย่อ a–z (เช่น npm) + ชื่อ', 'ได้บัญชี admin 1 + ผู้บันทึก 3 แสดงรหัสผ่านครั้งเดียว → กด "พิมพ์ใบส่งมอบ" เก็บไว้ส่งเทศบาล'],
+    ['เตรียมถนนให้เทศบาลใหม่', 'ให้ Claude Code ดึงถนน/ซอยจาก OpenStreetMap เป็นไฟล์ SQL แล้วรันใน Supabase', 'เทศบาลเห็นรายชื่อถนนทันที ตัดที่ไม่ใช้ออกเอง'],
+    ['ช่วยเทศบาลที่ติดปัญหา', 'แท็บ "เทศบาล" → "จัดการ" (เข้าทำงานแทน admin ของเทศบาลนั้นได้ทุกอย่าง)', 'แก้ให้แล้วแจ้งเทศบาล'],
+    ['ยืนยันราคามาตรฐานถัง', 'แท็บ "ตารางแม่ → ประเภทถัง" แก้ราคา/อายุ → แท็บ "ค่าตั้งค่า" เลือก "ยืนยันแล้ว"', 'ป้ายเตือนบนแดชบอร์ดทรัพย์สินหายไป'],
+    ['กำหนดตัวคูณกิโลกรัม', 'แท็บ "ค่าตั้งค่า" → ตัวคูณแปลงลิตรเป็นกิโลกรัม (ต้องมีที่มาทางวิชาการ)', 'ทุกหน้าแสดง ≈ กก.'],
+    ['สำรองข้อมูล', 'ห้องเครื่อง Apps Script สำรองเป็น CSV ลง Drive (UBWast-backup) ทุกสัปดาห์อัตโนมัติ · ping รายวันกันโปรเจกต์หยุดพัก', 'ตรวจโฟลเดอร์ UBWast-backup มีไฟล์ล่าสุด'],
+    ['บัญชีเกินเพดาน', 'แท็บ "เทศบาล" → "แก้" → เพดานผู้บันทึก', 'admin เทศบาลเพิ่มผู้บันทึกได้ตามเพดานใหม่']
+  ];
+  return `<div class="card"><h4 style="margin-top:0">คู่มือเจ้าของโครงการ (super admin)</h4><ol style="padding-left:22px">${items.map(([a, b, c]) => `<li style="margin:10px 0"><b>${a}</b><div class="muted">ที่ไหน: ${b}</div><div class="muted">ค่าที่ต้องได้: ${c}</div></li>`).join('')}</ol><div class="muted">รายละเอียดเชิงเทคนิค (SQL · ห้องเครื่อง · กุญแจ) อยู่ใน Notion บทที่ 1–10 และไฟล์ DECISIONS.md</div></div>`;
 }
 function muniForm() {
-  openModal(`<h3 style="margin-top:0">สร้างเทศบาลใหม่</h3><label>รหัสย่อ (a-z/0-9 2–12 ตัว ใช้ประกอบชื่อล็อกอิน เช่น ubn)</label><input id="mu_code" autocapitalize="none"><label>ชื่อเทศบาล</label><input id="mu_name"><label>หมายเหตุ</label><input id="mu_note">
-    <div class="row" style="margin-top:12px"><button id="mu_save">สร้าง</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div><div class="muted">ระบบจะสร้างบัญชี admin และผู้บันทึก 1 บัญชีให้อัตโนมัติ (DEC-079)</div>`);
-  $('#mu_save').onclick = async () => { const b = $('#mu_save'); b.disabled = true; b.textContent = 'กำลังสร้าง…'; try { const r = await api.engine('create_municipality', { code: $('#mu_code').value.trim(), name: $('#mu_name').value.trim(), note: $('#mu_note').value.trim() }); showCredentials(r.accounts); } catch (e) { toast(e.message, true); b.disabled = false; b.textContent = 'สร้าง'; } };
+  openModal(`<h3 style="margin-top:0">สร้างเทศบาลใหม่</h3><label for="mu_code">รหัสย่อ (a-z/0-9 2–12 ตัว ใช้ประกอบชื่อล็อกอิน เช่น npm)</label><input id="mu_code" autocapitalize="none" placeholder="npm"><label for="mu_name">ชื่อเทศบาล</label><input id="mu_name" maxlength="200" placeholder="เทศบาลเมืองนครพนม"><label for="mu_note">หมายเหตุ (ไม่บังคับ)</label><input id="mu_note">
+    <div class="row" style="margin-top:12px"><button id="mu_save">สร้าง</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div><div class="muted">ระบบจะสร้างบัญชี admin 1 บัญชี และผู้บันทึก 3 บัญชี (รหัส-admin, รหัส-rec1, -rec2, -rec3) รหัสผ่านสุ่มและแสดงครั้งเดียวพร้อมปุ่มพิมพ์ใบส่งมอบ (DEC-093)</div>`);
+  $('#mu_save').onclick = async () => {
+    const b = $('#mu_save'); b.disabled = true; b.textContent = 'กำลังสร้าง…';
+    const code = $('#mu_code').value.trim().toLowerCase(), name = $('#mu_name').value.trim();
+    if (!/^[a-z0-9]{2,12}$/.test(code)) { toast('รหัสย่อต้องเป็น a-z หรือ 0-9 ยาว 2–12 ตัว', true); b.disabled = false; b.textContent = 'สร้าง'; return; }
+    if (!name) { toast('กรอกชื่อเทศบาล', true); b.disabled = false; b.textContent = 'สร้าง'; return; }
+    const accounts = []; let mid = null; const problems = [];
+    try { const r = await api.engine('create_municipality', { code, name, note: $('#mu_note').value.trim() }); accounts.push(...r.accounts); mid = (r.municipality || {}).id; }
+    catch (e) { toast(e.message, true); b.disabled = false; b.textContent = 'สร้าง'; return; }
+    for (const i of [2, 3]) { b.textContent = `กำลังสร้างผู้บันทึก ${i}/3…`; try { const r = await api.engine('create_user', { username: `${code}-rec${i}`, display_name: `ผู้บันทึก ${i} ${name}`, role: 'recorder', municipality_id: mid }); accounts.push(r.account); } catch (e) { problems.push(`${code}-rec${i}: ${e.message}`); } }
+    showCredentials(accounts, { municipality: name, code, problems });
+  };
+}
+// =====================================================================
+// ระบบช่วยเหลือ (DEC-093): ไอคอน (?) ทุกส่วน → ขั้นตอนทีละขั้น "ทำอะไร · ที่ไหน · ค่าที่ต้องได้" · หน้า "ช่วยเหลือ" แยกตามบทบาท
+// =====================================================================
+const HELP = {
+  map: { title: 'แผนที่จุดวางถัง', who: 'ทุกคน', steps: [['ดูจุดทั้งหมด', 'หมุดสีตามความจุของจุด (ดูคำอธิบายสีด้านบน) · ซูมด้วยปุ่ม + − หรือสองนิ้ว', 'เห็นหมุดครบตามจำนวนจุดที่มีพิกัด'], ['ดูรายละเอียดจุด', 'แตะหมุด → กล่องข้อมูล → "เปิดรายละเอียด"', 'เห็นถัง รูป และผู้บันทึก'], ['เพิ่มจุดใหม่', 'ปุ่มเขียว "เพิ่มจุด" มุมขวาล่าง', 'เปิดฟอร์มเพิ่มจุด']], tips: 'จุดที่ไม่มีพิกัดจะไม่ปรากฏบนแผนที่ แต่อยู่ในเมนู "จุด" · ถ้าแผนที่พื้นหลังไม่ขึ้น ให้รอสัญญาณแล้วเปิดใหม่' },
+  places: { title: 'รายการจุด', who: 'ทุกคน', steps: [['ค้นหา', 'พิมพ์รหัส ชื่อ หรือถนนในช่องค้นหา', 'รายการกรองทันที'], ['เปิดจุด', 'แตะรหัสจุด', 'หน้ารายละเอียด แก้ไข เพิ่มถัง เพิ่มรูป'], ['ส่งออก', 'ปุ่ม "ส่งออก CSV" (เปิดด้วย Excel ได้)', 'ไฟล์ ubwast_places_วันที่.csv']], tips: 'จุดที่ถูกยกเลิกยังอยู่ในรายการแต่ไม่นับในยอด' },
+  'place-edit': { title: 'เพิ่ม/แก้ไขจุด', who: 'ผู้บันทึก และ admin', steps: [['ตั้งชื่ออ้างอิง', 'ช่อง "ชื่ออ้างอิง" เช่น หน้าวัดกลาง หน้าตลาดสด', 'ชื่อที่คนในพื้นที่เข้าใจ'], ['เลือกถนน (และซอย)', 'ช่อง "ถนน" · ถ้าไม่มีถนนให้ admin เพิ่มที่ "จัดการเทศบาล"', 'รหัสจุดจะถูกตั้งเป็น ชื่อถนน-ลำดับ อัตโนมัติ'], ['เก็บพิกัด', 'ยืนที่จุดจริง → กด "ใช้ GPS" → รอ "ความคลาดเคลื่อน ± เมตร"', 'ค่าคลาดเคลื่อนต่ำกว่า 20 เมตร ถ้ามากกว่านั้นให้กดใหม่กลางแจ้ง'], ['ใส่ถัง', 'แถวถัง: ประเภท · จำนวนใบ · สี · สภาพ · ปีงบ (ไม่บังคับ) · ถังต่างชนิดเพิ่มแถวใหม่', 'จำนวนใบมากกว่า 0'], ['ถ่ายรูป', 'ช่อง "รูป" → กล้องหลัง → ไม่เกินจำนวนที่กำหนด', 'ระบบย่อรูปและส่งให้เองหลังบันทึก'], ['บันทึก', 'ปุ่ม "บันทึก"', 'ข้อความ "บันทึกจุด … แล้ว" และเปิดหน้าจุด']], tips: 'ไม่มีสัญญาณ: บันทึกได้ตามปกติ ระบบเก็บไว้ในเครื่องและส่งเองเมื่อมีสัญญาณ (ดูเมนู "รอส่ง" ด้านบน) · ผู้บันทึกแก้ไขได้แต่ยกเลิกไม่ได้ ถ้าบันทึกผิดให้แจ้ง admin' },
+  queue: { title: 'รายการรอส่ง (ทำงานตอนไม่มีสัญญาณ)', who: 'ผู้บันทึก', steps: [['ดูว่ามีอะไรค้าง', 'ปุ่ม "รอส่ง N" บนหัวเว็บ', 'รายการจุด ถัง รูป ที่ยังไม่ถึงเซิร์ฟเวอร์'], ['ส่งเมื่อมีสัญญาณ', 'ระบบส่งเองทันทีที่มีสัญญาณ หรือกด "ส่งตอนนี้"', 'รายการหายไปและขึ้น "ส่งข้อมูลที่ค้างแล้ว"'], ['รายการที่ส่งไม่ผ่าน', 'อ่านข้อความสีแดง แก้ที่ต้นเหตุ (เช่น ถนนถูกปิด) แล้วส่งใหม่', 'ไม่มีรายการสีแดง']], tips: 'อย่าล้างข้อมูลเบราว์เซอร์ขณะมีรายการค้าง ข้อมูลจะหาย' },
+  routes: { title: 'เส้นทางรถ', who: 'ทุกคน (จัดการโดย admin)', steps: [['เลือกเส้นทาง', 'ช่องเลือกด้านบน', 'การ์ดแสดง ถนน จุด ลิตร และ % ของความจุรถ'], ['อ่านแผนที่', 'เส้นทึบ = เส้นทางบนถนน · เลขบนหมุด = ลำดับเก็บ · สีเส้น = ความจุรวมของเส้นทาง (ดูคำอธิบายสี)', 'เห็นทางวิ่งจากจุดแรกถึงจุดสุดท้าย'], ['พิมพ์รายงานคนขับ', 'ปุ่ม "รายงานแจ้งคนขับ" → พิมพ์หรือบันทึก PDF', 'ตารางลำดับจุดพร้อมช่องติ๊ก "เก็บแล้ว"'], ['จัดลำดับ/ลากเส้น (admin)', 'จัดการเทศบาล → รถและเส้นทาง → เส้นทาง → "ลำดับจุด / เส้นถนน"', 'เส้นทึบและเลขลำดับปรากฏในหน้านี้']], tips: 'เส้นประตรง = เส้นทางที่ยังไม่ได้กด "ลากเส้นตามถนน" · ถ้ารถวิ่งข้ามถนนที่ไม่รับผิดชอบ เส้นจะวิ่งตามถนนจริงให้เอง' },
+  me: { title: 'บัญชีของฉัน', who: 'ทุกคน', steps: [['เปลี่ยนรหัสผ่าน', 'กรอกรหัสใหม่ 2 ช่อง (อย่างน้อย 8 ตัว) → "บันทึกรหัสผ่าน"', 'ข้อความ "เปลี่ยนรหัสผ่านแล้ว"'], ['ออกจากระบบ', 'ปุ่ม "ออกจากระบบ" (ใช้เมื่อเครื่องใช้ร่วมกับคนอื่น)', 'กลับไปหน้าล็อกอิน']], tips: 'ลืมรหัสผ่าน: ระบบไม่มีการส่งอีเมล ให้ admin ของเทศบาลกด "รีเซ็ตรหัส" แล้วแจ้งรหัสใหม่' },
+  'admin-start': { title: 'เริ่มต้นใช้งานสำหรับ admin', who: 'admin เทศบาล', steps: [['ทำตามรายการ 1–8', 'แท็บนี้ · กด "ไป" ที่แต่ละข้อ', 'ครบทุกข้อ = เทศบาลพร้อมใช้']], tips: 'ทำไม่ครบในวันเดียวได้ รายการนี้อยู่ที่เดิมเสมอ' },
+  'admin-roads': { title: 'ถนนและซอย', who: 'admin เทศบาล', steps: [['เพิ่มถนน', '"ถนน" → "เพิ่ม" → ชื่อถนน (ไม่ต้องใส่คำว่า ถนน) · ประเภท (สายหลัก/สายรอง/ถนนย่อย/ซอย)', 'ผู้บันทึกเลือกถนนนี้ได้ทันที'], ['ค้นหา/แบ่งหน้า', 'ช่องค้นหา · เลือกแสดงหน้าละ 20 หรือ 50', 'เห็นเฉพาะที่ค้น'], ['ปิดถนนที่ไม่ใช้', '"แก้" → สถานะ "ปิดใช้งาน"', 'ไม่ปรากฏให้เลือกตอนเพิ่มจุด แต่จุดเดิมยังอยู่'], ['เพิ่มซอย (ไม่บังคับ)', '"ซอย" → "เพิ่ม" → เลือกถนน → ชื่อซอย', 'ผู้บันทึกเลือกซอยได้ตอนเพิ่มจุด']], tips: 'ลบถนนที่มีจุดอ้างอิงไม่ได้ (ระบบกัน) ให้ปิดใช้งานแทน · เปลี่ยนชื่อถนนแล้วรหัสจุดเดิมไม่เปลี่ยนตาม (ตั้งใจให้รหัสคงที่)' },
+  'admin-fleet': { title: 'รถเก็บขยะ', who: 'admin เทศบาล', steps: [['เพิ่มรถ', '"รถเก็บขยะ" → "เพิ่ม" → รหัส/ชื่อรถ · ทะเบียน · ประเภทรถ', 'รถปรากฏให้เลือกตอนสร้างเส้นทาง'], ['ความจุเฉพาะคัน', 'กรอกเมื่อรถคันนี้จุต่างจากประเภท (ว่าง = ตามประเภท)', '% ภาระของเส้นทางคำนวณจากค่านี้']], tips: 'ประเภทรถ (ความจุมาตรฐาน) กำหนดโดยเจ้าของโครงการที่ "ส่วนกลาง" ถ้าไม่มีประเภทที่ต้องการให้แจ้ง' },
+  'admin-routes': { title: 'เส้นทางเดินรถ', who: 'admin เทศบาล', steps: [['สร้างเส้นทาง', '"เส้นทางเดินรถ" → "เพิ่ม" → ชื่อ · รถ · ชนิด (ประจำ/ชั่วคราว) · วัน/เวลาเก็บ', 'แถวเส้นทางใหม่'], ['เลือกถนนในเส้นทาง', 'ปุ่ม "ถนนในเส้นทาง" → เพิ่มถนนตามลำดับ → "บันทึกลำดับ"', 'จุดทุกจุดบนถนนเหล่านั้นนับเข้าเส้นทางอัตโนมัติ'], ['จัดลำดับจุดและลากเส้น', 'ปุ่ม "ลำดับจุด / เส้นถนน" → "จัดอัตโนมัติ" → ปรับทิศ/ลำดับให้ตรงที่รถวิ่งจริง → "ลากเส้นตามถนน"', 'ข้อความ "ได้เส้นบนถนนแล้ว … กม." และหน้าเส้นทางรถแสดงเส้นทึบ'], ['เส้นทางชั่วคราว', 'ชนิด "ชั่วคราว" + วันเริ่ม/สิ้นสุด (เช่น งานเทศกาล)', 'ระบบเตือนถ้าถนนซ้ำกับเส้นทางอื่น']], tips: '"ลากเส้นตามถนน" ใช้บริการแผนที่ภายนอก (OpenStreetMap) ถ้าตอบช้าหรือไม่ตอบ ลองใหม่ภายหลัง ลำดับจุดบันทึกไว้แล้ว' },
+  'admin-users': { title: 'บัญชีผู้ใช้', who: 'admin เทศบาล', steps: [['ดูบัญชีที่มี', 'ตารางนี้: admin 1 + ผู้บันทึกตามเพดาน (ปกติ 3)', 'สถานะ "ใช้งาน"'], ['ผู้บันทึกลืมรหัส', 'ปุ่ม "รีเซ็ตรหัส" → จดรหัสใหม่ → แจ้งผู้บันทึก', 'ผู้บันทึกล็อกอินได้'], ['เพิ่มผู้บันทึก', 'ปุ่ม "เพิ่มผู้บันทึก" → ชื่อล็อกอิน (เช่น npm-rec4) · ชื่อแสดง', 'รหัสผ่านแสดงครั้งเดียว'], ['คนลาออก', '"แก้" → สถานะ "ปิดใช้งาน"', 'ล็อกอินไม่ได้ ข้อมูลที่เคยบันทึกยังอยู่']], tips: 'เพิ่มผู้บันทึกเกินเพดานไม่ได้ ให้ติดต่อเจ้าของโครงการเพื่อเพิ่มเพดาน · เปลี่ยนบทบาทได้เฉพาะเจ้าของโครงการ' },
+  'admin-settings': { title: 'ตั้งค่าเทศบาล', who: 'admin เทศบาล', steps: [['ค่าเริ่มต้น', 'ไม่ต้องทำอะไร รูปเก็บที่ที่เก็บกลางของโครงการ', 'ผู้บันทึกถ่ายรูปได้ทันที'], ['ใช้ Drive ของเทศบาลเอง', 'ติดต่อเจ้าของโครงการเพื่อติดตั้งสคริปต์ในบัญชี Google ของเทศบาล → รับลิงก์ → วางที่นี่ → บันทึก', 'รูปใหม่ลง Drive ของเทศบาล รูปเก่าอยู่ที่เดิม']], tips: 'เปลี่ยนที่เก็บรูปไม่ทำให้รูปเดิมหาย' },
+  'super-muni': { title: 'เทศบาล (ส่วนกลาง)', who: 'เจ้าของโครงการ', steps: [['สร้างเทศบาล', '"สร้างเทศบาล" → รหัส a–z (เช่น npm) · ชื่อ', 'บัญชี admin 1 + ผู้บันทึก 3 → พิมพ์ใบส่งมอบ'], ['เข้าทำงานแทน admin', 'ปุ่ม "จัดการ" ของเทศบาลนั้น', 'เมนูจัดการเทศบาลเปลี่ยนเป็นเทศบาลนั้น'], ['แก้เพดานบัญชี/ชื่อ/สถานะ', '"แก้"', 'มีผลทันที']], tips: 'ปิดใช้งานเทศบาล = ผู้ใช้ของเทศบาลนั้นยังล็อกอินได้แต่ข้อมูลไม่แสดงในภาพรวม (ใช้เมื่อเลิกโครงการ)' },
+  'super-masters': { title: 'ตารางแม่', who: 'เจ้าของโครงการ', steps: [['ประเภทถัง', 'ชื่อ · ลิตรต่อใบ · ราคามาตรฐาน · อายุใช้งาน', 'ทุกเทศบาลเห็นเหมือนกัน'], ['ประเภทรถ', 'ชื่อ · ความจุ (ลิตร)', 'admin เลือกตอนเพิ่มรถ'], ['ประเภทจุด', 'เช่น จุดทิ้งขยะ ตลาด ร้านค้า', 'ผู้บันทึกเลือกตอนเพิ่มจุด'], ['เกณฑ์สีหมุด', '5 ระดับ ช่วงลิตร + สี', 'มีผลทุกหน้าทันที']], tips: 'ลบประเภทที่มีข้อมูลอ้างอิงไม่ได้ ให้ปิดใช้งานแทน (ถังเดิมยังนับตามปกติ)' },
+  'super-settings': { title: 'ค่าตั้งค่าส่วนกลาง', who: 'เจ้าของโครงการ', steps: [['อ่านคำอธิบายของแต่ละค่า', 'ใต้ชื่อค่า', 'เข้าใจผลกระทบก่อนแก้'], ['เลือกหรือกรอก แล้วกด "บันทึก" ของค่านั้น', 'การ์ดแต่ละใบ', 'ข้อความ "บันทึกแล้ว" และ "ค่าปัจจุบัน" เปลี่ยน']], tips: 'ค่าที่มี ⚠ กระทบทุกเทศบาลทันที ระบบถามยืนยันก่อน' },
+  reports: { title: 'รายงานสำหรับผู้บริหาร', who: 'admin เทศบาล', steps: [['เลือกรายงาน', 'ปุ่มในหน้านี้', 'เปิดหน้าต่างใหม่พร้อมปุ่ม "พิมพ์ / บันทึก PDF"'], ['พิมพ์', 'ปุ่มในหน้าต่างรายงาน → เลือกเครื่องพิมพ์หรือ "บันทึกเป็น PDF"', 'เอกสาร A4 พร้อมช่องลงนาม']], tips: 'ตัวเลขในรายงานคำนวณสด ณ เวลาที่กด · ถ้าเบราว์เซอร์กันหน้าต่างใหม่ ให้อนุญาตป๊อปอัปของเว็บนี้' }
+};
+function helpBtn(key) { return `<button type="button" class="infobtn" aria-label="วิธีใช้" title="วิธีใช้ส่วนนี้" onclick="showHelp('${key}')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/></svg></button>`; }
+const helpBody = h => `<div class="muted">สำหรับ: ${esc(h.who)}</div><ol style="padding-left:22px">${h.steps.map(([what, where, expect]) => `<li style="margin:8px 0"><b>${esc(what)}</b><div class="muted">ที่ไหน: ${esc(where)}</div><div class="muted">ค่าที่ต้องได้: ${esc(expect)}</div></li>`).join('')}</ol>${h.tips ? `<div class="banner info">${esc(h.tips)}</div>` : ''}`;
+function showHelp(key) { const h = HELP[key]; if (!h) return; openModal(`<h3 style="margin-top:0">${esc(h.title)}</h3>${helpBody(h)}<div class="row"><a class="btn secondary" href="#help" onclick="closeModal()" style="text-decoration:none">คู่มือทั้งหมด</a><button onclick="closeModal()">ปิด</button></div>`); }
+function pageHelp(view) {
+  const rec = ['map', 'places', 'place-edit', 'queue', 'routes', 'me'], adm = ['admin-start', 'admin-roads', 'admin-fleet', 'admin-routes', 'admin-users', 'admin-settings', 'reports'], sup = ['super-muni', 'super-masters', 'super-settings'];
+  const sec = (title, keys) => `<div class="card"><h3 style="margin-top:0">${title}</h3>${keys.map(k => `<details style="margin:6px 0"><summary><b>${esc(HELP[k].title)}</b></summary>${helpBody(HELP[k])}</details>`).join('')}</div>`;
+  view.innerHTML = `<div class="card"><h3 style="margin-top:0">ช่วยเหลือและคู่มือ</h3><div class="muted">ทุกหน้ามีไอคอน (?) เปิดขั้นตอนของหน้านั้นได้ทันที · หน้านี้รวมทุกเรื่องไว้ที่เดียว · บทบาทของท่าน: <b>${roleLabel(S.me.role)}</b></div>
+    <h4>ภาพรวมระบบใน 1 นาที</h4><ol style="padding-left:22px"><li><b>ผู้บันทึก</b> ลงพื้นที่ → เพิ่มจุด (GPS · ถัง · รูป) บนมือถือ ทำงานได้แม้ไม่มีสัญญาณ</li><li><b>admin เทศบาล</b> ดูแลถนน รถ เส้นทาง บัญชี → ดูแดชบอร์ด → พิมพ์รายงานส่งผู้บริหาร</li><li><b>เจ้าของโครงการ</b> ดูทุกเทศบาล ตั้งค่าส่วนกลาง สร้างเทศบาลใหม่</li></ol>
+    <div class="banner info">ติดปัญหาที่คู่มือไม่ครอบคลุม: admin เทศบาลติดต่อเจ้าของโครงการ · ผู้บันทึกติดต่อ admin ของเทศบาล</div></div>
+    ${sec('สำหรับผู้บันทึก (ใช้บนมือถือ)', rec)}${isAdmin() ? sec('สำหรับ admin เทศบาล', adm) : ''}${isSuper() ? sec('สำหรับเจ้าของโครงการ', sup) : ''}`;
+}
+
+// =====================================================================
+// หน้า: รายงานสำหรับผู้บริหาร (DEC-093) — พิมพ์/บันทึก PDF จากเบราว์เซอร์ · ตัวเลขคำนวณสด
+// =====================================================================
+async function pageReports(view) {
+  if (!S.scopeMuni) return view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลก่อน</div>';
+  const muni = muniOf(S.scopeMuni);
+  const cards = [
+    ['exec', 'สรุปภาพรวมเมือง 1 หน้า', 'จำนวนจุด ใบ ลิตร ถนน · สัดส่วนตามระดับ · 10 ถนนความจุสูงสุด · ประเภทถัง · จุดที่ยังขาดข้อมูล · แผนที่ · ช่องลงนาม', 'ผู้บริหาร'],
+    ['register', 'ทะเบียนจุดวางถังและถัง รายถนน', 'ทุกจุดแยกตามถนน พร้อมถังแต่ละประเภท สภาพ พิกัด จำนวนรูป ผู้บันทึก · ใช้เป็นหลักฐานผลการสำรวจ', 'หัวหน้างาน · ผู้ปฏิบัติ'],
+    ['routes', 'แผนเส้นทางเก็บขน', 'ทุกเส้นทาง: รถ ถนน จุด ลิตร % ภาระรถ ระยะทาง · ลำดับจุดของแต่ละเส้นทาง', 'ผู้บริหาร · คนขับ'],
+    ['assets', 'ทรัพย์สินถัง (ชำรุด/หาย และมูลค่าประมาณการ)', 'จำนวนใบแยกสภาพและปีงบ · มูลค่าซื้อ/คงเหลือประมาณการ · รายการชำรุด/หายเพื่อของบทดแทน', 'ผู้บริหาร · พัสดุ'],
+    ['gaps', 'จุดที่ยังขาดข้อมูล', 'จุดไม่มีพิกัด · ไม่มีรูป · ไม่มีถัง · ถนนที่ยังไม่มีจุด — ใช้มอบหมายงานสำรวจเพิ่ม', 'หัวหน้างาน']
+  ];
+  view.innerHTML = `${scopeSelector()}<div class="card"><h3 style="margin-top:0">รายงานสำหรับผู้บริหาร ${helpBtn('reports')}</h3><div class="muted">เทศบาล ${esc(muni.name)} · ตัวเลขคำนวณสดจากข้อมูล ณ เวลาที่กด · แต่ละรายงานเปิดหน้าต่างใหม่ กด "พิมพ์ / บันทึก PDF"</div></div>
+    <div class="grid2">${cards.map(([k, t, d, who]) => `<div class="card"><h4 style="margin-top:0">${t}</h4><div class="muted">${d}</div><div class="muted" style="margin:4px 0">เหมาะกับ: ${who}</div><button class="small" onclick="printReport('${k}')">เปิดรายงาน</button></div>`).join('')}</div>`;
+}
+const RPT_CSS = `body{font:14px/1.45 system-ui,"Noto Sans Thai",sans-serif;margin:18mm 15mm;color:#000}h1{font-size:20px;margin:0}h2{font-size:16px;margin:16px 0 6px;border-bottom:2px solid #1F3A5F;padding-bottom:2px}table{width:100%;border-collapse:collapse;margin:6px 0;font-size:13px}th,td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eef2f7}td.r,th.r{text-align:right}.meta{color:#333;font-size:13px}.kpis{display:flex;gap:8px;margin:8px 0}.kpi{flex:1;border:1px solid #999;border-radius:6px;padding:6px 8px;text-align:center}.kpi b{font-size:22px;display:block}.sig{display:flex;gap:16px;margin-top:28px}.sig div{flex:1;text-align:center;border-top:1px solid #000;padding-top:4px;font-size:13px}.note{font-size:12px;color:#444}#map{height:95mm;border:1px solid #999;margin:6px 0}@media print{button{display:none}.pb{page-break-before:always}}`;
+function rptHeader(title, muni) { return `<button onclick="window.print()">พิมพ์ / บันทึก PDF</button><h1>${esc(setting('system_name') || 'ระบบข้อมูลจุดวางถังขยะ')}</h1><div class="meta"><b>${esc(title)}</b> · ${esc(muni.name)} (${esc(muni.code)}) · ข้อมูล ณ ${thDate(new Date().toISOString())} · จัดทำโดย ${esc(S.me.display_name)}</div>`; }
+const rptSig = () => `<div class="sig"><div>ผู้จัดทำ / ผู้ปฏิบัติงาน</div><div>หัวหน้างาน / ผู้ตรวจ</div><div>ผู้บริหารรับทราบ</div></div><div class="note" style="margin-top:8px">ตัวเลขทั้งหมดคำนวณจากข้อมูลในระบบ ณ เวลาที่พิมพ์ · ความจุ = จำนวนใบ × ลิตรต่อใบ (นับเฉพาะถังสภาพปกติ) · จำนวนจุดสะท้อนความครอบคลุมการสำรวจ</div>`;
+function rptOpen(html, withMap) {
+  const w = window.open('', '_blank'); if (!w) return toast('เบราว์เซอร์กันหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัป', true);
+  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายงาน</title>${withMap ? '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>' : ''}<style>${RPT_CSS}</style></head><body>${html}</body></html>`); w.document.close(); return w;
+}
+async function printReport(kind) {
+  const mid = S.scopeMuni, muni = muniOf(mid);
+  const places = (await api.list('v_place', { eq: { status: 'active', municipality_id: mid } })).sort((a, b) => String(a.road_name).localeCompare(String(b.road_name), 'th') || String(a.place_code).localeCompare(String(b.place_code), 'th'));
+  const totL = sum(places, 'total_liters'), totB = sum(places, 'total_bins'); const tiers = tiersSorted();
+  if (kind === 'exec') {
+    const roads = (await api.list('v_road_summary', { eq: { municipality_id: mid } })).filter(r => +r.places > 0).sort((a, b) => b.total_liters - a.total_liters);
+    const types = (await api.list('v_bin_type_summary', { eq: { municipality_id: mid } })).sort((a, b) => b.total_liters - a.total_liters);
+    const byTier = tiers.map(t => { const ps = places.filter(p => p.tier_label === t.label); return { t, n: ps.length, L: sum(ps, 'total_liters') }; });
+    const noBins = places.filter(p => +p.total_bins === 0).length, noGps = places.filter(p => p.lat == null).length, noPhoto = places.filter(p => +p.photo_count === 0).length;
+    const html = `${rptHeader('รายงานสรุปภาพรวมจุดวางถังขยะ', muni)}
+      <div class="kpis"><div class="kpi"><b>${fmt(places.length)}</b>จุด</div><div class="kpi"><b>${fmt(totB)}</b>ถัง (ใบ)</div><div class="kpi"><b>${fmt(totL)}</b>ลิตร</div><div class="kpi"><b>${fmt(new Set(places.map(p => p.road_id)).size)}</b>ถนนที่มีจุด</div><div class="kpi"><b>${fmt(places.length ? Math.round(totL / places.length) : 0)}</b>ลิตร/จุด</div></div>
+      <h2>ข้อค้นพบหลัก</h2><ul>${byTier.length ? `<li>จุดระดับความจุสูงสุด "${esc(byTier[byTier.length - 1].t.label)}" มี ${fmt(byTier[byTier.length - 1].n)} จุด (${fmt1(pct(byTier[byTier.length - 1].n, places.length))}% ของจุด) แต่ถือความจุ ${fmt1(pct(byTier[byTier.length - 1].L, totL))}% ของทั้งหมด</li>` : ''}${types[0] ? `<li>ถังประเภท "${esc(types[0].bin_type_name)}" ${fmt(types[0].total_bins)} ใบ ถือความจุ ${fmt1(pct(types[0].total_liters, totL))}%</li>` : ''}${roads[0] ? `<li>ถนนที่มีความจุรวมสูงสุด "${esc(roads[0].road_name)}" ${fmt(roads[0].total_liters)} ลิตร จาก ${fmt(roads[0].places)} จุด</li>` : ''}<li>จุดที่ยังขาดข้อมูล: ไม่มีถัง ${fmt(noBins)} · ไม่มีพิกัด ${fmt(noGps)} · ไม่มีรูป ${fmt(noPhoto)} จุด</li></ul>
+      <h2>สัดส่วนตามระดับความจุของจุด</h2><table><thead><tr><th>ระดับ</th><th class="r">จุด</th><th class="r">% จุด</th><th class="r">ลิตร</th><th class="r">% ความจุ</th></tr></thead><tbody>${byTier.map(x => `<tr><td>${esc(x.t.label)}</td><td class="r">${fmt(x.n)}</td><td class="r">${fmt1(pct(x.n, places.length))}</td><td class="r">${fmt(x.L)}</td><td class="r">${fmt1(pct(x.L, totL))}</td></tr>`).join('')}</tbody></table>
+      <h2>10 ถนนความจุสูงสุด</h2><table><thead><tr><th>#</th><th>ถนน</th><th class="r">จุด</th><th class="r">ใบ</th><th class="r">ลิตร</th><th class="r">% ความจุ</th></tr></thead><tbody>${roads.slice(0, 10).map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.road_name)}</td><td class="r">${fmt(r.places)}</td><td class="r">${fmt(r.total_bins)}</td><td class="r">${fmt(r.total_liters)}</td><td class="r">${fmt1(pct(r.total_liters, totL))}</td></tr>`).join('')}</tbody></table>
+      <h2>ความจุตามประเภทถัง</h2><table><thead><tr><th>ประเภท</th><th class="r">ใบ</th><th class="r">ลิตร</th><th class="r">% ความจุ</th></tr></thead><tbody>${types.map(t => `<tr><td>${esc(t.bin_type_name)}</td><td class="r">${fmt(t.total_bins)}</td><td class="r">${fmt(t.total_liters)}</td><td class="r">${fmt1(pct(t.total_liters, totL))}</td></tr>`).join('')}</tbody></table>
+      <h2 class="pb">แผนที่จุดวางถัง (สีตามระดับความจุ)</h2><div class="note">${tiers.map(t => `<span style="display:inline-block;width:10px;height:10px;background:${t.color};border-radius:50%;margin:0 4px 0 10px"></span>${esc(t.label)}`).join('')}</div><div id="map"></div>${rptSig()}
+      <script>window.__pts=${JSON.stringify(places.filter(p => p.lat != null).map(p => [+p.lat, +p.lng, p.tier_color || '#2E7D32', +p.total_liters]))};window.addEventListener('load',()=>{if(!window.L)return;const m=L.map('map',{zoomControl:false});L.tileLayer('${CONFIG.TILES.url}',{maxZoom:18,attribution:'${CONFIG.TILES.attribution}'}).addTo(m);const g=L.featureGroup().addTo(m);for(const [a,b,c] of window.__pts)L.circleMarker([a,b],{radius:5,color:'#fff',weight:1,fillColor:c,fillOpacity:.9}).addTo(g);if(window.__pts.length)m.fitBounds(g.getBounds().pad(.1));});<\/script>`;
+    return rptOpen(html, true);
+  }
+  if (kind === 'register') {
+    const bins = (await api.list('v_bin', { eq: { municipality_id: mid, status: 'active' } }));
+    const byPlace = {}; for (const b of bins) (byPlace[b.place_id] = byPlace[b.place_id] || []).push(b);
+    let road = null; let rows = '';
+    for (const p of places) { if (p.road_name !== road) { road = p.road_name; const rp = places.filter(x => x.road_name === road); rows += `<tr><th colspan="7">ถนน ${esc(road)} — ${fmt(rp.length)} จุด · ${fmt(sum(rp, 'total_bins'))} ใบ · ${fmt(sum(rp, 'total_liters'))} ลิตร</th></tr>`; }
+      const bl = (byPlace[p.id] || []).map(b => `${esc(b.bin_type_name)} ${b.amount} ใบ${b.condition && b.condition !== 'ปกติ' ? ` (${esc(b.condition)})` : ''}${b.fiscal_year ? ` ปี ${b.fiscal_year}` : ''}`).join('<br>') || '<i>ยังไม่มีถัง</i>';
+      rows += `<tr><td>${esc(p.place_code)}</td><td>${esc(p.name)}${p.soi_name ? `<br><span class="note">${esc(p.soi_name)}</span>` : ''}</td><td>${esc(p.place_type_name || '')}</td><td>${bl}</td><td class="r">${fmt(p.total_liters)}</td><td>${p.lat != null ? `${(+p.lat).toFixed(5)}, ${(+p.lng).toFixed(5)}` : '<i>ไม่มี</i>'}</td><td>${fmt(p.photo_count)} รูป<br><span class="note">${esc(p.created_by_name || '')}</span></td></tr>`; }
+    return rptOpen(`${rptHeader('ทะเบียนจุดวางถังขยะและถัง (รายถนน)', muni)}<div class="meta">รวม ${fmt(places.length)} จุด · ${fmt(totB)} ใบ · ${fmt(totL)} ลิตร · ${fmt(new Set(places.map(p => p.road_id)).size)} ถนน</div>
+      <table><thead><tr><th>รหัสจุด</th><th>ชื่อ/ซอย</th><th>ประเภทจุด</th><th>ถัง</th><th class="r">ลิตร</th><th>พิกัด</th><th>รูป / ผู้บันทึก</th></tr></thead><tbody>${rows}</tbody></table>${rptSig()}`);
+  }
+  if (kind === 'routes') {
+    const routes = (await api.list('v_route_summary', { eq: { municipality_id: mid, status: 'active' }, order: ['route_name'] }));
+    const rrows = await api.list('route', { eq: { municipality_id: mid, status: 'active' } });
+    const stopsAll = await api.list('v_route_stop', { eq: { municipality_id: mid }, order: ['seq'] });
+    const vrp = await api.list('v_route_place', { eq: { municipality_id: mid } });
+    let detail = '';
+    for (const r of routes) { const rr = rrows.find(x => x.id === r.route_id) || {}; let st = stopsAll.filter(x => x.route_id === r.route_id); if (!st.length) st = vrp.filter(x => x.route_id === r.route_id && x.place_id).sort((a, b) => a.road_seq - b.road_seq || String(a.place_code).localeCompare(String(b.place_code), 'th')).map((x, i) => ({ ...x, seq: i + 1 }));
+      detail += `<h2 class="pb">${esc(r.route_name)} · รถ ${esc(r.truck_code)} ${esc(r.plate_no || '')}</h2><div class="meta">${r.route_kind === 'temporary' ? 'ชั่วคราว' : 'ประจำ'} · ${esc(r.schedule_note || '')} · ${fmt(r.roads)} ถนน · ${fmt(r.places)} จุด · ${fmt(r.total_liters)} ลิตร${r.truck_capacity_liters ? ` · ${fmt(r.load_pct)}% ของความจุรถ ${fmt(r.truck_capacity_liters)} ล.` : ''}${rr.path_distance_m ? ` · ระยะทางตามถนน ${fmt(Math.round(rr.path_distance_m / 100) / 10)} กม.` : ''}${stopsAll.some(x => x.route_id === r.route_id) ? ' · ลำดับจุดกำหนดโดย admin' : ' · ลำดับจุดตามถนน (ยังไม่กำหนด)'}</div>
+        <table><thead><tr><th>#</th><th>รหัสจุด</th><th>จุด</th><th>ถนน</th><th class="r">ใบ</th><th class="r">ลิตร</th><th>เก็บแล้ว ✓</th></tr></thead><tbody>${st.map(x => `<tr><td>${x.seq}</td><td>${esc(x.place_code)}</td><td>${esc(x.place_name)}</td><td>${esc(x.road_name)}</td><td class="r">${fmt(x.total_bins)}</td><td class="r">${fmt(x.total_liters)}</td><td></td></tr>`).join('') || '<tr><td colspan="7">ไม่มีจุด</td></tr>'}</tbody></table>`; }
+    return rptOpen(`${rptHeader('แผนเส้นทางเก็บขนมูลฝอย', muni)}<h2>ภาพรวมเส้นทาง</h2><table><thead><tr><th>เส้นทาง</th><th>รถ</th><th class="r">ถนน</th><th class="r">จุด</th><th class="r">ใบ</th><th class="r">ลิตร</th><th class="r">% ความจุรถ</th><th class="r">กม.</th></tr></thead><tbody>${routes.map(r => { const rr = rrows.find(x => x.id === r.route_id) || {}; return `<tr><td>${esc(r.route_name)}</td><td>${esc(r.truck_code)}</td><td class="r">${fmt(r.roads)}</td><td class="r">${fmt(r.places)}</td><td class="r">${fmt(r.total_bins)}</td><td class="r">${fmt(r.total_liters)}</td><td class="r">${r.load_pct == null ? '-' : fmt(r.load_pct)}</td><td class="r">${rr.path_distance_m ? fmt(Math.round(rr.path_distance_m / 100) / 10) : '-'}</td></tr>`; }).join('')}<tr><th>รวม</th><th></th><th class="r">${fmt(sum(routes, 'roads'))}</th><th class="r">${fmt(sum(routes, 'places'))}</th><th class="r">${fmt(sum(routes, 'total_bins'))}</th><th class="r">${fmt(sum(routes, 'total_liters'))}</th><th></th><th class="r">${fmt(Math.round(sum(rrows, 'path_distance_m') / 100) / 10)}</th></tr></tbody></table><div class="note">ถนนที่อยู่ในหลายเส้นทางจะถูกนับซ้ำในยอดรวม · จุดที่ยังไม่มีถนนในเส้นทางใดไม่ปรากฏในรายงานนี้: ${fmt(places.filter(p => !vrp.some(x => x.place_id === p.id)).length)} จุด</div>${detail}${rptSig()}`);
+  }
+  if (kind === 'assets') {
+    const a = await api.list('v_bin_asset', { eq: { municipality_id: mid } });
+    const priced = a.filter(x => x.priced), bad = a.filter(x => x.condition !== 'ปกติ');
+    const byT = {}; for (const x of a) { const t = byT[x.bin_type_name] = byT[x.bin_type_name] || { n: 0, bad: 0, pv: 0, bv: 0, priced: x.priced, uc: x.unit_cost, life: x.useful_life_years }; t.n += +x.amount; if (x.condition !== 'ปกติ') t.bad += +x.amount; if (x.priced) { t.pv += +x.purchase_value; t.bv += +(x.book_value || 0); } }
+    return rptOpen(`${rptHeader('รายงานทรัพย์สินถังขยะ (มูลค่าประมาณการ)', muni)}<div class="kpis"><div class="kpi"><b>${fmt(sum(a, 'amount'))}</b>ใบทั้งหมด</div><div class="kpi"><b>${fmt(sum(bad, 'amount'))}</b>ชำรุด/หาย</div><div class="kpi"><b>${fmt(Math.round(sum(priced, 'purchase_value')))}</b>มูลค่าซื้อประมาณการ (บาท)</div><div class="kpi"><b>${fmt(Math.round(sum(priced.filter(x => x.book_value != null), 'book_value')))}</b>มูลค่าคงเหลือประมาณการ (บาท)</div></div>
+      ${(setting('asset_prices_status') || 'ประมาณการ') !== 'ยืนยันแล้ว' ? '<div class="note">หมายเหตุ: ราคามาตรฐานต่อใบเป็นค่าประมาณการที่ยังไม่ได้ยืนยัน มูลค่าทั้งหมดเป็นตัวเลขเพื่อการบริหาร ไม่ใช่ตัวเลขทางบัญชี</div>' : '<div class="note">มูลค่าเป็นตัวเลขประมาณการเพื่อการบริหาร ไม่ใช่ตัวเลขทางบัญชี</div>'}
+      <h2>ตามประเภทถัง</h2><table><thead><tr><th>ประเภท</th><th class="r">ใบ</th><th class="r">ชำรุด/หาย</th><th class="r">ราคา/ใบ</th><th class="r">อายุ (ปี)</th><th class="r">มูลค่าซื้อ</th><th class="r">คงเหลือ</th></tr></thead><tbody>${Object.entries(byT).map(([k, t]) => `<tr><td>${esc(k)}</td><td class="r">${fmt(t.n)}</td><td class="r">${fmt(t.bad)}</td><td class="r">${t.priced ? fmt(t.uc) : 'ยังไม่กำหนด'}</td><td class="r">${t.life > 0 ? fmt(t.life) : '-'}</td><td class="r">${t.priced ? fmt(Math.round(t.pv)) : '-'}</td><td class="r">${t.priced ? fmt(Math.round(t.bv)) : '-'}</td></tr>`).join('')}</tbody></table>
+      <h2>รายการชำรุด/หาย (เพื่อซ่อมหรือของบทดแทน)</h2><table><thead><tr><th>รหัสจุด</th><th>จุด</th><th>ถนน</th><th>ประเภท</th><th class="r">ใบ</th><th>สภาพ</th><th class="r">ปีงบ</th><th class="r">มูลค่าซื้อ</th></tr></thead><tbody>${bad.map(x => `<tr><td>${esc(x.place_code)}</td><td>${esc(x.place_name)}</td><td>${esc(x.road_name)}</td><td>${esc(x.bin_type_name)}</td><td class="r">${fmt(x.amount)}</td><td>${esc(x.condition)}</td><td class="r">${x.fiscal_year || '-'}</td><td class="r">${x.priced ? fmt(Math.round(x.purchase_value)) : '-'}</td></tr>`).join('') || '<tr><td colspan="8">ไม่มีถังชำรุด/หาย</td></tr>'}</tbody></table>${rptSig()}`);
+  }
+  if (kind === 'gaps') {
+    const roadsAll = await api.list('road', { eq: { municipality_id: mid, status: 'active' }, order: ['name'] });
+    const used = new Set(places.map(p => p.road_id));
+    const list = (title, arr, cols) => `<h2>${title} (${fmt(arr.length)})</h2>${arr.length ? `<table><thead><tr>${cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${arr.map(x => `<tr>${cols.map(c => `<td>${c[1](x)}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="note">ไม่มี</div>'}`;
+    const pc = [['รหัสจุด', x => esc(x.place_code)], ['ชื่อ', x => esc(x.name)], ['ถนน', x => esc(x.road_name)], ['ผู้บันทึก', x => esc(x.created_by_name || '')], ['มอบหมายให้', () => ''], ['เสร็จ ✓', () => '']];
+    return rptOpen(`${rptHeader('รายการจุดที่ยังขาดข้อมูล (สำหรับมอบหมายงานสำรวจ)', muni)}${list('จุดที่ยังไม่มีถัง', places.filter(p => +p.total_bins === 0), pc)}${list('จุดที่ยังไม่มีพิกัด', places.filter(p => p.lat == null), pc)}${list('จุดที่ยังไม่มีรูป', places.filter(p => +p.photo_count === 0), pc)}${list('ถนนที่ยังไม่มีจุดวางถัง', roadsAll.filter(r => !used.has(r.id)), [['ถนน', x => esc(x.name)], ['ประเภท', x => esc(x.road_type || '')], ['มอบหมายให้', () => ''], ['สำรวจแล้ว ✓', () => '']])}${rptSig()}`);
+  }
 }
 
 // =====================================================================
