@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ระบบข้อมูลจุดวางถังขยะ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">   <!-- UX-B3 ฟอนต์ไทยเดียวกันทุกเครื่อง · display=swap: โหลดไม่ได้ก็ใช้ฟอนต์เครื่อง -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -34,7 +35,7 @@ const CONFIG = {
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --ink:#1f2430; --muted:#6b7280; --line:#e5e7eb; --brand:#1b6e3a; --brand-ink:#fff; --danger:#b91c1c; --warn:#b45309; }
   * { box-sizing: border-box; }
-  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", sans-serif; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font: 16px/1.6 "Noto Sans Thai", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }   /* UX-B3 · line-height 1.6 เผื่อสระบน/ล่างของไทย */
   a { color: var(--brand); }
   header { position: sticky; top:0; z-index: 50; background: var(--brand); color: var(--brand-ink); padding: 6px 16px; min-height:56px; display:flex; align-items:center; gap:12px; }
   header h1 { font-size: 17px; margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -49,7 +50,7 @@ const CONFIG = {
   .kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   .kpi { background:#fff; border:1px solid var(--line); border-radius:12px; padding: 12px; }
   .kpi .v { font-size: 26px; font-weight: 700; }
-  .kpi .l { color: var(--muted); font-size: 13px; }
+  .kpi .l { color: var(--muted); font-size: 14px; }   /* UX-B1 */
   label { display:block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
   input, select, textarea { width:100%; font: inherit; padding: 10px; border:1px solid #cbd5e1; border-radius: 8px; background:#fff; }
   input[type=checkbox] { width:auto; }
@@ -61,18 +62,23 @@ const CONFIG = {
   table { width:100%; border-collapse: collapse; font-size: 14px; }
   th, td { text-align:left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; }
+  th.sortable { cursor:pointer; user-select:none; white-space:nowrap; padding-top:12px; padding-bottom:12px; min-width:44px; }   /* UX-B2 กดหัวคอลัมน์เพื่อเรียง · สูง ≥44px */
+  th.sortable::after { content:' ↕'; color:#9ca3af; font-size:13px; }
+  th.sortable[aria-sort=ascending]::after { content:' ▲'; color:var(--brand); }
+  th.sortable[aria-sort=descending]::after { content:' ▼'; color:var(--brand); }
+  th.sortable:focus-visible { outline:3px solid #f59e0b; outline-offset:-3px; }
   .muted { color: var(--muted); font-size: 14px; }
-  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background:#eef2f7; color: var(--ink); }   /* UX-A8 ความคมชัด */
+  .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 14px; background:#eef2f7; color: var(--ink); }   /* UX-A8 ความคมชัด */
   .dot { display:inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; margin-right: 6px; border: 1px solid rgba(0,0,0,.2); }
   #map { height: calc(100vh - 150px); min-height: 360px; border-radius: 12px; position: relative; z-index: 0; isolation: isolate; }  /* กันชั้นของ Leaflet ทับแถบเมนู/ส่วนหัว */
   .toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translateX(-50%); background:#1f2430; color:#fff; padding: 10px 16px; border-radius: 10px; z-index: 100; max-width: 90vw; }
   .toast.err { background:#fff; color:#1f2430; border:2px solid var(--danger); border-left-width:8px; text-align:left; width:min(92vw,560px); max-width:92vw; box-sizing:border-box; box-shadow:0 8px 28px rgba(0,0,0,.28); padding:12px 52px 12px 14px; }
   .toast.err .t { font-weight:700; color:var(--danger); font-size:16px; }
   .toast.err .h { margin-top:4px; font-size:15px; line-height:1.5; }
-  .toast.err .r { margin-top:4px; font-size:12px; color:#777; word-break:break-all; }
+  .toast.err .r { margin-top:4px; font-size:14px; color:#777; word-break:break-all; }
   .toast.err .x { position:absolute; top:2px; right:2px; background:none; border:0; color:#666; font-size:22px; min-width:44px; min-height:44px; cursor:pointer; }
   input.invalid, select.invalid, textarea.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px rgba(220,38,38,.18); }
-  .photo-missing { width:100%; aspect-ratio:4/3; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#f3f4f6; border:1px dashed #bbb; border-radius:8px; color:#555; font-size:13px; padding:8px; box-sizing:border-box; }
+  .photo-missing { width:100%; aspect-ratio:4/3; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#f3f4f6; border:1px dashed #bbb; border-radius:8px; color:#555; font-size:14px; padding:8px; box-sizing:border-box; }
   .fab { position: fixed; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 60; border-radius: 999px; padding: 14px 18px; font-size: 16px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
   .photos { display:flex; gap:8px; flex-wrap:wrap; }
   .photos img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
@@ -83,7 +89,7 @@ const CONFIG = {
   .modal-bg { position: fixed; inset:0; background: rgba(0,0,0,.4); z-index: 90; display:flex; align-items:flex-end; justify-content:center; }
   .modal { background:#fff; width: 100%; max-width: 560px; max-height: 92vh; overflow:auto; border-radius: 16px 16px 0 0; padding: 16px; }
   @media (min-width: 640px) { .modal-bg { align-items:center; } .modal { border-radius: 16px; } }
-  .legend { display:flex; gap:10px; flex-wrap:wrap; font-size: 13px; }
+  .legend { display:flex; gap:10px; flex-wrap:wrap; font-size: 14px; }
   .hidden { display:none !important; }
   .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
   /* ชุด A ตามผลตรวจ docs/07 (UX-A#) */
@@ -94,7 +100,7 @@ const CONFIG = {
   .leaflet-touch .leaflet-bar a, .leaflet-bar a { width:44px; height:44px; line-height:44px; font-size:22px; }                   /* A1 ปุ่มซูมแผนที่ */
   .leaflet-container .leaflet-control-attribution { color:#374151; } .leaflet-container .leaflet-control-attribution a { color:#1d4ed8; }   /* A8 */
   table, .kpi .v, .hbar-r, .hbar-r2, .finding .fv { font-variant-numeric: tabular-nums; }                                        /* A12 */
-  label.mini { font-size:13px; margin:0 0 2px; }
+  label.mini { font-size:14px; margin:0 0 2px; }
   .seqlbl { background:transparent; border:0; box-shadow:none; color:#fff; font-weight:700; font-size:11px; padding:0; }   /* DEC-091 เลขลำดับบนหมุด */
   .seqlbl::before { display:none; }                                                                                  /* A3 ป้ายเล็กในแถวถัง */
   .binrow > div { display:flex; flex-direction:column; }
@@ -117,7 +123,7 @@ const CONFIG = {
   .hbar-track { flex:1; height:16px; background:#f1f5f9; border-radius:4px; overflow:hidden; }
   .hbar-track.thin { height:10px; margin:3px 0; }
   .hbar-fill { height:100%; border-radius:4px; }
-  .hbar-r { flex: 0 0 auto; text-align:right; white-space:nowrap; font-size:13px; }
+  .hbar-r { flex: 0 0 auto; text-align:right; white-space:nowrap; font-size:14px; }
   .pick { position:relative; border:1px solid #cbd5e1; border-radius:8px; background:#fff; min-width:160px; }
   .pick summary { padding: 11px 12px; min-height:44px; cursor:pointer; list-style:none; font-size:14px; }
   .pick summary::-webkit-details-marker { display:none; }
@@ -503,8 +509,8 @@ async function render() {
     if (h.startsWith('#help')) return pageHelp(view);
     return pageMap(view);
   } catch (e) { const f = friendlyError(e, 'เปิดหน้านี้ไม่สำเร็จ'); console.error(e); if (f.kind === 'session' && S.me && api.name === 'supabase') return sessionLost();
-    view.innerHTML = `<div class="card"><b style="color:var(--danger)">${esc(f.title)}</b>${f.hint ? `<div style="margin-top:6px">${esc(f.hint)}</div>` : ''}${f.raw && f.raw !== f.title ? `<div class="muted" style="font-size:12px;margin-top:6px;word-break:break-all">${esc(f.raw)}</div>` : ''}<div class="row" style="margin-top:10px"><button class="secondary" onclick="render()">ลองใหม่</button><button class="secondary" onclick="S.cache.loaded=false;location.reload()">รีเฟรชทั้งหน้า</button></div></div>`; }
-  finally { setTimeout(() => bindLabels(view), 0); }
+    view.innerHTML = `<div class="card"><b style="color:var(--danger)">${esc(f.title)}</b>${f.hint ? `<div style="margin-top:6px">${esc(f.hint)}</div>` : ''}${f.raw && f.raw !== f.title ? `<div class="muted" style="margin-top:6px;word-break:break-all">${esc(f.raw)}</div>` : ''}<div class="row" style="margin-top:10px"><button class="secondary" onclick="render()">ลองใหม่</button><button class="secondary" onclick="S.cache.loaded=false;location.reload()">รีเฟรชทั้งหน้า</button></div></div>`; }
+  finally { setTimeout(() => { bindLabels(view); makeSortable(view); }, 0); }
 }
 const roleLabel = r => ({ super_admin: 'super admin', admin: 'admin เทศบาล', recorder: 'ผู้บันทึก' }[r] || r);
 
@@ -878,7 +884,7 @@ async function pageDashOverview(view) {
   const noBins = places.filter(p => +p.total_bins === 0).length;
   const kg = parseFloat(setting('kg_per_liter'));
   const updated = msum.map(m => m.data_updated_at).filter(Boolean).sort().pop();
-  const card = (v, l, sub) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}${sub ? `<br><span style="font-size:12px">${sub}</span>` : ''}</div></div>`;
+  const card = (v, l, sub) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}${sub ? `<br><span>${sub}</span>` : ''}</div></div>`;
   const tierShare = byTier.map(x => ({ label: x.t.label, p: pct(x.n, places.length), c: pct(x.liters, totL) }));
   const heavyTiers = tierShare.filter(x => x.c > x.p + 5), lightTiers = tierShare.filter(x => x.p > x.c + 5);
   const top10L = sum(roadsWith.slice(0, 10), 'total_liters');
@@ -1009,7 +1015,7 @@ async function pageDashAssets(view) {
     const binsBy = c => sum(rows.filter(a => a.condition === c), 'amount');
     const purchase = sum(priced, 'purchase_value'), book = sum(priced.filter(a => a.book_value != null), 'book_value'), bookable = priced.filter(a => a.book_value != null);
     const noYear = priced.filter(a => a.valuation_status === 'ไม่ทราบปีซื้อ');
-    const card = (v, l, s) => `<div class="kpi"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}${s ? `<br><span style="font-size:12px">${s}</span>` : ''}</div></div>`;
+    const card = (v, l, s) => `<div class="kpi"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}${s ? `<br><span>${s}</span>` : ''}</div></div>`;
     // ตามปีงบ (แยกสภาพ)
     const fys = [...new Set(rows.map(a => a.fiscal_year == null ? 'ไม่ทราบปี' : String(a.fiscal_year)))].sort((a, b) => (a === 'ไม่ทราบปี' ? 1 : b === 'ไม่ทราบปี' ? -1 : a.localeCompare(b)));
     const fyAgg = {}; for (const a of rows) { const k = a.fiscal_year == null ? 'ไม่ทราบปี' : String(a.fiscal_year); fyAgg[k] = fyAgg[k] || { 'ปกติ': 0, 'ชำรุด': 0, 'หาย': 0, value: 0 }; fyAgg[k][a.condition] += +a.amount; fyAgg[k].value += a.priced ? +a.purchase_value : 0; }
@@ -1107,7 +1113,7 @@ function printDriverReport(routeId) {
   let seq = 0, lastRoad = null;
   const rows = stops.map(s => { if (r.custom_order) seq = s.seq; else { if (s.road_name !== lastRoad) { lastRoad = s.road_name; seq = 0; } seq++; } return `<tr><td>${esc(s.road_name)}</td><td>${seq}</td><td>${esc(s.place_code)}</td><td>${esc(s.place_name)}</td><td style="text-align:right">${fmt(s.total_bins)}</td><td style="text-align:right">${fmt(s.total_liters)}</td><td></td></tr>`; }).join('');
   const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายงานเส้นทาง ${esc(r.route_name)}</title>
-    <style>body{font:14px/1.4 system-ui,"Noto Sans Thai",sans-serif;margin:20px;color:#000}h1{font-size:18px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eee}.meta{color:#333}@media print{button{display:none}}</style></head><body>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;700&display=swap');body{font:14px/1.5 "Noto Sans Thai",system-ui,sans-serif;margin:20px;color:#000}h1{font-size:18px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eee}.meta{color:#333}@media print{button{display:none}}</style></head><body>
     <button onclick="window.print()">พิมพ์ / บันทึก PDF</button>
     <h1>${esc(setting('system_name') || 'ระบบข้อมูลจุดวางถังขยะ')} — รายงานเส้นทางเดินรถ</h1>
     <div class="meta">${esc(muni.name || '')} · เส้นทาง <b>${esc(r.route_name)}</b> · รถ <b>${esc(r.truck_code)}</b> ${esc(r.plate_no || '')} · ${kind}${r.schedule_note ? ' · ' + esc(r.schedule_note) : ''}</div>
@@ -1123,20 +1129,43 @@ function printDriverReport(routeId) {
 // =====================================================================
 S._crud = S._crud || {};
 function crudState(table, patch) { Object.assign(S._crud[table], patch); render(); }
+// UX-B2 ตารางเรียงได้ · ตารางของ crudSection เรียงจากข้อมูลทั้งชุดก่อนแบ่งหน้า (crudSort) · ตารางอื่นเรียงแถวในหน้า (makeSortable)
+const sortVal = v => { if (v == null) return ''; const t = String(v).trim(); const num = Number(t.replace(/[,\s%]/g, '')); return t !== '' && !isNaN(num) ? num : t; };
+const sortCmp = (a, b, dir) => { const x = sortVal(a), y = sortVal(b); let r; if (typeof x === 'number' && typeof y === 'number') r = x - y; else if (x === '' || y === '') r = x === '' ? 1 : -1; else r = String(x).localeCompare(String(y), 'th', { numeric: true }); return dir === 'desc' ? -r : r; };
+function crudSort(table, key) { const st = S._crud[table]; const dir = st.sort && st.sort.key === key && st.sort.dir === 'asc' ? 'desc' : 'asc'; crudState(table, { sort: { key, dir }, page: 0 }); }
+function makeSortable(root) {
+  for (const table of root.querySelectorAll('table')) {
+    if (table.dataset.sort || !table.tHead || !table.tBodies[0] || table.tBodies[0].rows.length < 2) continue;
+    table.dataset.sort = 'dom';
+    for (const th of table.tHead.rows[0].cells) {
+      if (!th.textContent.trim() || th.querySelector('button,input')) continue;
+      th.classList.add('sortable'); th.setAttribute('role', 'button'); th.tabIndex = 0; th.setAttribute('aria-sort', 'none'); th.title = 'กดเพื่อเรียงตามคอลัมน์นี้';
+      th.onclick = () => sortTableDom(table, th); th.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortTableDom(table, th); } };
+    }
+  }
+}
+function sortTableDom(table, th) {
+  const dir = th.getAttribute('aria-sort') === 'ascending' ? 'desc' : 'asc'; const idx = th.cellIndex;
+  for (const c of th.parentNode.cells) c.setAttribute('aria-sort', c === th ? (dir === 'asc' ? 'ascending' : 'descending') : 'none');
+  const body = table.tBodies[0]; const rows = [...body.rows].filter(r => !(r.cells.length === 1 && r.cells[0].colSpan > 1));
+  const key = r => { const c = r.cells[idx]; return c ? (c.dataset.sortValue ?? c.textContent) : ''; };
+  rows.sort((a, b) => sortCmp(key(a), key(b), dir)).forEach(r => body.appendChild(r));
+}
 async function crudSection(spec) {
   const rows = await api.list(spec.table, { eq: spec.eq || {}, order: spec.order || [spec.cols[0].key] });
   spec._rows = rows; const id = 'sec_' + spec.table;
   const st = S._crud[spec.table] = S._crud[spec.table] || { page: 0, size: 20, q: '' };
   const keys = spec.searchKeys || spec.cols.filter(c => !c.type || c.type === 'textarea').map(c => c.key);
   const q = (st.q || '').trim().toLowerCase();
-  const filtered = q ? rows.filter(r => keys.some(k => String(r[k] ?? '').toLowerCase().includes(q))) : rows;
+  let filtered = q ? rows.filter(r => keys.some(k => String(r[k] ?? '').toLowerCase().includes(q))) : rows;
+  if (st.sort) { const c = spec.cols.find(x => x.key === st.sort.key); const lab = c && c.type === 'select' ? (r => (c.options().find(o => o.value === r[c.key]) || {}).label || '') : (r => r[st.sort.key]); filtered = [...filtered].sort((a, b) => sortCmp(lab(a), lab(b), st.sort.dir)); }
   const pages = Math.max(1, Math.ceil(filtered.length / st.size)); st.page = Math.min(st.page, pages - 1);
   const slice = filtered.slice(st.page * st.size, (st.page + 1) * st.size);
   const cell = (r, c) => c.type === 'select' ? esc((c.options().find(o => o.value === r[c.key]) || {}).label || '') : c.type === 'status' ? (r[c.key] === 'active' ? '<span class="pill">ใช้งาน</span>' : '<span class="pill" style="background:#fee2e2">ปิด</span>') : c.type === 'color' ? `<i class="dot" style="background:${esc(r[c.key])}"></i>${esc(r[c.key])}` : esc(r[c.key] ?? '');
   return `<div class="card" id="${id}"><div class="row" style="justify-content:space-between"><h4 style="margin:0">${spec.title} (${fmt(rows.length)})${spec.help ? ' ' + helpBtn(spec.help) : ''}</h4><div class="row">${spec.extraBtn || ''}${spec.noAdd ? '' : `<button class="small" onclick="crudForm('${spec.table}')">＋ เพิ่ม</button>`}</div></div>
     ${spec.intro ? `<div class="muted" style="margin:4px 0 8px">${spec.intro}</div>` : ''}
     ${rows.length > 10 ? `<div class="row" style="margin:6px 0"><input type="search" aria-label="ค้นหาใน${esc(spec.title)}" placeholder="ค้นหา…" value="${esc(st.q || '')}" style="flex:1;min-width:160px" onchange="crudState('${spec.table}',{q:this.value,page:0})"><label class="muted" style="margin:0">แสดงหน้าละ <select style="width:auto;display:inline-block" onchange="crudState('${spec.table}',{size:+this.value,page:0})"><option ${st.size === 20 ? 'selected' : ''}>20</option><option ${st.size === 50 ? 'selected' : ''}>50</option></select></label></div>` : ''}
-    <div style="overflow:auto"><table><thead><tr>${spec.cols.filter(c => !c.hide).map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead><tbody>${slice.map(r => `<tr>${spec.cols.filter(c => !c.hide).map(c => `<td>${cell(r, c)}</td>`).join('')}<td style="white-space:nowrap"><button class="small secondary" onclick="crudForm('${spec.table}','${r.id || r.key}')">แก้</button>${spec.rowBtns ? spec.rowBtns(r) : ''}</td></tr>`).join('') || `<tr><td colspan="${spec.cols.length + 1}" class="muted">${q ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีข้อมูล'}</td></tr>`}</tbody></table></div>
+    <div style="overflow:auto"><table data-sort="data"><thead><tr>${spec.cols.filter(c => !c.hide).map(c => `<th class="sortable" role="button" tabindex="0" title="กดเพื่อเรียงตามคอลัมน์นี้" aria-sort="${st.sort && st.sort.key === c.key ? (st.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}" onclick="crudSort('${spec.table}','${c.key}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();crudSort('${spec.table}','${c.key}')}">${c.label}</th>`).join('')}<th></th></tr></thead><tbody>${slice.map(r => `<tr>${spec.cols.filter(c => !c.hide).map(c => `<td>${cell(r, c)}</td>`).join('')}<td style="white-space:nowrap"><button class="small secondary" onclick="crudForm('${spec.table}','${r.id || r.key}')">แก้</button>${spec.rowBtns ? spec.rowBtns(r) : ''}</td></tr>`).join('') || `<tr><td colspan="${spec.cols.length + 1}" class="muted">${q ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีข้อมูล'}</td></tr>`}</tbody></table></div>
     ${filtered.length > st.size ? `<div class="row" style="justify-content:center;margin-top:8px"><button class="small secondary" ${st.page === 0 ? 'disabled' : ''} onclick="crudState('${spec.table}',{page:${st.page - 1}})">‹ ก่อนหน้า</button><span class="muted">หน้า ${st.page + 1}/${pages} · ${fmt(filtered.length)} รายการ</span><button class="small secondary" ${st.page >= pages - 1 ? 'disabled' : ''} onclick="crudState('${spec.table}',{page:${st.page + 1}})">ถัดไป ›</button></div>` : ''}</div>`;
 }
 const SPECS = {};
@@ -1326,7 +1355,7 @@ function showCredentials(accs, ctx = {}) {
 }
 function printCredentials() {
   const { accs, ctx } = S._lastCreds || { accs: [] }; const sys = setting('system_name') || 'ระบบข้อมูลจุดวางถังขยะ';
-  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ใบส่งมอบบัญชี</title><style>body{font:15px/1.5 system-ui,"Noto Sans Thai",sans-serif;margin:24px;color:#000}h1{font-size:20px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #999;padding:6px 8px;text-align:left}th{background:#eee}.mono{font-family:Consolas,monospace;font-size:16px}ol{padding-left:22px}@media print{button{display:none}}</style></head><body>
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ใบส่งมอบบัญชี</title><style>@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;700&display=swap');body{font:15px/1.6 "Noto Sans Thai",system-ui,sans-serif;margin:24px;color:#000}h1{font-size:20px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #999;padding:6px 8px;text-align:left}th{background:#eee}.mono{font-family:Consolas,monospace;font-size:16px}ol{padding-left:22px}@media print{button{display:none}}</style></head><body>
     <button onclick="window.print()">พิมพ์ / บันทึก PDF</button><h1>${esc(sys)} — ใบส่งมอบบัญชีผู้ใช้</h1><div>${ctx.municipality ? `เทศบาล <b>${esc(ctx.municipality)}</b> (${esc(ctx.code)}) · ` : ''}ออกเมื่อ ${thDate(new Date().toISOString())} · เว็บ: ${esc(location.origin + location.pathname)}</div>
     <table><thead><tr><th>บทบาท</th><th>ชื่อล็อกอิน</th><th>รหัสผ่านตั้งต้น</th><th>มอบให้ (ชื่อ-สกุล)</th><th>ลงชื่อรับ</th></tr></thead><tbody>${accs.map(a => `<tr><td>${roleLabel(a.role || '')}</td><td class="mono">${esc(a.username)}</td><td class="mono">${esc(a.password)}</td><td></td><td></td></tr>`).join('')}</tbody></table>
     <h3>วิธีเริ่มใช้งาน</h3><ol><li>เปิดเว็บด้านบนบนโทรศัพท์หรือคอมพิวเตอร์ → ล็อกอินด้วยชื่อและรหัสผ่านในตาราง</li><li>ไปที่เมนู "บัญชี" มุมขวาบน → เปลี่ยนรหัสผ่านเป็นของตนเอง (แนะนำ)</li><li>admin: เมนู "จัดการเทศบาล" → แท็บ "เริ่มต้นใช้งาน" ทำตามลำดับ 1–8</li><li>ผู้บันทึก: เมนู "จุด" → ปุ่ม "เพิ่มจุด" → กด "ใช้ GPS" → ใส่ถัง → ถ่ายรูป → บันทึก</li><li>ลืมรหัสผ่าน: แจ้ง admin ของเทศบาลให้กด "รีเซ็ตรหัส" (ระบบไม่มีการส่งอีเมล)</li><li>ติดปัญหา: กดไอคอน (?) ในแต่ละหน้า หรือเมนู "ช่วยเหลือ"</li></ol>
@@ -1370,7 +1399,7 @@ function superSettings() {
     if (m.type === 'tags') return `<input id="st_${r.key}" value="${esc(r.value ?? '')}"><div class="legend" style="margin-top:6px">${String(r.value || '').split(',').map(x => x.trim()).filter(Boolean).map(x => `<span class="pill">${esc(x)}</span>`).join('')}</div>`;
     return `<input id="st_${r.key}" value="${esc(r.value ?? '')}">`; };
   return `<div class="card"><h4 style="margin-top:0">ค่าตั้งค่าส่วนกลาง ${helpBtn('super-settings')}</h4><div class="muted">แต่ละค่ามีคำอธิบายผลกระทบ · กด "บันทึก" ทีละค่า · ค่าที่มีเครื่องหมาย ⚠ กระทบทุกเทศบาลทันที</div></div>
-    ${rows.map(r => { const m = SETTINGS_META[r.key] || { label: r.key, effect: r.description || '' }; return `<div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">${m.danger ? '⚠ ' : ''}${esc(m.label)}</h4><span class="muted mono" style="font-size:12px">${esc(r.key)}</span></div><div class="muted" style="margin:4px 0 8px">${esc(m.effect)}</div>${ctrl(r)}<div class="row" style="margin-top:8px"><button class="small" onclick="saveSetting('${r.key}')">บันทึก</button><span class="muted">ค่าปัจจุบัน: ${esc(r.value || '(ว่าง)')}</span></div></div>`; }).join('')}`;
+    ${rows.map(r => { const m = SETTINGS_META[r.key] || { label: r.key, effect: r.description || '' }; return `<div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">${m.danger ? '⚠ ' : ''}${esc(m.label)}</h4><span class="muted mono">${esc(r.key)}</span></div><div class="muted" style="margin:4px 0 8px">${esc(m.effect)}</div>${ctrl(r)}<div class="row" style="margin-top:8px"><button class="small" onclick="saveSetting('${r.key}')">บันทึก</button><span class="muted">ค่าปัจจุบัน: ${esc(r.value || '(ว่าง)')}</span></div></div>`; }).join('')}`;
 }
 async function saveSetting(key) {
   const m = SETTINGS_META[key] || { type: 'text' };
@@ -1385,7 +1414,7 @@ async function saveSetting(key) {
 // DEC-095 สคริปต์รับรูปสำหรับเทศบาล: เติมค่าสาธารณะจาก CONFIG ให้เสร็จ เทศบาลแค่วางแล้ว deploy
 const PHOTO_SCRIPT_TEMPLATE = "/**\n * UBWast — สคริปต์รับรูป \"ฉบับย่อ\" สำหรับเทศบาลที่ต้องการเก็บรูปใน Google Drive ของตนเอง (DEC-080 วิธี ข · DEC-095)\n * ----------------------------------------------------------------------\n * วิธีใช้ (เทศบาลทำเอง ไม่ต้องตั้งค่าใด ๆ เพิ่ม):\n *   1. เข้า script.google.com ด้วยบัญชี Google ของเทศบาล → โครงการใหม่ (New project)\n *   2. ลบโค้ดเดิมในไฟล์ รหัส.gs (Code.gs) ให้ว่าง แล้ววางไฟล์นี้ทั้งหมด → บันทึก (Save)\n *   3. การทำให้ใช้งานได้ (Deploy) → การทำให้ใช้งานได้ใหม่ (New deployment) → ประเภท เว็บแอป (Web app)\n *      · ดำเนินการในฐานะ ฉัน (Execute as: Me) · ผู้มีสิทธิ์เข้าถึง ทุกคน (Who has access: Anyone) → ทำให้ใช้งานได้ (Deploy) → อนุญาต (Authorize)\n *   4. คัดลอก URL เว็บแอป (ลงท้าย /exec) ส่งให้ admin เทศบาล หรือเจ้าของโครงการ ไปใส่ในหน้า \"ตั้งค่าเทศบาล\"\n *\n * ค่า 2 ค่าด้านล่างเป็นค่าสาธารณะของโครงการ (เหมือนกันทุกเทศบาล · เจ้าของโครงการเติมให้แล้ว · ไม่ใช่ความลับ)\n * ไม่มีกุญแจลับใด ๆ ในสคริปต์นี้ · รับเฉพาะรูปจากผู้ที่ล็อกอินระบบ UBWast จริงเท่านั้น\n * รูปจะอยู่ในโฟลเดอร์ \"UBWast-photos/<รหัสเทศบาล>\" ใน Drive ของบัญชีที่ deploy (สร้างให้อัตโนมัติ)\n * ถ้าต้องการใช้โฟลเดอร์ที่สร้างเองให้ใส่รหัสโฟลเดอร์ใน PHOTO_FOLDER_ID (ไม่บังคับ)\n */\nvar SUPABASE_URL = '__SUPABASE_URL__';              // ที่อยู่ฐานข้อมูลของโครงการ\nvar SUPABASE_PUBLISHABLE_KEY = '__SUPABASE_KEY__';  // กุญแจสาธารณะ (sb_publishable_…) ค่าเดียวกับในหน้าเว็บ\nvar PHOTO_FOLDER_ID = '';                           // ไม่บังคับ: รหัสโฟลเดอร์ Drive (ตัวอักษรท้ายลิงก์โฟลเดอร์) ว่าง = สร้าง \"UBWast-photos\" ให้เอง\n\nvar VERSION = '0.2.0';\n// อ่านค่า: ใช้ค่าคงที่ด้านบนก่อน ถ้าว่างค่อยอ่านจาก Script properties (รองรับวิธีเดิม)\nfunction cfg_(key) { var c = { SUPABASE_URL: SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY: SUPABASE_PUBLISHABLE_KEY, PHOTO_FOLDER_ID: PHOTO_FOLDER_ID }[key]; if (c && !/^__/.test(c)) return c; return PropertiesService.getScriptProperties().getProperty(key) || ''; }\n\n\nfunction doGet() { return json_({ ok: true, service: 'ubwast-photo-upload', version: VERSION }); }\n\nfunction doPost(e) {\n  var req;\n  try { req = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'คำขอไม่ใช่ JSON' }); }\n  try {\n    if (req.action !== 'upload_photo') return json_({ ok: false, error: 'สคริปต์นี้รับเฉพาะ upload_photo' });\n    verifyLogin_(req.token);\n    if (!req.data) throw new Error('ไม่มีข้อมูลรูป');\n    var root = folderByProp_('PHOTO_FOLDER_ID', 'UBWast-photos');\n    var sub = subFolder_(root, String(req.municipality_code || 'misc'));\n    var name = req.filename || (String(req.place_code || 'photo') + '_' + Utilities.formatDate(new Date(), 'Asia/Bangkok', 'yyyyMMdd_HHmmss') + '.jpg');\n    var blob = Utilities.newBlob(Utilities.base64Decode(req.data), req.mime || 'image/jpeg', name);\n    var file = sub.createFile(blob);\n    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);\n    return json_({ ok: true, file_id: file.getId(),\n                   url: 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w1000',\n                   view_url: 'https://drive.google.com/file/d/' + file.getId() + '/view',\n                   size: blob.getBytes().length });\n  } catch (err) {\n    return json_({ ok: false, error: String(err && err.message || err) });\n  }\n}\n\nfunction verifyLogin_(token) {\n  if (!token) throw new Error('ไม่ได้ล็อกอิน');\n  if (!cfg_('SUPABASE_URL') || !cfg_('SUPABASE_PUBLISHABLE_KEY')) throw new Error('สคริปต์ยังไม่มีค่า SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY (ขอสคริปต์ที่เติมค่าแล้วจากเจ้าของโครงการ)');\n  var res = UrlFetchApp.fetch(cfg_('SUPABASE_URL') + '/auth/v1/user', {\n    method: 'get', muteHttpExceptions: true,\n    headers: { apikey: cfg_('SUPABASE_PUBLISHABLE_KEY'), Authorization: 'Bearer ' + token }\n  });\n  if (res.getResponseCode() !== 200) throw new Error('ตัวตนไม่ถูกต้องหรือหมดอายุ กรุณาล็อกอินใหม่');\n}\nfunction folderByProp_(propKey, defaultName) {\n  var id = cfg_(propKey);\n  if (id) return DriveApp.getFolderById(id);\n  var it = DriveApp.getFoldersByName(defaultName);\n  var f = it.hasNext() ? it.next() : DriveApp.createFolder(defaultName);\n  PropertiesService.getScriptProperties().setProperty(propKey, f.getId());   // จำโฟลเดอร์ที่สร้างไว้ ครั้งต่อไปใช้เดิม\n  return f;\n}\nfunction subFolder_(parent, name) {\n  var it = parent.getFoldersByName(name);\n  return it.hasNext() ? it.next() : parent.createFolder(name);\n}\nfunction json_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }\n";
 const photoScriptText = () => PHOTO_SCRIPT_TEMPLATE.replace('__SUPABASE_URL__', CONFIG.SUPABASE_URL).replace('__SUPABASE_KEY__', CONFIG.SUPABASE_PUBLISHABLE_KEY);
-async function copyText(text, label) { try { await navigator.clipboard.writeText(text); toast(`คัดลอก${label}แล้ว`); } catch { openModal(`<h3 style="margin-top:0">${esc(label)}</h3><div class="muted">เบราว์เซอร์ไม่อนุญาตให้คัดลอกอัตโนมัติ เลือกข้อความด้านล่างแล้วกด Ctrl+C</div><textarea rows="14" style="font-family:ui-monospace,monospace;font-size:12px">${esc(text)}</textarea><button onclick="closeModal()">ปิด</button>`); } }
+async function copyText(text, label) { try { await navigator.clipboard.writeText(text); toast(`คัดลอก${label}แล้ว`); } catch { openModal(`<h3 style="margin-top:0">${esc(label)}</h3><div class="muted">เบราว์เซอร์ไม่อนุญาตให้คัดลอกอัตโนมัติ เลือกข้อความด้านล่างแล้วกด Ctrl+C</div><textarea rows="14" style="font-family:ui-monospace,monospace;font-size:14px">${esc(text)}</textarea><button onclick="closeModal()">ปิด</button>`); } }
 function downloadText(text, filename) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })); a.download = filename; a.click(); }
 const muniMessageText = (muniName) => `เรื่อง: ขอให้ติดตั้ง "ตัวรับรูปถ่าย" ในบัญชี Google ของ${muniName || 'เทศบาล'} (ทำครั้งเดียว ประมาณ 10 นาที)
 
@@ -1619,7 +1648,7 @@ async function pageReports(view) {
   view.innerHTML = `${scopeSelector()}<div class="card"><h3 style="margin-top:0">รายงานสำหรับผู้บริหาร ${helpBtn('reports')}</h3><div class="muted">เทศบาล ${esc(muni.name)} · ตัวเลขคำนวณสดจากข้อมูล ณ เวลาที่กด · แต่ละรายงานเปิดหน้าต่างใหม่ กด "พิมพ์ / บันทึก PDF"</div></div>
     <div class="grid2">${cards.map(([k, t, d, who]) => `<div class="card"><h4 style="margin-top:0">${t}</h4><div class="muted">${d}</div><div class="muted" style="margin:4px 0">เหมาะกับ: ${who}</div><button class="small" onclick="printReport('${k}')">เปิดรายงาน</button></div>`).join('')}</div>`;
 }
-const RPT_CSS = `body{font:14px/1.45 system-ui,"Noto Sans Thai",sans-serif;margin:18mm 15mm;color:#000}h1{font-size:20px;margin:0}h2{font-size:16px;margin:16px 0 6px;border-bottom:2px solid #1F3A5F;padding-bottom:2px}table{width:100%;border-collapse:collapse;margin:6px 0;font-size:13px}th,td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eef2f7}td.r,th.r{text-align:right}.meta{color:#333;font-size:13px}.kpis{display:flex;gap:8px;margin:8px 0}.kpi{flex:1;border:1px solid #999;border-radius:6px;padding:6px 8px;text-align:center}.kpi b{font-size:22px;display:block}.sig{display:flex;gap:16px;margin-top:28px}.sig div{flex:1;text-align:center;border-top:1px solid #000;padding-top:4px;font-size:13px}.note{font-size:12px;color:#444}#map{height:95mm;border:1px solid #999;margin:6px 0}@media print{button{display:none}.pb{page-break-before:always}}`;
+const RPT_CSS = `@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;700&display=swap');body{font:14px/1.5 "Noto Sans Thai",system-ui,sans-serif;margin:18mm 15mm;color:#000}h1{font-size:20px;margin:0}h2{font-size:16px;margin:16px 0 6px;border-bottom:2px solid #1F3A5F;padding-bottom:2px}table{width:100%;border-collapse:collapse;margin:6px 0;font-size:13px}th,td{border:1px solid #999;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eef2f7}td.r,th.r{text-align:right}.meta{color:#333;font-size:13px}.kpis{display:flex;gap:8px;margin:8px 0}.kpi{flex:1;border:1px solid #999;border-radius:6px;padding:6px 8px;text-align:center}.kpi b{font-size:22px;display:block}.sig{display:flex;gap:16px;margin-top:28px}.sig div{flex:1;text-align:center;border-top:1px solid #000;padding-top:4px;font-size:13px}.note{font-size:12px;color:#444}#map{height:95mm;border:1px solid #999;margin:6px 0}@media print{button{display:none}.pb{page-break-before:always}}`;
 function rptHeader(title, muni) { return `<button onclick="window.print()">พิมพ์ / บันทึก PDF</button><h1>${esc(setting('system_name') || 'ระบบข้อมูลจุดวางถังขยะ')}</h1><div class="meta"><b>${esc(title)}</b> · ${esc(muni.name)} (${esc(muni.code)}) · ข้อมูล ณ ${thDate(new Date().toISOString())} · จัดทำโดย ${esc(S.me.display_name)}</div>`; }
 const rptSig = () => `<div class="sig"><div>ผู้จัดทำ / ผู้ปฏิบัติงาน</div><div>หัวหน้างาน / ผู้ตรวจ</div><div>ผู้บริหารรับทราบ</div></div><div class="note" style="margin-top:8px">ตัวเลขทั้งหมดคำนวณจากข้อมูลในระบบ ณ เวลาที่พิมพ์ · ความจุ = จำนวนใบ × ลิตรต่อใบ (นับเฉพาะถังสภาพปกติ) · จำนวนจุดสะท้อนความครอบคลุมการสำรวจ</div>`;
 function rptOpen(html, withMap) {
