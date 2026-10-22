@@ -16,6 +16,12 @@
 // DEC-100 คีย์ Esri (ArcGIS Location Platform · บัญชี pattanasak_ubru · คีย์ชื่อ ubwast-web · สิทธิ์ basemaps เท่านั้น · จำกัด referrer pattanasak-gig.github.io)
 // เป็นค่ากึ่งสาธารณะที่ตั้งใจฝังในหน้าเว็บ ไม่ใช่กุญแจลับ · แผนฟรี 2,000,000 tiles/เดือน · หมดอายุตาม ESRI_KEY_EXPIRES ต้องต่ออายุที่ location.arcgis.com → Developer credentials
 const ESRI_API_KEY = 'AAPTaz2yquT3mlhd2KhO06JTObQ..5rwTSeqqDn5CZE5c_TFew0ZOqIYDnUL0n6f_CwMe1mydOLm94XyZpTdGpwqP4ICukNktygiAAgqKr1meMxiXzq_UbJrSCupTJjxJSxnoZ1IEntrrj-KQpbnjUdPd_ZgKX1lxGr4IqNmJABAftrlqtnWoDsM5j8rQ0AntYTCjDYi4Vu6oIF3OShnQicYxwSoDAuNLYMqrFgkpdSsEAK01XEFYzslf3YMrgc1vvJ8Ca2miOUbz9FOqtzg-UIQMgUYLAT1_KkeQUgaP';
+// DEC-103 เครดิตโครงการ — แก้ข้อความที่นี่ที่เดียว ใช้ทั้งท้ายหน้าเว็บ เอกสารพิมพ์ และหน้าเกี่ยวกับระบบ
+const CREDIT = {
+  short: 'UBWast © 2569 ผศ.พัฒนศักดิ์ ปทุมวัน มหาวิทยาลัยราชภัฏอุบลราชธานี · ทุนกองทุนส่งเสริม ววน. และ บพท. ปีงบประมาณ 2569 · พัฒนาร่วมกับ Claude (Anthropic)',
+  url: 'https://pattanasak-gig.github.io/ubwast-web/',
+  updated: '23 ตุลาคม 2569'
+};
 const CONFIG = {
   ESRI_KEY_EXPIRES: '2027-10-22',
   MANUAL_MUNI_DOC_ID: '1wuO0mU6LcoXcbrcoGPixMws-57qX9BR7Ls-RmQrMTek',   // DEC-101 คู่มือเทศบาล (Google Doc ใน Drive ของเจ้าของโครงการ โฟลเดอร์ UBWast-help · แชร์แบบมีลิงก์) · แก้ไฟล์ใน Drive ได้เลย ลิงก์เดิม
@@ -49,7 +55,10 @@ const CONFIG = {
   nav.tabs { display:flex; gap:4px; overflow-x:auto; background:#fff; border-bottom:1px solid var(--line); padding: 4px 8px; position: sticky; top:56px; z-index:40; }
   nav.tabs a { flex: 0 0 auto; text-decoration:none; color:var(--muted); padding: 0 14px; min-height:44px; min-width:44px; justify-content:center; display:inline-flex; align-items:center; border-radius:8px; white-space:nowrap; font-size:15px; }
   nav.tabs a.active { background: #e8f3ec; color: var(--brand); font-weight:600; }
-  main { padding: 12px 16px calc(90px + env(safe-area-inset-bottom)); max-width: 1100px; margin: 0 auto; }
+  main { padding: 12px 16px 8px; max-width: 1100px; margin: 0 auto; }
+  footer.credit { max-width: 1100px; margin: 0 auto; padding: 10px 16px calc(90px + env(safe-area-inset-bottom)); font-size: 13px; line-height: 1.6; color: #4b5563; text-align: center; border-top: 1px solid var(--line); }   /* DEC-103 เครดิตตัวเล็กตามที่เจ้าของโครงการขอ (ยกเว้นเกณฑ์ข้อความรอง 14px) */
+  footer.credit a { color: var(--brand); white-space: nowrap; display: inline-block; padding: 12px 6px; min-height: 44px; box-sizing: border-box; }
+  @media print { footer.credit { padding-bottom: 0; } }
   .card { background: var(--card); border:1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
   .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
   .grid2 { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
@@ -150,6 +159,7 @@ const CONFIG = {
 </header>
 <nav class="tabs" id="tabs"></nav>
 <main id="view"></main>
+<footer class="credit" id="credit"></footer>
 <div id="toastHost" role="status" aria-live="polite"></div>
 
 <script>
@@ -496,6 +506,7 @@ async function render() {
   const view = $('#view');
   try {
     if (!S.me) { S.me = await api.me(); }
+    if (location.hash.startsWith('#about')) { renderTabs(); if (!S.me) $('#who').textContent = ''; return pageAbout(view); }   // DEC-103 เปิดได้โดยไม่ต้องล็อกอิน
     if (location.hash.startsWith('#guide/')) { renderTabs(); if (!S.me) $('#who').textContent = ''; return pageGuidePhoto(view); }   // คู่มือสำหรับเทศบาล เปิดได้โดยไม่ต้องล็อกอิน (DEC-095)
     if (!S.me) { renderTabs(); $('#who').textContent = ''; return pageLogin(view); }
     await loadMasters();
@@ -1143,7 +1154,7 @@ function printDriverReport(routeId) {
     <div class="meta">ถนน ${fmt(r.roads)} สาย · จุด ${fmt(r.places)} จุด · รวม ${fmt(r.total_bins)} ใบ · ${fmt(r.total_liters)} ลิตร${r.path_distance_m ? ` · ระยะทางตามถนน ${fmt(Math.round(r.path_distance_m / 100) / 10)} กม.` : ''}${r.custom_order ? ' · ลำดับจุดตามที่ admin กำหนด (วิ่งจากจุดแรกถึงจุดสุดท้าย)' : ''}${r.truck_capacity_liters ? ` · ความจุรถ ${fmt(r.truck_capacity_liters)} ลิตร (${fmt(r.load_pct)}%)` : ''} · พิมพ์เมื่อ ${thDate(new Date().toISOString())}</div>
     <table><thead><tr><th>ถนน</th><th>#</th><th>รหัสจุด</th><th>จุด</th><th>ใบ</th><th>ลิตร</th><th style="width:90px">เก็บแล้ว ✓</th></tr></thead><tbody>${rows || '<tr><td colspan="7">ไม่มีจุดในเส้นทาง</td></tr>'}</tbody></table></body></html>`;
   const w = window.open('', '_blank'); if (!w) return toast('เบราว์เซอร์กันหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัป', true);
-  w.document.write(html); w.document.close();
+  w.document.write(withCredit(html)); w.document.close();
 }
 
 // =====================================================================
@@ -1383,7 +1394,7 @@ function printCredentials() {
     <table><thead><tr><th>บทบาท</th><th>ชื่อล็อกอิน</th><th>รหัสผ่านตั้งต้น</th><th>มอบให้ (ชื่อ-สกุล)</th><th>ลงชื่อรับ</th></tr></thead><tbody>${accs.map(a => `<tr><td>${roleLabel(a.role || '')}</td><td class="mono">${esc(a.username)}</td><td class="mono">${esc(a.password)}</td><td></td><td></td></tr>`).join('')}</tbody></table>
     <h3>วิธีเริ่มใช้งาน</h3><ol><li>เปิดเว็บด้านบนบนโทรศัพท์หรือคอมพิวเตอร์ → ล็อกอินด้วยชื่อและรหัสผ่านในตาราง</li><li>ไปที่เมนู "บัญชี" มุมขวาบน → เปลี่ยนรหัสผ่านเป็นของตนเอง (แนะนำ)</li><li>admin: เมนู "จัดการเทศบาล" → แท็บ "เริ่มต้นใช้งาน" ทำตามลำดับ 1–8</li><li>ผู้บันทึก: เมนู "จุด" → ปุ่ม "เพิ่มจุด" → กด "ใช้ GPS" → ใส่ถัง → ถ่ายรูป → บันทึก</li><li>ลืมรหัสผ่าน: แจ้ง admin ของเทศบาลให้กด "รีเซ็ตรหัส" (ระบบไม่มีการส่งอีเมล)</li><li>ติดปัญหา: กดไอคอน (?) ในแต่ละหน้า หรือเมนู "ช่วยเหลือ"</li></ol>
     <p><b>เอกสารนี้มีรหัสผ่าน</b> เก็บเป็นความลับ ห้ามถ่ายภาพส่งในแชต/ไลน์/อีเมล มอบด้วยมือหรือบอกปากเปล่า · ทำลายหลังผู้ใช้เปลี่ยนรหัสผ่านแล้ว · รูปแบบรหัสตั้งต้น = รหัสเทศบาล + ตัวเลข 4 หลัก</p></body></html>`;
-  const w = window.open('', '_blank'); if (!w) return toast('เบราว์เซอร์กันหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัป', true); w.document.write(html); w.document.close();
+  const w = window.open('', '_blank'); if (!w) return toast('เบราว์เซอร์กันหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัป', true); w.document.write(withCredit(html)); w.document.close();
 }
 
 // =====================================================================
@@ -1623,6 +1634,40 @@ const GUIDE_STEPS = [
       'เปิดไลน์หรืออีเมลที่ติดต่อกับเจ้าของโครงการ กด <b>Ctrl+V</b> วางลิงก์ (ขึ้นต้นด้วย https://script.google.com/macros/s/ ยาวมาก และลงท้ายด้วย /exec) แล้วส่ง'],
     done: 'เจ้าของโครงการนำลิงก์ไปตั้งค่าในระบบ (ใช้เวลาไม่กี่นาที) แล้วแจ้งกลับ จากนั้นให้เจ้าหน้าที่ถ่ายรูปทดสอบ 1 รูปในแอป รูปนั้นจะไปปรากฏในโฟลเดอร์ชื่อ <b>UBWast-photos</b> ใน Google Drive ของเทศบาล — เสร็จสมบูรณ์ หลังจากนี้เจ้าหน้าที่ใช้งานเหมือนเดิมทุกอย่าง' }
 ];
+// =====================================================================
+// หน้า: เกี่ยวกับระบบ (DEC-103) — เครดิตโครงการวิจัยและผู้พัฒนา · เปิดได้โดยไม่ต้องล็อกอิน
+// =====================================================================
+function pageAbout(view) {
+  const row = (k, v) => `<tr><th style="width:34%">${k}</th><td>${v}</td></tr>`;
+  view.innerHTML = `<div class="card" style="max-width:860px;margin:0 auto">
+    <h2 style="margin-top:0">เกี่ยวกับระบบ UBWast</h2>
+    <p>UBWast คือระบบข้อมูลจุดวางถังขยะสำหรับองค์กรปกครองส่วนท้องถิ่น ใช้บันทึกตำแหน่ง จำนวน และสภาพของถังขยะ พร้อมเส้นทางเก็บขน แดชบอร์ด และรายงานสำหรับผู้บริหาร ใช้งานผ่านเว็บบนมือถือและคอมพิวเตอร์โดยไม่ต้องติดตั้งโปรแกรม</p>
+    <h3>โครงการวิจัย</h3>
+    <p>ระบบนี้พัฒนาขึ้นภายใต้โครงการวิจัย "การจัดการขยะอาหารอย่างครบวงจรในเขตเทศบาลนครอุบลราชธานีบนฐานเศรษฐกิจสีเขียว" สนับสนุนโดยกองทุนส่งเสริม ววน. และหน่วยบริหารจัดการทุนด้านการพัฒนาพื้นที่ ปีงบประมาณ 2569</p>
+    <table>${row('หัวหน้าโครงการและผู้พัฒนาระบบ', 'ผศ.พัฒนศักดิ์ ปทุมวัน มหาวิทยาลัยราชภัฏอุบลราชธานี')}${row('ผู้ร่วมวิจัย', 'เทศบาลนครอุบลราชธานี')}</table>
+    <h3>การพัฒนา</h3>
+    <p>ออกแบบและเขียนโค้ดร่วมกับ Claude (Anthropic) ผ่าน Claude Code โดยเจ้าของโครงการเป็นผู้กำหนดความต้องการ ตัดสินใจ ตรวจสอบตัวเลขกับข้อมูลจริง และตรวจรับทุกขั้นตอน</p>
+    <h3>การนำไปใช้</h3>
+    <p>องค์กรปกครองส่วนท้องถิ่นทุกแห่งใช้ระบบนี้ได้โดยไม่มีค่าใช้จ่าย เพียงติดต่อเจ้าของโครงการเพื่อรับบัญชีผู้ใช้และคู่มือ ระบบทำงานบนบริการแผนฟรีทั้งหมด (ตรวจสอบเมื่อ 22 ตุลาคม 2569)</p>
+    <h3>ข้อมูลและบริการที่ใช้</h3>
+    <p>แผนที่ © OpenStreetMap contributors (ODbL) · ภาพดาวเทียม Esri, Vantor, Earthstar Geographics and the GIS User Community · ฐานข้อมูล Supabase · ห้องเครื่อง Google Apps Script · ที่เก็บรูป Google Drive · โฮสติ้ง GitHub Pages · เส้นทางบนถนน OSRM · ฟอนต์ Noto Sans Thai (Google Fonts) · ไลบรารี Leaflet และ Chart.js</p>
+    <h3>การอ้างอิง</h3>
+    <p class="mono" style="font-size:14px;background:#f6f7f9;padding:10px;border-radius:8px">พัฒนศักดิ์ ปทุมวัน. (2569). UBWast: ระบบข้อมูลจุดวางถังขยะสำหรับองค์กรปกครองส่วนท้องถิ่น [โปรแกรมคอมพิวเตอร์]. มหาวิทยาลัยราชภัฏอุบลราชธานี. ${esc(CREDIT.url)}</p>
+    <h3>ติดต่อ</h3>
+    <p>ผศ.พัฒนศักดิ์ ปทุมวัน · <a href="mailto:pattanasak.p@ubru.ac.th">pattanasak.p@ubru.ac.th</a></p>
+    <p class="muted">ฉบับระบบ: ${esc(CREDIT.updated)}</p>
+    <div class="row" style="margin-top:12px"><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#help' : '#'}" onclick="${S.me ? '' : 'location.hash=\'\';render();return false;'}">${S.me ? 'กลับไปหน้าช่วยเหลือ' : 'กลับไปหน้าเข้าสู่ระบบ'}</a></div>
+  </div>`;
+}
+function renderCredit() { const f = $('#credit'); if (f) f.innerHTML = `${esc(CREDIT.short)} · <a href="#about">เกี่ยวกับระบบ</a>`; }
+// เอกสารพิมพ์ทุกฉบับ: เครดิตท้ายทุกหน้ากระดาษ (ตำแหน่ง fixed ตอนพิมพ์ + ตารางห่อ tfoot เว้นที่ด้านล่างทุกหน้าไม่ให้ทับเนื้อหา)
+const PRINT_CREDIT_CSS = '.pgwrap{width:100%;border-collapse:collapse;border:0;margin:0}.pgwrap>thead>tr>td,.pgwrap>tbody>tr>td,.pgwrap>tfoot>tr>td{border:0;padding:0}.pgcredit{margin-top:14px;text-align:center;font-size:9pt;color:#555;border-top:1px solid #ccc;padding-top:3px}@media print{.pgcredit{position:fixed;bottom:0;left:0;right:0;margin:0;background:#fff}}';
+function withCredit(doc) {
+  const credit = `<div class="pgcredit">${esc(CREDIT.short)} · ${esc(CREDIT.url)}</div>`;
+  return doc.replace('</style>', PRINT_CREDIT_CSS + '</style>')
+    .replace(/<body([^>]*)>/, '<body$1><table class="pgwrap"><tfoot><tr><td><div style="height:12mm"></div></td></tr></tfoot><tbody><tr><td>')
+    .replace(/<\/body>(?![\s\S]*<\/body>)/, '</td></tr></tbody></table>' + credit + '</body>');
+}
 function pageGuidePhoto(view) {
   const flow = `<svg viewBox="0 0 720 150" role="img" aria-label="ภาพรวมการทำงาน" style="width:100%;max-width:720px;height:auto;display:block;margin:8px auto;font-family:inherit">
     <defs><marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1F3A5F"/></marker></defs>
@@ -1645,7 +1690,7 @@ function pageHelp(view) {
   const rec = ['map', 'places', 'place-edit', 'queue', 'routes', 'me'], adm = ['admin-start', 'admin-roads', 'admin-fleet', 'admin-routes', 'admin-users', 'admin-settings', 'reports'], sup = ['super-muni', 'super-masters', 'super-settings'];
   const sec = (title, keys) => `<div class="card"><h3 style="margin-top:0">${title}</h3>${keys.map(k => `<details style="margin:6px 0"><summary><b>${esc(HELP[k].title)}</b></summary>${helpBody(HELP[k])}</details>`).join('')}</div>`;
   const mid = CONFIG.MANUAL_MUNI_DOC_ID; const manualCard = mid ? `<div class="card" style="border-left:6px solid var(--brand)"><h3 style="margin-top:0">คู่มือใช้งานฉบับเอกสาร</h3><div class="muted">คู่มือสำหรับเทศบาล 9 หัวข้อ (ผู้บันทึกและ admin) ดาวน์โหลดเก็บไว้หรือพิมพ์แจกเจ้าหน้าที่ได้ · ไฟล์อยู่ใน Google Drive ของโครงการ</div>
-      <div class="row" style="margin-top:10px;flex-wrap:wrap"><a class="btn" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/export?format=pdf" target="_blank" rel="noopener">ดาวน์โหลด PDF</a><a class="btn secondary" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/preview" target="_blank" rel="noopener">อ่านออนไลน์</a>${isSuper() && CONFIG.MANUAL_OWNER_URL ? `<a class="btn secondary" style="text-decoration:none" href="${esc(CONFIG.MANUAL_OWNER_URL)}" target="_blank" rel="noopener">คู่มือเจ้าของโครงการ</a>` : ''}</div></div>` : '';
+      <div class="row" style="margin-top:10px;flex-wrap:wrap"><a class="btn" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/export?format=pdf" target="_blank" rel="noopener">ดาวน์โหลด PDF</a><a class="btn secondary" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/preview" target="_blank" rel="noopener">อ่านออนไลน์</a>${isSuper() && CONFIG.MANUAL_OWNER_URL ? `<a class="btn secondary" style="text-decoration:none" href="${esc(CONFIG.MANUAL_OWNER_URL)}" target="_blank" rel="noopener">คู่มือเจ้าของโครงการ</a>` : ''}<a class="btn secondary" style="text-decoration:none" href="#about">เกี่ยวกับระบบ</a></div></div>` : '';
   view.innerHTML = `${manualCard}<div class="card"><h3 style="margin-top:0">ช่วยเหลือและคู่มือ</h3><div class="muted">ทุกหน้ามีไอคอน (?) เปิดขั้นตอนของหน้านั้นได้ทันที · หน้านี้รวมทุกเรื่องไว้ที่เดียว · บทบาทของท่าน: <b>${roleLabel(S.me.role)}</b></div>
     <h4>ภาพรวมระบบใน 1 นาที</h4><ol style="padding-left:22px"><li><b>ผู้บันทึก</b> ลงพื้นที่ → เพิ่มจุด (GPS · ถัง · รูป) บนมือถือ ทำงานได้แม้ไม่มีสัญญาณ</li><li><b>admin เทศบาล</b> ดูแลถนน รถ เส้นทาง บัญชี → ดูแดชบอร์ด → พิมพ์รายงานส่งผู้บริหาร</li><li><b>เจ้าของโครงการ</b> ดูทุกเทศบาล ตั้งค่าส่วนกลาง สร้างเทศบาลใหม่</li></ol>
     <div class="banner info">ติดปัญหาที่คู่มือไม่ครอบคลุม: admin เทศบาลติดต่อเจ้าของโครงการ · ผู้บันทึกติดต่อ admin ของเทศบาล</div></div>
@@ -1679,7 +1724,7 @@ function rptHeader(title, muni) { return `<button onclick="window.print()">พ�
 const rptSig = () => `<div class="sig"><div>ผู้จัดทำ / ผู้ปฏิบัติงาน</div><div>หัวหน้างาน / ผู้ตรวจ</div><div>ผู้บริหารรับทราบ</div></div><div class="note" style="margin-top:8px">ตัวเลขทั้งหมดคำนวณจากข้อมูลในระบบ ณ เวลาที่พิมพ์ · ความจุ = จำนวนใบ × ลิตรต่อใบ (นับเฉพาะถังสภาพปกติ) · จำนวนจุดสะท้อนความครอบคลุมการสำรวจ</div>`;
 function rptOpen(html, withMap) {
   const w = window.open('', '_blank'); if (!w) return toast('เบราว์เซอร์กันหน้าต่างใหม่ กรุณาอนุญาตป๊อปอัป', true);
-  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายงาน</title>${withMap ? '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>' : ''}<style>${RPT_CSS}</style></head><body>${html}</body></html>`); w.document.close(); return w;
+  w.document.write(withCredit(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายงาน</title>${withMap ? '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>' : ''}<style>${RPT_CSS}</style></head><body>${html}</body></html>`)); w.document.close(); return w;
 }
 async function printReport(kind) {
   const mid = S.scopeMuni, muni = muniOf(mid);
@@ -1743,6 +1788,7 @@ async function printReport(kind) {
 // เริ่มทำงาน
 // =====================================================================
 Queue.refreshBadge();
+renderCredit();
 render();
 if (navigator.onLine) setTimeout(() => Queue.sync(), 3000);
 </script>
