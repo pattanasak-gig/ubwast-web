@@ -17,7 +17,9 @@
 // เป็นค่ากึ่งสาธารณะที่ตั้งใจฝังในหน้าเว็บ ไม่ใช่กุญแจลับ · แผนฟรี 2,000,000 tiles/เดือน · หมดอายุตาม ESRI_KEY_EXPIRES ต้องต่ออายุที่ location.arcgis.com → Developer credentials
 const ESRI_API_KEY = 'AAPTaz2yquT3mlhd2KhO06JTObQ..5rwTSeqqDn5CZE5c_TFew0ZOqIYDnUL0n6f_CwMe1mydOLm94XyZpTdGpwqP4ICukNktygiAAgqKr1meMxiXzq_UbJrSCupTJjxJSxnoZ1IEntrrj-KQpbnjUdPd_ZgKX1lxGr4IqNmJABAftrlqtnWoDsM5j8rQ0AntYTCjDYi4Vu6oIF3OShnQicYxwSoDAuNLYMqrFgkpdSsEAK01XEFYzslf3YMrgc1vvJ8Ca2miOUbz9FOqtzg-UIQMgUYLAT1_KkeQUgaP';
 const CONFIG = {
-  ESRI_KEY_EXPIRES: '2027-10-22',       // วันหมดอายุคีย์ Esri (ค.ศ.) · ระบบเตือนเจ้าของโครงการล่วงหน้า 30 วันในหน้าส่วนกลาง
+  ESRI_KEY_EXPIRES: '2027-10-22',
+  MANUAL_MUNI_DOC_ID: '1wuO0mU6LcoXcbrcoGPixMws-57qX9BR7Ls-RmQrMTek',   // DEC-101 คู่มือเทศบาล (Google Doc ใน Drive ของเจ้าของโครงการ โฟลเดอร์ UBWast-help · แชร์แบบมีลิงก์) · แก้ไฟล์ใน Drive ได้เลย ลิงก์เดิม
+  MANUAL_OWNER_URL: 'https://claude.ai/artifact/R3aVnvnyht5C8wpMkGCvuP',   // คู่มือเจ้าของโครงการ (เห็นเฉพาะ super admin)       // วันหมดอายุคีย์ Esri (ค.ศ.) · ระบบเตือนเจ้าของโครงการล่วงหน้า 30 วันในหน้าส่วนกลาง
   SUPABASE_URL: 'https://cbmaqzocmgvbjubdvfsz.supabase.co',
   SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_WWVj5eL3Cw3cfNK4rEY5hw_kcvrrGcO',
   LOGIN_EMAIL_DOMAIN: 'ubwast.local',   // ต้องตรงกับ LOGIN_EMAIL_DOMAIN ในห้องเครื่อง Apps Script
@@ -1642,7 +1644,9 @@ function pageHelp(view) {
   if ((location.hash.split('/')[1] || '') === 'photo') { location.hash = '#guide/photo'; return; }
   const rec = ['map', 'places', 'place-edit', 'queue', 'routes', 'me'], adm = ['admin-start', 'admin-roads', 'admin-fleet', 'admin-routes', 'admin-users', 'admin-settings', 'reports'], sup = ['super-muni', 'super-masters', 'super-settings'];
   const sec = (title, keys) => `<div class="card"><h3 style="margin-top:0">${title}</h3>${keys.map(k => `<details style="margin:6px 0"><summary><b>${esc(HELP[k].title)}</b></summary>${helpBody(HELP[k])}</details>`).join('')}</div>`;
-  view.innerHTML = `<div class="card"><h3 style="margin-top:0">ช่วยเหลือและคู่มือ</h3><div class="muted">ทุกหน้ามีไอคอน (?) เปิดขั้นตอนของหน้านั้นได้ทันที · หน้านี้รวมทุกเรื่องไว้ที่เดียว · บทบาทของท่าน: <b>${roleLabel(S.me.role)}</b></div>
+  const mid = CONFIG.MANUAL_MUNI_DOC_ID; const manualCard = mid ? `<div class="card" style="border-left:6px solid var(--brand)"><h3 style="margin-top:0">คู่มือใช้งานฉบับเอกสาร</h3><div class="muted">คู่มือสำหรับเทศบาล 9 หัวข้อ (ผู้บันทึกและ admin) ดาวน์โหลดเก็บไว้หรือพิมพ์แจกเจ้าหน้าที่ได้ · ไฟล์อยู่ใน Google Drive ของโครงการ</div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap"><a class="btn" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/export?format=pdf" target="_blank" rel="noopener">ดาวน์โหลด PDF</a><a class="btn secondary" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/preview" target="_blank" rel="noopener">อ่านออนไลน์</a><a class="btn secondary" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/export?format=docx" target="_blank" rel="noopener">ไฟล์ Word</a>${isSuper() && CONFIG.MANUAL_OWNER_URL ? `<a class="btn secondary" style="text-decoration:none" href="${esc(CONFIG.MANUAL_OWNER_URL)}" target="_blank" rel="noopener">คู่มือเจ้าของโครงการ</a>` : ''}</div></div>` : '';
+  view.innerHTML = `${manualCard}<div class="card"><h3 style="margin-top:0">ช่วยเหลือและคู่มือ</h3><div class="muted">ทุกหน้ามีไอคอน (?) เปิดขั้นตอนของหน้านั้นได้ทันที · หน้านี้รวมทุกเรื่องไว้ที่เดียว · บทบาทของท่าน: <b>${roleLabel(S.me.role)}</b></div>
     <h4>ภาพรวมระบบใน 1 นาที</h4><ol style="padding-left:22px"><li><b>ผู้บันทึก</b> ลงพื้นที่ → เพิ่มจุด (GPS · ถัง · รูป) บนมือถือ ทำงานได้แม้ไม่มีสัญญาณ</li><li><b>admin เทศบาล</b> ดูแลถนน รถ เส้นทาง บัญชี → ดูแดชบอร์ด → พิมพ์รายงานส่งผู้บริหาร</li><li><b>เจ้าของโครงการ</b> ดูทุกเทศบาล ตั้งค่าส่วนกลาง สร้างเทศบาลใหม่</li></ol>
     <div class="banner info">ติดปัญหาที่คู่มือไม่ครอบคลุม: admin เทศบาลติดต่อเจ้าของโครงการ · ผู้บันทึกติดต่อ admin ของเทศบาล</div></div>
     ${sec('สำหรับผู้บันทึก (ใช้บนมือถือ)', rec)}${isAdmin() ? sec('สำหรับ admin เทศบาล', adm) : ''}${isSuper() ? sec('สำหรับเจ้าของโครงการ', sup.concat(['photo-owner'])) : ''}
