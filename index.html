@@ -24,6 +24,8 @@ const CONFIG = {
   // ตัวสำรองอัตโนมัติเมื่อแผ่นแผนที่หลักโหลดไม่ได้ · เงื่อนไขการใช้ของผู้ให้บริการสำรองยังไม่ได้ตรวจ ใช้ชั่วคราวระหว่างพัฒนา
   TILES_FALLBACK: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles © Esri', maxZoom: 19 },
   ROUTING_URL: 'https://router.project-osrm.org',   // DEC-091 บริการคำนวณเส้นทางบนถนน (OSRM สาธิต · ใช้ไม่เชิงพาณิชย์ · ≤1 คำขอ/วินาที · ไม่รับประกัน) · เรียกเฉพาะตอน admin กด "ลากเส้นตามถนน" แล้วเก็บผลในฐานข้อมูล
+  TILES_SATELLITE: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Imagery © Esri' },   // ภาพดาวเทียม · เงื่อนไขการใช้ของ Esri ยังไม่ได้ตรวจอย่างเป็นทางการ (DEC-087/096)
+  OVERPASS_URLS: ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'],   // DEC-096 ดึงถนน/ซอยจาก OpenStreetMap ตอนสร้างเทศบาล (fair use · ข้อมูล ODbL)
   PHOTO_MAX_PX: 1280,                   // ย่อรูปด้านยาวสุดก่อนส่ง (ประหยัดพื้นที่ Drive และเวลาส่ง)
   PHOTO_QUALITY: 0.8,
   QUEUE_WARN_BYTES: 4 * 1024 * 1024     // เตือนเมื่อคิวพักข้อมูลในเครื่องใกล้เต็ม
@@ -186,6 +188,7 @@ const SupaBackend = () => {
     async changePassword(pw) { unwrap(await sb.auth.updateUser({ password: pw })); },
     async list(name, o) { return unwrap(await applyOpts(sb.from(name).select(o?.select || '*'), o)); },
     async insert(table, row) { return unwrap(await sb.from(table).insert(row).select().single()); },
+    async insertMany(table, rows) { if (!rows.length) return []; return unwrap(await sb.from(table).insert(rows).select()); },
     async update(table, id, patch, pk = 'id') { return unwrap(await sb.from(table).update(patch).eq(pk, id).select().single()); },
     async remove(table, id) { unwrap(await sb.from(table).delete().eq('id', id)); },
     async engine(action, payload) {
@@ -302,6 +305,7 @@ const DemoBackend = () => {
       r.created_by = me.id; r.updated_by = me.id;
       return { ...add(table, r) };
     },
+    async insertMany(table, rows) { const out = []; for (const r of rows) out.push(await this.insert(table, r)); return out; },
     async update(table, id, patch, pk = 'id') {
       const r = D[table].find(x => x[pk] === id); if (!r) throw new Error('ไม่พบข้อมูล');
       if (me.role === 'recorder' && patch.status === 'inactive' && ['place', 'bin'].includes(table)) throw new Error('ผู้บันทึกยกเลิกไม่ได้ ต้องให้ admin ของเทศบาลทำ');
@@ -474,11 +478,28 @@ const ICON = {   // A6 ไอคอน SVG แทนอีโมจิ (เส�
   print: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>'
 };
 const mkMap = id => L.map(id, { zoomAnimation: !window.REDUCED_MOTION_FLAG, fadeAnimation: !window.REDUCED_MOTION_FLAG, markerZoomAnimation: !window.REDUCED_MOTION_FLAG });   // A4
+// DEC-096 ซูมเปิดครั้งแรก = กรอบพื้นที่ของเทศบาล (map_bounds) รวมกับจุดทั้งหมด · ไม่มีทั้งคู่ = มุมมองสำรอง
+function fitMuni(map, group, muniId) {
+  const m = muniOf(muniId || S.scopeMuni) || {}; let b = null;
+  if (Array.isArray(m.map_bounds) && m.map_bounds.length === 2) { try { b = L.latLngBounds(m.map_bounds); } catch { b = null; } }
+  if (group && group.getLayers && group.getLayers().length) { const gb = group.getBounds(); b = b ? b.extend(gb) : gb; }
+  if (b && b.isValid()) map.fitBounds(b.pad(0.05)); else map.setView([CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng], CONFIG.MAP_FALLBACK.zoom);
+}
+async function saveMapView() {
+  if (!S.map || !S.scopeMuni) return toast('เลือกเทศบาลก่อน', true);
+  const b = S.map.getBounds(); const mb = [[+b.getSouth().toFixed(5), +b.getWest().toFixed(5)], [+b.getNorth().toFixed(5), +b.getEast().toFixed(5)]];
+  if (!confirm('บันทึกมุมมองแผนที่ที่เห็นอยู่ตอนนี้เป็นพื้นที่เริ่มต้นของเทศบาล? (ทุกคนในเทศบาลจะเห็นมุมมองนี้ตอนเปิดแผนที่)')) return;
+  try { await api.update('municipality', S.scopeMuni, { map_bounds: mb }); toast('บันทึกพื้นที่เริ่มต้นแล้ว'); S.cache.loaded = false; } catch (e) { toast(e.message, true); }
+}
 async function addBaseLayer(map) {
   const opt = t => ({ maxZoom: t.maxZoom || 19, attribution: t.attribution, referrerPolicy: 'origin' });
   const useMain = !CONFIG.TILES_FALLBACK || await tilesAvailable();
   const t = useMain ? CONFIG.TILES : CONFIG.TILES_FALLBACK;
-  L.tileLayer(t.url, opt(t)).addTo(map);
+  const street = L.tileLayer(t.url, opt(t)); const sat = L.tileLayer(CONFIG.TILES_SATELLITE.url, { maxZoom: 19, attribution: CONFIG.TILES_SATELLITE.attribution });
+  let pref = 'street'; try { pref = localStorage.getItem('ubwast_basemap') || 'street'; } catch {}
+  (pref === 'sat' ? sat : street).addTo(map);
+  L.control.layers({ 'แผนที่': street, 'ดาวเทียม': sat }, null, { position: 'topright' }).addTo(map);   // DEC-096 ทุกแผนที่สลับดาวเทียมได้ จำตัวเลือกล่าสุด
+  map.on('baselayerchange', e => { try { localStorage.setItem('ubwast_basemap', e.name === 'ดาวเทียม' ? 'sat' : 'street'); } catch {} });
   if (!useMain && !sessionStorage.getItem('ubwast_tile_notice')) { sessionStorage.setItem('ubwast_tile_notice', '1'); toast('ใช้แผนที่พื้นหลังสำรอง (แผนที่หลักใช้ได้เมื่อเปิดผ่านเว็บโฮสติ้ง)'); }
 }
 
@@ -486,7 +507,7 @@ async function addBaseLayer(map) {
 // หน้า: แผนที่
 // =====================================================================
 async function pageMap(view) {
-  view.innerHTML = `${scopeSelector()}<div class="legend card" style="padding:8px 12px;justify-content:space-between"><span class="legend">${S.cache.capacity_tier.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</span>${helpBtn('map')}</div>
+  view.innerHTML = `${scopeSelector()}<div class="legend card" style="padding:8px 12px;justify-content:space-between"><span class="legend">${S.cache.capacity_tier.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</span><span class="row" style="gap:6px">${isAdmin() && S.scopeMuni ? `<button class="small secondary" type="button" onclick="saveMapView()" title="ซูม/เลื่อนให้เห็นเขตเทศบาลพอดี แล้วกดปุ่มนี้">บันทึกมุมมองนี้เป็นพื้นที่เริ่มต้น</button>` : ''}${helpBtn('map')}</span></div>
     <div id="map"></div>${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
   const places = (await api.list('v_place', { eq: { status: 'active', ...scopeEq() } })).filter(p => p.lat != null && p.lng != null);
   const map = mkMap('map'); S.map = map; addBaseLayer(map);
@@ -496,7 +517,7 @@ async function pageMap(view) {
       .bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${esc(p.road_name)}${p.soi_name ? ' ' + esc(p.soi_name) : ''}<br>${fmt(p.total_bins)} ใบ · ${fmt(p.total_liters)} ลิตร<br><a href="#place/${p.id}">เปิดรายละเอียด</a>`)
       .addTo(group);
   }
-  if (places.length) map.fitBounds(group.getBounds().pad(0.2)); else map.setView([CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng], CONFIG.MAP_FALLBACK.zoom);
+  fitMuni(map, group);
   if (!places.length) toast('ยังไม่มีจุดที่มีพิกัดในขอบเขตนี้');
 }
 
@@ -787,13 +808,11 @@ async function pageDashOverview(view) {
     ${!S.scopeMuni && isSuper() && msum.length > 1 ? `<div class="card"><h4 style="margin-top:0">เปรียบเทียบรายเทศบาล</h4><div style="overflow:auto"><table><thead><tr><th>เทศบาล</th><th style="text-align:right">จุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">ถนน</th><th style="text-align:right">จุดไม่มีถัง</th><th>ล่าสุด</th></tr></thead><tbody>${msum.map(m => `<tr><td><a href="#dashboard" onclick="S.scopeMuni='${m.municipality_id}'">${esc(m.municipality_code)} ${esc(m.municipality_name)}</a></td><td style="text-align:right">${fmt(m.places)}</td><td style="text-align:right">${fmt(m.total_bins)}</td><td style="text-align:right">${fmt(m.total_liters)}</td><td style="text-align:right">${fmt(m.roads_with_places)}</td><td style="text-align:right">${fmt(m.places_without_bins ?? '-')}</td><td class="muted">${thDate(m.data_updated_at)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
   // แผนที่: วงตามความจุ (รากที่สอง เพื่อให้พื้นที่วงแปรตามลิตร) + สลับแผนที่/ดาวเทียม
   const map = mkMap('map'); S.map = map;
-  const street = L.tileLayer((await tilesAvailable()) ? CONFIG.TILES.url : CONFIG.TILES_FALLBACK.url, { maxZoom: 19, attribution: (await tilesAvailable()) ? CONFIG.TILES.attribution : CONFIG.TILES_FALLBACK.attribution, referrerPolicy: 'origin' }).addTo(map);
-  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery © Esri' });
-  L.control.layers({ 'แผนที่': street, 'ดาวเทียม': sat }, null, { position: 'topright' }).addTo(map);
+  await addBaseLayer(map);
   const g = L.featureGroup().addTo(map); const maxL = Math.max(1, ...places.map(p => +p.total_liters));
   for (const p of places.filter(p => p.lat != null && p.lng != null)) L.circleMarker([p.lat, p.lng], { radius: 5 + 17 * Math.sqrt((+p.total_liters) / maxL), color: '#fff', weight: 1, fillColor: p.tier_color || tiers[0].color, fillOpacity: .85 })
     .bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${esc(p.road_name)}<br>${fmt(p.total_bins)} ใบ · <b>${fmt(p.total_liters)} ลิตร</b> · ${esc(p.tier_label || '')}<br><a href="#place/${p.id}">รายละเอียด/รูป</a>`).addTo(g);
-  if (g.getLayers().length) map.fitBounds(g.getBounds().pad(0.15)); else map.setView([CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng], CONFIG.MAP_FALLBACK.zoom);
+  fitMuni(map, g);
   // แท่ง 100% ซ้อน 2 แถว
   mkChart($('#cStack'), { type: 'bar', data: { labels: ['จำนวนจุด', 'ความจุ'], datasets: byTier.map(x => ({ label: x.t.label, data: [pct(x.n, places.length), pct(x.liters, totL)], rawVals: [x.n, x.liters], backgroundColor: x.t.color, borderWidth: 0 })) },
     options: { indexAxis: 'y', maintainAspectRatio: false, scales: { x: { stacked: true, min: 0, max: 100, ticks: { callback: v => v + '%' } }, y: { stacked: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt1(c.raw)}% (${fmt(c.dataset.rawVals[c.dataIndex])} ${c.dataIndex ? 'ลิตร' : 'จุด'})` } } } } });
@@ -980,7 +999,7 @@ async function pageRoutes(view) {
   else { const line = stops.filter(s => s.lat != null).map(s => [s.lat, s.lng]); if (line.length > 1) L.polyline(line, { color: myColor, weight: 3, dashArray: '6 6' }).addTo(g); }
   if (othersDrawn || othersNoPath) $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px">แสดงเส้นทางอื่นอีก ${fmt(othersDrawn)} เส้น${othersNoPath ? ` · อีก ${fmt(othersNoPath)} เส้นยังไม่มีเส้นบนถนน (admin กด "ลากเส้นตามถนน")` : ''} · แตะเส้นเพื่อดูชื่อและความจุ</div>`);
   if (custom.length) for (const sidx of stops.filter(s => s.lat != null)) L.circleMarker([sidx.lat, sidx.lng], { radius: 11, color: '#fff', weight: 1.5, fillColor: '#1F3A5F', fillOpacity: .95 }).bindTooltip(String(sidx.seq), { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${sidx.seq}. ${esc(sidx.place_code)}</b><br>${esc(sidx.place_name)}<br>${fmt(sidx.total_liters)} ลิตร`).addTo(g);
-  if (all.length) map.fitBounds(g.getBounds().pad(0.2)); else map.setView([CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng], CONFIG.MAP_FALLBACK.zoom);
+  fitMuni(map, g);
   S._routeStops = stops; S._route = { ...r, path_distance_m: routeRow && routeRow.path_distance_m, path_at: routeRow && routeRow.path_at, path_source: routeRow && routeRow.path_source, custom_order: custom.length > 0 };
   $('#routeInfo').insertAdjacentHTML('beforeend', `<details style="margin-top:8px"><summary>ลำดับจุดในเส้นทาง (${stops.length})</summary><table><thead><tr><th>#</th><th>ถนน</th><th>จุด</th><th style="text-align:right">ลิตร</th></tr></thead><tbody>${stops.map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.road_name)}</td><td><a href="#place/${s.place_id}">${esc(s.place_code)}</a> ${esc(s.place_name)}</td><td style="text-align:right">${fmt(s.total_liters)}</td></tr>`).join('')}</tbody></table></details><div class="muted">${path ? `เส้นทึบ = เส้นทางบนถนน ${fmt(Math.round(routeRow.path_distance_m / 100) / 10)} กม. (${routeRow.path_source === 'osrm' ? 'คำนวณจากแผนที่ OpenStreetMap' : 'กำหนดเอง'} · ${thDate(routeRow.path_at)})` : 'เส้นประเชื่อมจุดตามลำดับถนน ไม่ใช่เส้นทางวิ่งจริงบนถนน'}${custom.length ? ` · ลำดับจุด ${custom.length} จุด กำหนดโดย admin` : ' · ยังไม่กำหนดลำดับจุด (admin กำหนดได้ที่ จัดการเทศบาล → เส้นทาง → ลำดับจุด / เส้นถนน)'}</div>`);
 }
@@ -1033,6 +1052,10 @@ function crudForm(table, id) {
     const patch = {};
     for (const c of spec.cols) { const el = $('#c_' + c.key); if (!el) continue; let v = el.value; if (c.type === 'number') v = v === '' ? null : parseFloat(v); if (v === '' && (c.nullable || c.type === 'select')) v = null; if (c.required && (v == null || v === '')) return toast('กรอก ' + c.label, true); patch[c.key] = v; }
     if (spec.beforeSave) { const err = spec.beforeSave(patch, r); if (err) return toast(err, true); }
+    if ((table === 'road' || table === 'soi') && patch.name) {   // DEC-096 กันชื่อซ้ำ (ตัดช่องว่าง/คำว่า ถนน) ก่อนสร้าง
+      const key = normName(patch.name).toLowerCase(); const dup = spec._rows.find(x => (x.id || x.key) !== id && normName(x.name).toLowerCase() === key && (table !== 'soi' || x.road_id === patch.road_id));
+      if (dup) return toast(`มี "${dup.name}" อยู่แล้ว${dup.status === 'inactive' ? ' (ปิดใช้งานอยู่ → กด "แก้" ที่รายการนั้นแล้วเปลี่ยนสถานะเป็นใช้งาน)' : ' ไม่ต้องเพิ่มซ้ำ'}`, true);
+    }
     try { if (id) await api.update(spec.table, r[spec.pk || 'id'], patch, spec.pk || 'id'); else await api.insert(spec.table, { ...(spec.defaults ? spec.defaults() : {}), ...patch }); closeModal(); toast('บันทึกแล้ว'); S.cache.loaded = false; render(); } catch (e) { toast(e.message, true); }
   };
 }
@@ -1067,7 +1090,7 @@ async function pageAdmin(view) {
   const tabs = [['start', 'เริ่มต้นใช้งาน'], ['roads', 'ถนนและซอย'], ['fleet', 'รถและเส้นทาง'], ['users', 'บัญชีผู้ใช้'], ['settings', 'ตั้งค่าเทศบาล']];
   const nav = `<nav class="subtabs">${tabs.map(([k, l]) => `<a href="#admin/${k}" class="${tab === k ? 'active' : ''}">${l}</a>`).join('')}</nav>`;
   let body = '';
-  if (tab === 'roads') body = (await crudSection(SPECS.road)) + (await crudSection(SPECS.soi));
+  if (tab === 'roads') body = `<div class="card"><div class="row" style="justify-content:space-between"><div><b>ยังไม่มีถนนที่ต้องการ?</b> <span class="muted">ดึงชื่อถนนและซอยในเขตเทศบาลจากแผนที่ OpenStreetMap ได้ทุกเมื่อ (ไม่เพิ่มซ้ำ) หรือกด "เพิ่ม" ในตารางเพื่อพิมพ์เอง</span></div><button class="small secondary" onclick="adminImportRoads()">ดึงถนน/ซอยจาก OpenStreetMap</button></div></div>` + (await crudSection(SPECS.road)) + (await crudSection(SPECS.soi));
   else if (tab === 'fleet') body = (await crudSection(SPECS.truck)) + (await crudSection(SPECS.route));
   else if (tab === 'users') body = await crudSection(SPECS.app_user);
   else if (tab === 'settings') body = adminSettings(muni);
@@ -1198,7 +1221,7 @@ async function resetPw(userId, username, role) {
 function showCredentials(accs, ctx = {}) {
   S._lastCreds = { accs, ctx };
   openModal(`<h3 style="margin-top:0">บัญชีที่สร้าง/รีเซ็ต — แสดงครั้งเดียว</h3>${ctx.municipality ? `<div class="muted">เทศบาล ${esc(ctx.municipality)} (${esc(ctx.code)})</div>` : ''}${accs.map(a => `<div class="card"><div>ชื่อล็อกอิน: <b class="mono">${esc(a.username)}</b></div><div>รหัสผ่าน: <b class="mono">${esc(a.password)}</b></div>${a.role ? `<div class="muted">${roleLabel(a.role)}</div>` : ''}</div>`).join('')}
-    ${(ctx.problems || []).length ? `<div class="banner warn">สร้างไม่ครบ: ${ctx.problems.map(esc).join(' · ')} → เพิ่มภายหลังได้ที่ จัดการเทศบาล → บัญชีผู้ใช้</div>` : ''}
+    ${ctx.note ? `<div class="banner info">${esc(ctx.note)}</div>` : ''}${(ctx.problems || []).length ? `<div class="banner warn">มีบางอย่างไม่สำเร็จ: ${ctx.problems.map(esc).join(' · ')}</div>` : ''}
     <div class="banner warn">กด "พิมพ์ใบส่งมอบ" หรือจดก่อนปิด ระบบจะไม่แสดงรหัสผ่านนี้อีก (ลืม → รีเซ็ตได้) · <b>ห้ามถ่ายภาพหน้านี้ส่งในแชต/ไลน์/อีเมล</b> ให้ส่งใบส่งมอบเป็นกระดาษหรือบอกปากเปล่า</div><div class="row"><button class="secondary" onclick="printCredentials()">พิมพ์ใบส่งมอบ</button><button onclick="closeModal();S.cache.loaded=false;render()">ปิด</button></div>`);
 }
 function printCredentials() {
@@ -1293,9 +1316,69 @@ function superGuide() {
     <div class="muted" style="margin-top:8px">เมื่อได้ URL กลับมา: ส่วนกลาง → เทศบาลนั้น → "จัดการ" → แท็บ "ตั้งค่าเทศบาล" → เลือก "ใช้ Google Drive ของเทศบาลเอง" → วาง URL → บันทึก → ให้ผู้บันทึกถ่ายรูปทดสอบ 1 รูป</div></div>
     <div class="card"><h4 style="margin-top:0">คู่มือเจ้าของโครงการ (super admin)</h4><ol style="padding-left:22px">${items.map(([a, b, c]) => `<li style="margin:10px 0"><b>${a}</b><div class="muted">ที่ไหน: ${b}</div><div class="muted">ค่าที่ต้องได้: ${c}</div></li>`).join('')}</ol><div class="muted">รายละเอียดเชิงเทคนิค (SQL · ห้องเครื่อง · กุญแจ) อยู่ใน Notion บทที่ 1–10 และไฟล์ DECISIONS.md</div></div>`;
 }
+// =====================================================================
+// DEC-096 ดึงถนน/ซอยจาก OpenStreetMap เฉพาะเทศบาลที่ระบุ (ขอบเขต relation หรือกรอบแผนที่) · กติกาเดียวกับ scripts/gen_roads_osm.py
+// =====================================================================
+const OSM_TYPE = { motorway: 'สายหลัก', trunk: 'สายหลัก', primary: 'สายหลัก', secondary: 'สายรอง', tertiary: 'สายรอง', residential: 'ถนนย่อย', unclassified: 'ถนนย่อย', living_street: 'ถนนย่อย', service: 'ถนนย่อย' };
+const OSM_SKIP = new Set(['footway', 'path', 'steps', 'cycleway', 'track', 'pedestrian', 'bridleway', 'construction', 'proposed']);
+const RANK = { 'สายหลัก': 0, 'สายรอง': 1, 'ถนนย่อย': 2, 'ซอย': 3 };
+const normName = v => String(v || '').replace(/\s+/g, ' ').trim().replace(/^(ถนน|ถ\.)\s*/, '').trim();
+async function overpass(query) {
+  let last = null;
+  for (const url of CONFIG.OVERPASS_URLS) { try { const r = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(query) }); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } catch (e) { last = e; } }
+  throw new Error('บริการแผนที่ OpenStreetMap ไม่ตอบในขณะนี้ ลองใหม่ภายหลัง (' + (last && last.message) + ')');
+}
+function osmToRoads(elements) {
+  const names = {};
+  for (const w of elements) { const t = w.tags || {}; let name = normName(t['name:th'] || t.name || ''); if (!name || /^[A-Za-z0-9 .\-\/]+$/.test(name) || OSM_SKIP.has(t.highway)) continue;
+    let kind = OSM_TYPE[t.highway] || 'ถนนย่อย'; if (name.startsWith('ซอย') || name.includes(' ซอย')) kind = 'ซอย';
+    if (!(name in names) || RANK[kind] < RANK[names[name]]) names[name] = kind; }
+  const roads = Object.entries(names).filter(([, k]) => k !== 'ซอย').map(([name, kind]) => ({ name, kind }));
+  const roadNames = roads.map(r => r.name).sort((a, b) => b.length - a.length);
+  const sois = [], orphans = [];
+  for (const [name, kind] of Object.entries(names)) { if (kind !== 'ซอย') continue; const m = name.match(/^ซอย\s*(.+?)\s*(\d+[\/\d]*)?$/) || name.match(/^(.+?)\s+ซอย\s*(\d+[\/\d]*)?$/); let parent = null;
+    if (m) { const base = normName(m[1]); parent = roadNames.find(rn => base === rn || (rn.length >= 3 && base.startsWith(rn))) || null; }
+    if (parent) sois.push({ parent, name }); else orphans.push({ name, kind: 'ซอย' }); }
+  return { roads: roads.concat(orphans).sort((a, b) => RANK[a.kind] - RANK[b.kind] || a.name.localeCompare(b.name, 'th')), sois };
+}
+// นำเข้าให้เทศบาล: ข้ามชื่อที่มีอยู่แล้ว (เทียบแบบตัดช่องว่าง/คำว่า ถนน) · คืนสรุปจำนวน
+async function importRoadsOSM(mid, src, onProgress) {
+  const say = t => { if (onProgress) onProgress(t); };
+  const q = src.relationId ? `[out:json][timeout:120];area(${3600000000 + Number(src.relationId)})->.a;way(area.a)["highway"]["name"];out tags;`
+                           : `[out:json][timeout:120];way(${src.bounds[0][0]},${src.bounds[0][1]},${src.bounds[1][0]},${src.bounds[1][1]})["highway"]["name"];out tags;`;
+  say('กำลังดึงถนนจาก OpenStreetMap…'); const data = await overpass(q);
+  const { roads, sois } = osmToRoads(data.elements || []);
+  const existing = await api.list('road', { eq: { municipality_id: mid } }); const have = new Set(existing.map(r => normName(r.name).toLowerCase()));
+  const newRoads = roads.filter(r => !have.has(r.name.toLowerCase()));
+  say(`พบถนน ${roads.length} สาย ใหม่ ${newRoads.length} สาย กำลังบันทึก…`);
+  const inserted = await api.insertMany('road', newRoads.map(r => ({ municipality_id: mid, name: r.name, road_type: r.kind })));
+  const allRoads = existing.concat(inserted); const byName = {}; for (const r of allRoads) byName[normName(r.name).toLowerCase()] = r;
+  const existingSoi = await api.list('soi', { eq: { municipality_id: mid } }); const haveSoi = new Set(existingSoi.map(x => x.road_id + '|' + normName(x.name).toLowerCase()));
+  const newSois = sois.map(x => ({ road: byName[x.parent.toLowerCase()], name: x.name })).filter(x => x.road && !haveSoi.has(x.road.id + '|' + x.name.toLowerCase()));
+  await api.insertMany('soi', newSois.map(x => ({ municipality_id: mid, road_id: x.road.id, name: x.name })));
+  return { found: roads.length, roadsAdded: inserted.length, soisAdded: newSois.length, skipped: roads.length - newRoads.length };
+}
+async function adminImportRoads() {
+  const m = muniOf(S.scopeMuni); if (!m.id) return toast('เลือกเทศบาลก่อน', true);
+  const src = m.osm_relation_id ? { relationId: m.osm_relation_id } : (m.map_bounds ? { bounds: m.map_bounds } : null);
+  if (!src) return openModal(`<h3 style="margin-top:0">ยังไม่รู้พื้นที่ของเทศบาล</h3><div>ก่อนดึงถนนอัตโนมัติ ระบบต้องรู้ว่าเขตเทศบาลอยู่ตรงไหน:</div><ol><li>ไปเมนู "แผนที่" เลื่อน/ซูมให้เห็นเขตเทศบาลพอดีทั้งเขต</li><li>กดปุ่ม "บันทึกมุมมองนี้เป็นพื้นที่เริ่มต้น"</li><li>กลับมากดปุ่มนี้อีกครั้ง</li></ol><button onclick="closeModal()">ปิด</button>`);
+  if (!confirm(`ดึงชื่อถนนและซอยในเขต ${m.name} จากแผนที่ OpenStreetMap?\nถนนที่มีอยู่แล้วจะไม่ถูกเพิ่มซ้ำ · ถนนที่ไม่ใช้ปิดใช้งานได้ภายหลัง`)) return;
+  try { const r = await importRoadsOSM(m.id, src, toast); toast(`เสร็จ: พบ ${fmt(r.found)} สาย · เพิ่มถนน ${fmt(r.roadsAdded)} · ซอย ${fmt(r.soisAdded)} · มีอยู่แล้ว ${fmt(r.skipped)}`); render(); } catch (e) { toast(e.message, true); }
+}
+// รายชื่อเทศบาลทั้งประเทศ (เฉพาะที่ OpenStreetMap มีขอบเขต) โหลดเมื่อต้องใช้
+let _muniList = null;
+async function muniList() { if (_muniList) return _muniList; const r = await fetch('data/municipalities.json'); if (!r.ok) throw new Error('โหลดรายชื่อเทศบาลไม่ได้'); _muniList = await r.json(); return _muniList; }
 function muniForm() {
-  openModal(`<h3 style="margin-top:0">สร้างเทศบาลใหม่</h3><label for="mu_code">รหัสย่อ (a-z/0-9 2–12 ตัว ใช้ประกอบชื่อล็อกอิน เช่น npm)</label><input id="mu_code" autocapitalize="none" placeholder="npm"><label for="mu_name">ชื่อเทศบาล</label><input id="mu_name" maxlength="200" placeholder="เทศบาลเมืองนครพนม"><label for="mu_note">หมายเหตุ (ไม่บังคับ)</label><input id="mu_note">
-    <div class="row" style="margin-top:12px"><button id="mu_save">สร้าง</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div><div class="muted">ระบบจะสร้างบัญชี admin 1 บัญชี และผู้บันทึก 3 บัญชี (รหัส-admin, รหัส-rec1, -rec2, -rec3) รหัสผ่านสุ่มและแสดงครั้งเดียวพร้อมปุ่มพิมพ์ใบส่งมอบ (DEC-093)</div>`);
+  S._muPick = null;
+  openModal(`<h3 style="margin-top:0">สร้างเทศบาลใหม่</h3>
+    <div class="banner info">ขั้น 1 เลือกเทศบาลจากรายชื่อ (ระบบจะตั้งพื้นที่แผนที่และดึงถนน/ซอยให้อัตโนมัติ) · ถ้าไม่พบ ให้พิมพ์ชื่อเองในขั้น 2 แล้ว admin ตั้งพื้นที่และดึงถนนภายหลังได้</div>
+    <div class="row"><select id="mu_prov" style="flex:1;min-width:140px" onchange="muSearch()"><option value="">ทุกจังหวัด</option></select><input id="mu_q" style="flex:2;min-width:160px" placeholder="พิมพ์บางส่วนของชื่อ เช่น นครพนม" oninput="muSearch()" autocomplete="off"></div>
+    <div id="mu_results" class="muted" style="margin:6px 0;max-height:180px;overflow:auto">กำลังโหลดรายชื่อ…</div><div id="mu_picked" class="muted"></div>
+    <label for="mu_code">ขั้น 2 รหัสย่อ (a-z/0-9 2–12 ตัว ใช้ประกอบชื่อล็อกอิน เช่น npm)</label><input id="mu_code" autocapitalize="none" placeholder="npm"><label for="mu_name">ชื่อเทศบาล</label><input id="mu_name" maxlength="200" placeholder="เทศบาลเมืองนครพนม"><label for="mu_note">หมายเหตุ (ไม่บังคับ)</label><input id="mu_note">
+    <div class="row" style="margin-top:12px"><button id="mu_save">สร้าง</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div><div class="muted">ระบบจะสร้างบัญชี admin 1 + ผู้บันทึก 3 (รหัสผ่านแสดงครั้งเดียว พิมพ์ใบส่งมอบได้) · ถ้าเลือกจากรายชื่อ จะตั้งพื้นที่แผนที่และดึงถนน/ซอยจาก OpenStreetMap ให้ด้วย (ใช้เวลาราว 10–30 วินาที)</div>`);
+  muniList().then(d => { const provs = [...new Set(d.rows.map(r => r.p).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th')); $('#mu_prov').innerHTML = '<option value="">ทุกจังหวัด</option>' + provs.map(p => `<option>${esc(p)}</option>`).join(''); muSearch(); }).catch(e => { $('#mu_results').textContent = e.message + ' (ยังสร้างแบบพิมพ์ชื่อเองได้)'; });
+  window.muSearch = async () => { const d = await muniList(); const q = $('#mu_q').value.trim(), p = $('#mu_prov').value; const hits = d.rows.filter(r => (!p || r.p === p) && (!q || r.n.includes(q))); $('#mu_results').innerHTML = hits.length ? hits.slice(0, 40).map(r => `<button type="button" class="small secondary" style="margin:3px 4px 3px 0" onclick='muPick(${JSON.stringify(r)})'>${esc(r.n)} <span class="muted">· ${esc(r.p)}</span></button>`).join('') + (hits.length > 40 ? `<div>…อีก ${hits.length - 40} แห่ง พิมพ์ชื่อให้เจาะจงขึ้น</div>` : '') : `ไม่พบในรายชื่อ (OpenStreetMap มีขอบเขตของเทศบาล ${fmt(d.count)} แห่ง) → พิมพ์ชื่อเองในขั้น 2`; };
+  window.muPick = r => { S._muPick = r; $('#mu_name').value = r.n; $('#mu_picked').innerHTML = `เลือกแล้ว: <b>${esc(r.n)}</b> · จังหวัด${esc(r.p)} · จะตั้งพื้นที่แผนที่และดึงถนน/ซอยให้อัตโนมัติ`; if (!$('#mu_code').value) $('#mu_code').focus(); };
   $('#mu_save').onclick = async () => {
     const b = $('#mu_save'); b.disabled = true; b.textContent = 'กำลังสร้าง…';
     const code = $('#mu_code').value.trim().toLowerCase(), name = $('#mu_name').value.trim();
@@ -1305,26 +1388,33 @@ function muniForm() {
     try { const r = await api.engine('create_municipality', { code, name, note: $('#mu_note').value.trim() }); accounts.push(...r.accounts); mid = (r.municipality || {}).id; }
     catch (e) { toast(e.message, true); b.disabled = false; b.textContent = 'สร้าง'; return; }
     for (const i of [2, 3]) { b.textContent = `กำลังสร้างผู้บันทึก ${i}/3…`; try { const r = await api.engine('create_user', { username: `${code}-rec${i}`, display_name: `ผู้บันทึก ${i} ${name}`, role: 'recorder', municipality_id: mid }); accounts.push(r.account); } catch (e) { problems.push(`${code}-rec${i}: ${e.message}`); } }
-    showCredentials(accounts, { municipality: name, code, problems });
+    let roadsNote = '';
+    const pick = S._muPick;
+    if (pick && mid) {   // DEC-096 พื้นที่ + ถนน/ซอย อัตโนมัติ
+      try { b.textContent = 'กำลังตั้งพื้นที่แผนที่…'; await api.update('municipality', mid, { province: pick.p || null, osm_relation_id: pick.id, map_bounds: [[pick.b[0], pick.b[1]], [pick.b[2], pick.b[3]]] }); } catch (e) { problems.push('ตั้งพื้นที่แผนที่ไม่สำเร็จ: ' + e.message); }
+      try { const r = await importRoadsOSM(mid, { relationId: pick.id }, t => { b.textContent = t; }); roadsNote = `ถนน/ซอยจาก OpenStreetMap: พบ ${fmt(r.found)} สาย เพิ่มถนน ${fmt(r.roadsAdded)} ซอย ${fmt(r.soisAdded)} (ปิดสายที่ไม่ใช้ได้ที่ จัดการเทศบาล → ถนนและซอย)`; } catch (e) { problems.push('ดึงถนนไม่สำเร็จ (กดดึงใหม่ได้ที่ จัดการเทศบาล → ถนนและซอย): ' + e.message); }
+    }
+    S.cache.loaded = false;
+    showCredentials(accounts, { municipality: name, code, problems, note: roadsNote || (pick ? '' : 'ยังไม่ได้ตั้งพื้นที่แผนที่และถนน: ให้ admin เปิดเมนูแผนที่ → "บันทึกมุมมองนี้เป็นพื้นที่เริ่มต้น" แล้ว จัดการเทศบาล → ถนนและซอย → "ดึงถนน/ซอยจาก OpenStreetMap"') });
   };
 }
 // =====================================================================
 // ระบบช่วยเหลือ (DEC-093): ไอคอน (?) ทุกส่วน → ขั้นตอนทีละขั้น "ทำอะไร · ที่ไหน · ค่าที่ต้องได้" · หน้า "ช่วยเหลือ" แยกตามบทบาท
 // =====================================================================
 const HELP = {
-  map: { title: 'แผนที่จุดวางถัง', who: 'ทุกคน', steps: [['ดูจุดทั้งหมด', 'หมุดสีตามความจุของจุด (ดูคำอธิบายสีด้านบน) · ซูมด้วยปุ่ม + − หรือสองนิ้ว', 'เห็นหมุดครบตามจำนวนจุดที่มีพิกัด'], ['ดูรายละเอียดจุด', 'แตะหมุด → กล่องข้อมูล → "เปิดรายละเอียด"', 'เห็นถัง รูป และผู้บันทึก'], ['เพิ่มจุดใหม่', 'ปุ่มเขียว "เพิ่มจุด" มุมขวาล่าง', 'เปิดฟอร์มเพิ่มจุด']], tips: 'จุดที่ไม่มีพิกัดจะไม่ปรากฏบนแผนที่ แต่อยู่ในเมนู "จุด" · ถ้าแผนที่พื้นหลังไม่ขึ้น ให้รอสัญญาณแล้วเปิดใหม่' },
+  map: { title: 'แผนที่จุดวางถัง', who: 'ทุกคน', steps: [['ดูจุดทั้งหมด', 'หมุดสีตามความจุของจุด (ดูคำอธิบายสีด้านบน) · ซูมด้วยปุ่ม + − หรือสองนิ้ว · ปุ่มมุมขวาบนสลับ แผนที่/ดาวเทียม', 'เห็นหมุดครบตามจำนวนจุดที่มีพิกัด'], ['ตั้งพื้นที่เริ่มต้น (admin)', 'เลื่อน/ซูมให้เห็นเขตเทศบาลพอดี → ปุ่ม "บันทึกมุมมองนี้เป็นพื้นที่เริ่มต้น"', 'ทุกคนในเทศบาลเปิดแผนที่แล้วเห็นเขตเทศบาลทันที'], ['ดูรายละเอียดจุด', 'แตะหมุด → กล่องข้อมูล → "เปิดรายละเอียด"', 'เห็นถัง รูป และผู้บันทึก'], ['เพิ่มจุดใหม่', 'ปุ่มเขียว "เพิ่มจุด" มุมขวาล่าง', 'เปิดฟอร์มเพิ่มจุด']], tips: 'จุดที่ไม่มีพิกัดจะไม่ปรากฏบนแผนที่ แต่อยู่ในเมนู "จุด" · ถ้าแผนที่พื้นหลังไม่ขึ้น ให้รอสัญญาณแล้วเปิดใหม่' },
   places: { title: 'รายการจุด', who: 'ทุกคน', steps: [['ค้นหา', 'พิมพ์รหัส ชื่อ หรือถนนในช่องค้นหา', 'รายการกรองทันที'], ['เปิดจุด', 'แตะรหัสจุด', 'หน้ารายละเอียด แก้ไข เพิ่มถัง เพิ่มรูป'], ['ส่งออก', 'ปุ่ม "ส่งออก CSV" (เปิดด้วย Excel ได้)', 'ไฟล์ ubwast_places_วันที่.csv']], tips: 'จุดที่ถูกยกเลิกยังอยู่ในรายการแต่ไม่นับในยอด' },
   'place-edit': { title: 'เพิ่ม/แก้ไขจุด', who: 'ผู้บันทึก และ admin', steps: [['ตั้งชื่ออ้างอิง', 'ช่อง "ชื่ออ้างอิง" เช่น หน้าวัดกลาง หน้าตลาดสด', 'ชื่อที่คนในพื้นที่เข้าใจ'], ['เลือกถนน (และซอย)', 'ช่อง "ถนน" · ถ้าไม่มีถนนให้ admin เพิ่มที่ "จัดการเทศบาล"', 'รหัสจุดจะถูกตั้งเป็น ชื่อถนน-ลำดับ อัตโนมัติ'], ['เก็บพิกัด', 'ยืนที่จุดจริง → กด "ใช้ GPS" → รอ "ความคลาดเคลื่อน ± เมตร"', 'ค่าคลาดเคลื่อนต่ำกว่า 20 เมตร ถ้ามากกว่านั้นให้กดใหม่กลางแจ้ง'], ['ใส่ถัง', 'แถวถัง: ประเภท · จำนวนใบ · สี · สภาพ · ปีงบ (ไม่บังคับ) · ถังต่างชนิดเพิ่มแถวใหม่', 'จำนวนใบมากกว่า 0'], ['ถ่ายรูป', 'ช่อง "รูป" → กล้องหลัง → ไม่เกินจำนวนที่กำหนด', 'ระบบย่อรูปและส่งให้เองหลังบันทึก'], ['บันทึก', 'ปุ่ม "บันทึก"', 'ข้อความ "บันทึกจุด … แล้ว" และเปิดหน้าจุด']], tips: 'ไม่มีสัญญาณ: บันทึกได้ตามปกติ ระบบเก็บไว้ในเครื่องและส่งเองเมื่อมีสัญญาณ (ดูเมนู "รอส่ง" ด้านบน) · ผู้บันทึกแก้ไขได้แต่ยกเลิกไม่ได้ ถ้าบันทึกผิดให้แจ้ง admin' },
   queue: { title: 'รายการรอส่ง (ทำงานตอนไม่มีสัญญาณ)', who: 'ผู้บันทึก', steps: [['ดูว่ามีอะไรค้าง', 'ปุ่ม "รอส่ง N" บนหัวเว็บ', 'รายการจุด ถัง รูป ที่ยังไม่ถึงเซิร์ฟเวอร์'], ['ส่งเมื่อมีสัญญาณ', 'ระบบส่งเองทันทีที่มีสัญญาณ หรือกด "ส่งตอนนี้"', 'รายการหายไปและขึ้น "ส่งข้อมูลที่ค้างแล้ว"'], ['รายการที่ส่งไม่ผ่าน', 'อ่านข้อความสีแดง แก้ที่ต้นเหตุ (เช่น ถนนถูกปิด) แล้วส่งใหม่', 'ไม่มีรายการสีแดง']], tips: 'อย่าล้างข้อมูลเบราว์เซอร์ขณะมีรายการค้าง ข้อมูลจะหาย' },
   routes: { title: 'เส้นทางรถ', who: 'ทุกคน (จัดการโดย admin)', steps: [['เลือกเส้นทาง', 'ช่องเลือกด้านบน', 'การ์ดแสดง ถนน จุด ลิตร และ % ของความจุรถ'], ['อ่านแผนที่', 'เส้นทึบ = เส้นทางบนถนน · เลขบนหมุด = ลำดับเก็บ · สีเส้น = ความจุรวมของเส้นทาง (ดูคำอธิบายสี)', 'เห็นทางวิ่งจากจุดแรกถึงจุดสุดท้าย'], ['พิมพ์รายงานคนขับ', 'ปุ่ม "รายงานแจ้งคนขับ" → พิมพ์หรือบันทึก PDF', 'ตารางลำดับจุดพร้อมช่องติ๊ก "เก็บแล้ว"'], ['จัดลำดับ/ลากเส้น (admin)', 'จัดการเทศบาล → รถและเส้นทาง → เส้นทาง → "ลำดับจุด / เส้นถนน"', 'เส้นทึบและเลขลำดับปรากฏในหน้านี้']], tips: 'เส้นประตรง = เส้นทางที่ยังไม่ได้กด "ลากเส้นตามถนน" · ถ้ารถวิ่งข้ามถนนที่ไม่รับผิดชอบ เส้นจะวิ่งตามถนนจริงให้เอง' },
   me: { title: 'บัญชีของฉัน', who: 'ทุกคน', steps: [['เปลี่ยนรหัสผ่าน', 'กรอกรหัสใหม่ 2 ช่อง (อย่างน้อย 8 ตัว) → "บันทึกรหัสผ่าน"', 'ข้อความ "เปลี่ยนรหัสผ่านแล้ว"'], ['ออกจากระบบ', 'ปุ่ม "ออกจากระบบ" (ใช้เมื่อเครื่องใช้ร่วมกับคนอื่น)', 'กลับไปหน้าล็อกอิน']], tips: 'ลืมรหัสผ่าน: ระบบไม่มีการส่งอีเมล ให้ admin ของเทศบาลกด "รีเซ็ตรหัส" แล้วแจ้งรหัสใหม่' },
   'admin-start': { title: 'เริ่มต้นใช้งานสำหรับ admin', who: 'admin เทศบาล', steps: [['ทำตามรายการ 1–8', 'แท็บนี้ · กด "ไป" ที่แต่ละข้อ', 'ครบทุกข้อ = เทศบาลพร้อมใช้']], tips: 'ทำไม่ครบในวันเดียวได้ รายการนี้อยู่ที่เดิมเสมอ' },
-  'admin-roads': { title: 'ถนนและซอย', who: 'admin เทศบาล', steps: [['เพิ่มถนน', '"ถนน" → "เพิ่ม" → ชื่อถนน (ไม่ต้องใส่คำว่า ถนน) · ประเภท (สายหลัก/สายรอง/ถนนย่อย/ซอย)', 'ผู้บันทึกเลือกถนนนี้ได้ทันที'], ['ค้นหา/แบ่งหน้า', 'ช่องค้นหา · เลือกแสดงหน้าละ 20 หรือ 50', 'เห็นเฉพาะที่ค้น'], ['ปิดถนนที่ไม่ใช้', '"แก้" → สถานะ "ปิดใช้งาน"', 'ไม่ปรากฏให้เลือกตอนเพิ่มจุด แต่จุดเดิมยังอยู่'], ['เพิ่มซอย (ไม่บังคับ)', '"ซอย" → "เพิ่ม" → เลือกถนน → ชื่อซอย', 'ผู้บันทึกเลือกซอยได้ตอนเพิ่มจุด']], tips: 'ลบถนนที่มีจุดอ้างอิงไม่ได้ (ระบบกัน) ให้ปิดใช้งานแทน · เปลี่ยนชื่อถนนแล้วรหัสจุดเดิมไม่เปลี่ยนตาม (ตั้งใจให้รหัสคงที่)' },
+  'admin-roads': { title: 'ถนนและซอย', who: 'admin เทศบาล', steps: [['ดึงถนนทั้งเขตอัตโนมัติ', 'ปุ่ม "ดึงถนน/ซอยจาก OpenStreetMap" (ทำได้ซ้ำ ไม่เพิ่มชื่อที่มีแล้ว)', 'ได้รายชื่อถนน/ซอยในเขตเทศบาล แล้วปิดสายที่ไม่ใช้'], ['เพิ่มถนนเอง', '"ถนน" → "เพิ่ม" → ชื่อถนน (ไม่ต้องใส่คำว่า ถนน) · ประเภท (สายหลัก/สายรอง/ถนนย่อย/ซอย) · ระบบเตือนถ้ามีชื่อนี้แล้ว', 'ผู้บันทึกเลือกถนนนี้ได้ทันที'], ['ค้นหา/แบ่งหน้า', 'ช่องค้นหา · เลือกแสดงหน้าละ 20 หรือ 50', 'เห็นเฉพาะที่ค้น'], ['ปิดถนนที่ไม่ใช้', '"แก้" → สถานะ "ปิดใช้งาน"', 'ไม่ปรากฏให้เลือกตอนเพิ่มจุด แต่จุดเดิมยังอยู่'], ['เพิ่มซอย (ไม่บังคับ)', '"ซอย" → "เพิ่ม" → เลือกถนน → ชื่อซอย', 'ผู้บันทึกเลือกซอยได้ตอนเพิ่มจุด']], tips: 'ลบถนนที่มีจุดอ้างอิงไม่ได้ (ระบบกัน) ให้ปิดใช้งานแทน · เปลี่ยนชื่อถนนแล้วรหัสจุดเดิมไม่เปลี่ยนตาม (ตั้งใจให้รหัสคงที่)' },
   'admin-fleet': { title: 'รถเก็บขยะ', who: 'admin เทศบาล', steps: [['เพิ่มรถ', '"รถเก็บขยะ" → "เพิ่ม" → รหัส/ชื่อรถ · ทะเบียน · ประเภทรถ', 'รถปรากฏให้เลือกตอนสร้างเส้นทาง'], ['ความจุเฉพาะคัน', 'กรอกเมื่อรถคันนี้จุต่างจากประเภท (ว่าง = ตามประเภท)', '% ภาระของเส้นทางคำนวณจากค่านี้']], tips: 'ประเภทรถ (ความจุมาตรฐาน) กำหนดโดยเจ้าของโครงการที่ "ส่วนกลาง" ถ้าไม่มีประเภทที่ต้องการให้แจ้ง' },
   'admin-routes': { title: 'เส้นทางเดินรถ', who: 'admin เทศบาล', steps: [['สร้างเส้นทาง', '"เส้นทางเดินรถ" → "เพิ่ม" → ชื่อ · รถ · ชนิด (ประจำ/ชั่วคราว) · วัน/เวลาเก็บ', 'แถวเส้นทางใหม่'], ['เลือกถนนในเส้นทาง', 'ปุ่ม "ถนนในเส้นทาง" → เพิ่มถนนตามลำดับ → "บันทึกลำดับ"', 'จุดทุกจุดบนถนนเหล่านั้นนับเข้าเส้นทางอัตโนมัติ'], ['จัดลำดับจุดและลากเส้น', 'ปุ่ม "ลำดับจุด / เส้นถนน" → "จัดอัตโนมัติ" → ปรับทิศ/ลำดับให้ตรงที่รถวิ่งจริง → "ลากเส้นตามถนน"', 'ข้อความ "ได้เส้นบนถนนแล้ว … กม." และหน้าเส้นทางรถแสดงเส้นทึบ'], ['เส้นทางชั่วคราว', 'ชนิด "ชั่วคราว" + วันเริ่ม/สิ้นสุด (เช่น งานเทศกาล)', 'ระบบเตือนถ้าถนนซ้ำกับเส้นทางอื่น']], tips: '"ลากเส้นตามถนน" ใช้บริการแผนที่ภายนอก (OpenStreetMap) ถ้าตอบช้าหรือไม่ตอบ ลองใหม่ภายหลัง ลำดับจุดบันทึกไว้แล้ว' },
   'admin-users': { title: 'บัญชีผู้ใช้', who: 'admin เทศบาล', steps: [['ดูบัญชีที่มี', 'ตารางนี้: admin 1 + ผู้บันทึกตามเพดาน (ปกติ 3)', 'สถานะ "ใช้งาน"'], ['ผู้บันทึกลืมรหัส', 'ปุ่ม "รีเซ็ตรหัส" → จดรหัสใหม่ → แจ้งผู้บันทึก', 'ผู้บันทึกล็อกอินได้'], ['เพิ่มผู้บันทึก', 'ปุ่ม "เพิ่มผู้บันทึก" → ชื่อล็อกอิน (เช่น npm-rec4) · ชื่อแสดง', 'รหัสผ่านแสดงครั้งเดียว'], ['คนลาออก', '"แก้" → สถานะ "ปิดใช้งาน"', 'ล็อกอินไม่ได้ ข้อมูลที่เคยบันทึกยังอยู่']], tips: 'เพิ่มผู้บันทึกเกินเพดานไม่ได้ ให้ติดต่อเจ้าของโครงการเพื่อเพิ่มเพดาน · เปลี่ยนบทบาทได้เฉพาะเจ้าของโครงการ' },
   'admin-settings': { title: 'ตั้งค่าเทศบาล (ที่เก็บรูป)', who: 'admin เทศบาล', steps: [['ค่าเริ่มต้น', 'ไม่ต้องทำอะไร รูปเก็บที่ที่เก็บกลางของโครงการ (Drive ของเจ้าของโครงการ โฟลเดอร์ UBWast-photos/รหัสเทศบาล)', 'ผู้บันทึกถ่ายรูปได้ทันที'], ['ย้ายไป Drive ของเทศบาลเอง ขั้น 1', 'เทศบาลเตรียมบัญชี Google ของหน่วยงาน (ที่จะเป็นเจ้าของรูปถาวร) แล้วแจ้งเจ้าของโครงการ', 'มีบัญชี Google ที่เทศบาลควบคุมเอง'], ['ขั้น 2', 'เจ้าของโครงการส่งสคริปต์รับรูป (ไฟล์เดียว ไม่มีกุญแจลับ) ให้ผู้ดูแลบัญชีนั้นวางที่ script.google.com → ใส่ค่า 2 ค่าที่เจ้าของโครงการให้ → Deploy เป็น Web app (Execute as Me · Anyone) → คัดลอกลิงก์ /exec', 'ได้ลิงก์ขึ้นต้น https://script.google.com/macros/s/'], ['ขั้น 3', 'แท็บนี้ → เลือก "ใช้ Google Drive ของเทศบาลเอง" → วางลิงก์ → บันทึกการตั้งค่า', 'ผู้บันทึกถ่ายรูปทดสอบ 1 รูป แล้วเห็นรูปในโฟลเดอร์ UBWast-photos บน Drive ของเทศบาล']], tips: 'รูปที่ถ่ายก่อนเปลี่ยนยังอยู่ที่เดิมและเปิดดูได้ตามปกติ ไม่ถูกย้ายอัตโนมัติ · โควตาพื้นที่นับที่บัญชีที่เก็บรูป · คู่มือภาพประกอบสำหรับผู้ดูแลบัญชี Google ของเทศบาล: เมนู "ช่วยเหลือ" → "ติดตั้งสคริปต์รับรูป"' },
-  'super-muni': { title: 'เทศบาล (ส่วนกลาง)', who: 'เจ้าของโครงการ', steps: [['สร้างเทศบาล', '"สร้างเทศบาล" → รหัส a–z (เช่น npm) · ชื่อ', 'บัญชี admin 1 + ผู้บันทึก 3 → พิมพ์ใบส่งมอบ'], ['เข้าทำงานแทน admin', 'ปุ่ม "จัดการ" ของเทศบาลนั้น', 'เมนูจัดการเทศบาลเปลี่ยนเป็นเทศบาลนั้น'], ['แก้เพดานบัญชี/ชื่อ/สถานะ', '"แก้"', 'มีผลทันที']], tips: 'ปิดใช้งานเทศบาล = ผู้ใช้ของเทศบาลนั้นยังล็อกอินได้แต่ข้อมูลไม่แสดงในภาพรวม (ใช้เมื่อเลิกโครงการ)' },
+  'super-muni': { title: 'เทศบาล (ส่วนกลาง)', who: 'เจ้าของโครงการ', steps: [['สร้างเทศบาล', '"สร้างเทศบาล" → ค้นหาและเลือกเทศบาลจากรายชื่อ (ตามจังหวัด/บางส่วนของชื่อ) → รหัส a–z (เช่น npm)', 'บัญชี admin 1 + ผู้บันทึก 3 + พื้นที่แผนที่ + ถนน/ซอยจาก OpenStreetMap → พิมพ์ใบส่งมอบ'], ['เข้าทำงานแทน admin', 'ปุ่ม "จัดการ" ของเทศบาลนั้น', 'เมนูจัดการเทศบาลเปลี่ยนเป็นเทศบาลนั้น'], ['แก้เพดานบัญชี/ชื่อ/สถานะ', '"แก้"', 'มีผลทันที']], tips: 'ปิดใช้งานเทศบาล = ผู้ใช้ของเทศบาลนั้นยังล็อกอินได้แต่ข้อมูลไม่แสดงในภาพรวม (ใช้เมื่อเลิกโครงการ)' },
   'super-masters': { title: 'ตารางแม่', who: 'เจ้าของโครงการ', steps: [['ประเภทถัง', 'ชื่อ · ลิตรต่อใบ · ราคามาตรฐาน · อายุใช้งาน', 'ทุกเทศบาลเห็นเหมือนกัน'], ['ประเภทรถ', 'ชื่อ · ความจุ (ลิตร)', 'admin เลือกตอนเพิ่มรถ'], ['ประเภทจุด', 'เช่น จุดทิ้งขยะ ตลาด ร้านค้า', 'ผู้บันทึกเลือกตอนเพิ่มจุด'], ['เกณฑ์สีหมุด', '5 ระดับ ช่วงลิตร + สี', 'มีผลทุกหน้าทันที']], tips: 'ลบประเภทที่มีข้อมูลอ้างอิงไม่ได้ ให้ปิดใช้งานแทน (ถังเดิมยังนับตามปกติ)' },
   'super-settings': { title: 'ค่าตั้งค่าส่วนกลาง', who: 'เจ้าของโครงการ', steps: [['อ่านคำอธิบายของแต่ละค่า', 'ใต้ชื่อค่า', 'เข้าใจผลกระทบก่อนแก้'], ['เลือกหรือกรอก แล้วกด "บันทึก" ของค่านั้น', 'การ์ดแต่ละใบ', 'ข้อความ "บันทึกแล้ว" และ "ค่าปัจจุบัน" เปลี่ยน']], tips: 'ค่าที่มี ⚠ กระทบทุกเทศบาลทันที ระบบถามยืนยันก่อน' },
   'photo-owner': { title: 'ย้ายที่เก็บรูปไป Drive ของเทศบาล (ฝั่งเจ้าของโครงการ)', who: 'เจ้าของโครงการ', steps: [['ส่งสคริปต์ + ข้อความ', 'ส่วนกลาง → คู่มือเจ้าของโครงการ → "ดาวน์โหลดไฟล์ Code.gs" และ "คัดลอกข้อความส่งเทศบาล" → ส่งทางอีเมล/ไลน์ให้ผู้ดูแลบัญชี Google ของเทศบาล', 'เทศบาลได้ไฟล์ Code.gs และข้อความขั้นตอน'], ['รอรับ URL', 'เทศบาลส่ง "URL เว็บแอป" กลับมา 1 บรรทัด (ขึ้นต้น https://script.google.com/macros/s/ ลงท้าย /exec)', 'ได้ URL · ไม่ต้องรับรหัสผ่านใด ๆ'], ['ตั้งค่าแทนเทศบาล', 'ส่วนกลาง → เทศบาลนั้น → "จัดการ" → แท็บ "ตั้งค่าเทศบาล" → "ใช้ Google Drive ของเทศบาลเอง" → วาง URL → บันทึก', '"บันทึกการตั้งค่าแล้ว"'], ['ทดสอบ', 'ให้ผู้บันทึกของเทศบาลถ่ายรูปทดสอบ 1 รูป', 'รูปโผล่ในโฟลเดอร์ UBWast-photos ใน Drive ของเทศบาล และเปิดดูในเว็บได้']], tips: 'รูปเก่ายังอยู่ที่ Drive เดิม ไม่ย้ายอัตโนมัติ · ถ้าเทศบาลทำไม่สำเร็จ กลับไปเลือก "ที่เก็บกลาง" ได้ทุกเมื่อ' },
