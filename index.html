@@ -2273,9 +2273,122 @@ const GUIDE_REC = [
       `${GN(2)} ปุ่ม <b>"เปิดคู่มือแบบมีภาพ"</b> กลับมาที่คู่มือนี้`],
       done: 'แจ้ง admin ของเทศบาลเมื่อ: ลืมรหัสผ่าน · ไม่พบถนนหรือประเภทถังในรายการ · บันทึกจุดซ้ำหรือผิด · เจอข้อความสีแดงซ้ำหลายครั้ง (ถ่ายภาพหน้าจอส่งไปด้วย <b>แต่อย่าให้เห็นรหัสผ่าน</b>)' }] }
 ];
-const GIMG = f => `<a href="help/rec/${f}.jpg?v=3" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/rec/${f}.jpg?v=3" alt="ภาพหน้าจอประกอบ" loading="lazy" width="390" height="844" class="gimg"></a>`;
+// DEC-112 คู่มือ admin เทศบาล · ภาพจอคอมพิวเตอร์ (help/adm/) วางเต็มความกว้าง แล้วตามด้วยขั้นตอน
+const GUIDE_ADM = [
+  { id: 'a1', title: 'หน้าที่ของ admin และลำดับงานครั้งแรก', intro: 'admin ของเทศบาลดูแลข้อมูลหลักของเทศบาล: ถนน รถ เส้นทาง น้ำมันรถ บัญชีผู้ปฏิบัติงาน และพิมพ์รายงานให้ผู้บริหาร · แนะนำให้ทำบนคอมพิวเตอร์ · เข้าสู่ระบบและเปลี่ยนรหัสผ่านเหมือนผู้ปฏิบัติงาน (ดูคู่มือผู้ปฏิบัติงานหัวข้อ 2)',
+    parts: [{ img: 'a01', lead: 'กดเมนู <b>"จัดการเทศบาล"</b>', steps: [
+      `${GN(1)} แท็บย่อย 6 แท็บ: เริ่มต้นใช้งาน · ถนนและซอย · รถและเส้นทาง · น้ำมันรถ · บัญชีผู้ใช้ · ตั้งค่าเทศบาล`,
+      `${GN(2)} แท็บ <b>"เริ่มต้นใช้งาน"</b> เป็นรายการตรวจ 8 ข้อ ทำตามลำดับ แต่ละข้อบอก ทำอะไร · ที่ไหน · ค่าที่ต้องได้`,
+      `${GN(3)} ปุ่ม <b>"ไป"</b> เปิดหน้าที่ต้องทำของข้อนั้นทันที`],
+      done: 'ครั้งแรกใช้เวลาประมาณ 1–2 ชั่วโมง (ขึ้นกับจำนวนเส้นทาง) · หลังจากนั้นงานประจำคือ กรอกน้ำมันเดือนละครั้ง และดูแดชบอร์ด/พิมพ์รายงาน' }] },
+  { id: 'a2', title: 'ถนนและซอย', intro: 'ถนนเป็นแกนของระบบ ทุกจุดวางถังต้องอยู่บนถนน 1 สาย และชื่อถนนใช้ตั้งรหัสจุด (เช่น แจ้งสนิท-2)',
+    parts: [{ img: 'a02', lead: 'จัดการเทศบาล → แท็บ <b>"ถนนและซอย"</b>', steps: [
+      `${GN(1)} <b>"ดึงถนน/ซอยจาก OpenStreetMap"</b> ดึงชื่อถนนและซอยทั้งเขตเทศบาลมาให้ในครั้งเดียว กดซ้ำได้ ระบบไม่เพิ่มชื่อซ้ำ`,
+      `${GN(2)} <b>"＋ เพิ่ม"</b> พิมพ์ชื่อถนนเองเมื่อไม่มีในรายการ`,
+      `${GN(3)} <b>"แก้"</b> แก้ชื่อหรือประเภทถนน · ถนนที่ไม่ใช้ เปลี่ยนสถานะเป็น "ปิดใช้งาน" (ลบไม่ได้ถ้ามีจุดอ้างอิงอยู่)`,
+      `${GN(4)} ตาราง <b>ซอย</b> อยู่ด้านล่าง ซอยต้องผูกกับถนน 1 สาย`],
+      done: 'ผู้ปฏิบัติงานเห็นถนนทุกสายที่ "ใช้งาน" ในช่องถนนตอนเพิ่มจุด · ระบบกันชื่อซ้ำ (เทียบแบบตัดคำว่า "ถนน" และช่องว่าง)' }] },
+  { id: 'a3', title: 'รถเก็บขยะและข้อมูลเชื้อเพลิง', intro: 'ใส่รถทุกคันที่ใช้เก็บขน · ความจุใช้คำนวณ % ภาระของเส้นทาง · ข้อมูลเชื้อเพลิงใช้ประมาณน้ำมันและคำนวณคาร์บอนภายหลัง',
+    parts: [{ img: 'a03', lead: 'จัดการเทศบาล → แท็บ <b>"รถและเส้นทาง"</b> → ตาราง <b>รถเก็บขยะ</b>', steps: [
+      `${GN(1)} <b>"แก้"</b> อยู่คอลัมน์แรกของทุกแถว`,
+      `${GN(2)} <b>"＋ เพิ่ม"</b> เพิ่มรถคันใหม่`,
+      `${GN(3)} คอลัมน์ <b>เชื้อเพลิง · กม./หน่วย · ปี พ.ศ.</b> ช่องว่าง = ยังไม่ได้กรอก`] },
+    { img: 'a04', lead: 'หน้าต่างแก้ไขรถ', steps: [
+      `${GN(1)} <b>ชนิดเชื้อเพลิง</b> ดีเซล · เบนซิน · NGV · LPG · ไฟฟ้า (หน่วยในวงเล็บใช้กับช่องน้ำมันรายเดือน)`,
+      `${GN(2)} <b>อัตราสิ้นเปลือง</b> กม. ต่อลิตร (NGV กม./กก. · ไฟฟ้า กม./kWh) จากสมุดคุมรถหรือค่าที่หน่วยงานใช้ ไม่ทราบเว้นว่างได้`,
+      `${GN(3)} <b>ปีที่จดทะเบียน</b> ใช้ปี พ.ศ. เช่น 2562`,
+      `${GN(4)} กด <b>"บันทึก"</b>`],
+      done: 'ถ้ากรอกน้ำมันรายเดือนพร้อมเลขไมล์ ระบบคำนวณอัตราสิ้นเปลืองจริงให้เอง (หัวข้อ 8)' }] },
+  { id: 'a4', title: 'เส้นทางเดินรถ: รายการและหลักคิด', intro: '<b>1 เส้นทาง = รถ 1 คัน วิ่ง 1 รอบ</b> · รถที่วิ่งหลายรอบต่อวัน ให้สร้างหลายเส้นทางให้รถคันเดียวกัน (รอบที่ 1, 2, …) แต่ละรอบมีขาไป (เก็บขยะ) และขากลับ (ไปทิ้งแล้วไปต่อ)',
+    parts: [{ img: 'a05', lead: 'แท็บ <b>"รถและเส้นทาง"</b> → การ์ด <b>เส้นทางเดินรถ</b> (เรียงตามรถและรอบ)', steps: [
+      `${GN(1)} <b>"＋ เพิ่มเส้นทาง"</b> เปิดหน้าแก้เส้นทางแบบว่าง`,
+      `${GN(2)} การ์ด 1 ใบ = 1 รอบ บอก รถ · วันวิ่ง · จำนวนถนน · ออกจาก → เก็บ → ทิ้งที่ → ไป · กม. ขาไป/ขากลับ`,
+      `${GN(3)} <b>"แก้เส้นทาง"</b> เปิดหน้าแก้ 4 ขั้น (หัวข้อ 5–6) · <b>"ดูบนแผนที่"</b> เปิดหน้าเส้นทางรถ`,
+      `${GN(4)} ป้ายสีส้มบอกข้อมูลที่ยังขาด เช่น ยังไม่ติ๊กวันวิ่ง · ยังไม่ระบุจุดออก/ที่ทิ้ง`],
+      done: 'ใต้การ์ดมีตาราง <b>สถานที่ของเทศบาล</b> (โรงจอดรถ · ที่ทิ้งขยะ · ที่พักรถ) ไว้แก้ชื่อหรือพิกัด · สถานที่ใหม่สร้างจากหน้าแก้เส้นทางได้เลย ไม่ต้องกรอกที่นี่ก่อน' }] },
+  { id: 'a5', title: 'แก้เส้นทาง ขั้นที่ 1–2: ข้อมูลรอบและขาไป', intro: 'หน้าแก้เส้นทางมี 4 ขั้นเรียงจากบนลงล่าง · ปุ่มบันทึกติดอยู่ล่างจอเสมอ',
+    parts: [{ img: 'a06', lead: 'ขั้นที่ 1 ข้อมูลรอบ', steps: [
+      `${GN(1)} <b>ชื่อเส้นทาง</b> เช่น เขต 5 รอบเช้า`,
+      `${GN(2)} <b>รถ</b> ที่วิ่งรอบนี้`,
+      `${GN(3)} <b>รอบที่</b> ลำดับรอบในวันของรถคันนี้ (วิ่งรอบเดียวใส่ 1)`,
+      `${GN(4)} <b>วันที่วิ่ง</b> ติ๊ก จ–อา ตามจริง ใช้คำนวณระยะทางต่อเดือน (ไม่ติ๊ก = นับ 0 กม.)`],
+      done: 'เส้นทางใหม่: กด <b>"บันทึกขั้นที่ 1 แล้วไปต่อ"</b> ระบบสร้างเส้นทางแล้วเปิดหน้าแก้ให้ทำขั้นต่อไป · งานเทศกาลเลือกชนิด "ชั่วคราว" แล้วใส่วันเริ่ม–สิ้นสุด' },
+    { img: 'a07', lead: 'ขั้นที่ 2 ขาไป (เก็บขยะ)', steps: [
+      `${GN(1)} <b>ออกจาก</b> เช่น โรงจอดรถ · ไม่มีในรายการ เลือก <b>"＋ เพิ่มที่ใหม่…"</b> แล้วใส่ชื่อ ประเภท และพิกัด (วางพิกัด/ลิงก์ Google Maps หรือกด GPS) → "บันทึกสถานที่"`,
+      `${GN(2)} <b>"เลือก/เรียงถนน"</b> ถนนที่รถรอบนี้รับผิดชอบ (ภาพถัดไป)`,
+      `${GN(3)} <b>"จัดลำดับจุด"</b> ลำดับจุดที่รถจอดเก็บ (ภาพถัดไป) · ยังไม่จัด ระบบจัดให้อัตโนมัติตอนคำนวณ`,
+      `${GN(4)} <b>จุดแวะขาไป "วางบนแผนที่"</b> ใช้เมื่อเส้นที่คำนวณได้ไม่ตรงกับถนนที่รถวิ่งจริง (หัวข้อ 7)`] },
+    { img: 'a10', lead: 'หน้าต่าง "เลือก/เรียงถนน"', steps: [
+      `${GN(1)} ถนนที่เลือกแล้ว เรียงตามลำดับที่รถวิ่ง ปรับด้วย ↑ ↓ · เอาออกด้วยปุ่มลบ`,
+      `${GN(2)} เลือกถนนจากรายการแล้วกด "เพิ่ม"`,
+      `${GN(3)} <b>"บันทึกลำดับ"</b>`],
+      done: 'ทุกจุดบนถนนที่เลือกนับเข้าเส้นทางนี้อัตโนมัติ รวมจุดที่ผู้ปฏิบัติงานเพิ่มภายหลัง' },
+    { img: 'a11', lead: 'หน้าต่าง "จัดลำดับจุด"', steps: [
+      `${GN(1)} <b>"จัดอัตโนมัติ"</b> เรียงแบบจุดใกล้สุดถัดไป แล้วปรับด้วย ↑ ↓ ให้ตรงกับที่รถวิ่งจริง · "สลับทิศ" กลับหัวท้าย`,
+      `${GN(2)} รายการจุดตามลำดับ · "เอาออก" = ไม่นับจุดนั้นในรอบนี้`,
+      `${GN(3)} <b>"บันทึกลำดับ"</b>`,
+      `${GN(4)} <b>"ลากเส้นตามถนน"</b> บันทึกลำดับแล้วคำนวณเส้นทันที`] }] },
+  { id: 'a6', title: 'แก้เส้นทาง ขั้นที่ 3–4: ขากลับ แผนที่ และบันทึก', intro: 'รถไม่จำเป็นต้องกลับทางเดิม ระบบคำนวณขากลับให้เลือก 3 แบบ และเทียบระยะทางให้ก่อนตัดสินใจ',
+    parts: [{ img: 'a08', lead: 'ขั้นที่ 3 ขากลับ', steps: [
+      `${GN(1)} <b>ทิ้งที่</b> บ่อฝังกลบ · สถานีขนถ่าย · โรงเผา (เพิ่มที่ใหม่ได้แบบเดียวกับจุดออก)`,
+      `${GN(2)} <b>หลังทิ้งไปที่</b> ว่าง = กลับจุดออก · รอบที่วิ่งต่อรอบถัดไป เลือกที่พักรถหรือจุดออกของรอบถัดไป`,
+      `${GN(3)} <b>วิธีกลับ</b> 3 แบบ: <b>อัตโนมัติ</b> ทางที่สั้นที่สุดตามถนน · <b>ผ่านถนนที่ระบุ</b> เลือกได้หลายสายและเรียงลำดับ · <b>กลับทางเดิม</b> ย้อนเส้นที่วิ่งเก็บ`,
+      `${GN(4)} <b>"คำนวณเทียบวิธีกลับ"</b> คำนวณทุกแบบ (ยังไม่บันทึก)`,
+      `${GN(5)} ระยะทางต่อรอบของแต่ละแบบ ป้ายเขียว = สั้นที่สุด`,
+      `${GN(6)} <b>จุดแวะขากลับ</b> ใช้เปลี่ยนซอยหรือถนนเฉพาะจุด (หัวข้อ 7)`],
+      done: '"ผ่านถนนที่ระบุ" บังคับให้เส้นผ่านถนนนั้นอย่างน้อย 1 ตำแหน่ง (ระบบหาตำแหน่งจากจุดวางถังบนถนน ไม่มีจุดค้นจาก OpenStreetMap) ถ้าต้องการให้วิ่งตลอดสาย เพิ่มจุดแวะขากลับบนถนนนั้น' },
+    { img: 'a09', lead: 'ขั้นที่ 4 แผนที่และระยะทาง', steps: [
+      `${GN(1)} กรอบสรุป: รอบที่ · ออกจาก → เก็บ → ทิ้ง → ไป · วันวิ่ง · ระยะทางต่อรอบ · <b>ขาไป</b> (ไปจุดแรก + เก็บขยะ) · <b>ขากลับ</b> (ไปทิ้ง + หลังทิ้ง) · กม./สัปดาห์`,
+      `${GN(2)} แผนที่: <b>เส้นทึบ = ขาไป</b> · <b>เส้นประ = ขากลับ</b> · วงกลมมีเลข = ลำดับจุดเก็บ · หมุด "ออก" "ทิ้ง"`,
+      `${GN(3)} <b>"บันทึกและลากเส้นตามถนน"</b> บันทึกทุกขั้นแล้วคำนวณเส้นใหม่ (ใช้เวลาประมาณ 3–10 วินาที) · "บันทึกอย่างเดียว" = ไม่คำนวณเส้น`],
+      done: 'เวลาที่แสดงเป็นเวลาขับ ไม่รวมเวลาจอดเก็บ · แก้ข้อมูลเส้นทางเมื่อใด ให้กด "บันทึกและลากเส้นตามถนน" ใหม่ทุกครั้ง · ขยะเกินความจุรถ ระบบแนะนำให้แบ่งเป็น 2 รอบ' }] },
+  { id: 'a7', title: 'จุดแวะ: ดึงเส้นให้ผ่านถนนที่รถวิ่งจริง', intro: 'ใช้กับเส้นทางส่วนน้อย เช่น ระบบเลือกถนนแคบที่รถขยะผ่านไม่ได้ หรือจับจุดเข้าซอยข้าง ๆ · จุดแวะไม่ใช่จุดเก็บขยะ',
+    parts: [{ img: 'a12', lead: 'หน้าแก้เส้นทาง → ปุ่ม <b>"วางบนแผนที่"</b> ของขาไปหรือขากลับ (หรือหน้าเส้นทางรถ → "ปรับเส้นทาง (จุดแวะ)")', steps: [
+      `${GN(1)} เลือกขาที่จะวาง: <b>ขาไป</b> (หมุดเหลือง) หรือ <b>ขากลับ</b> (หมุดม่วง)`,
+      `${GN(2)} แตะบนแผนที่หรือบนเส้น = เพิ่มจุดแวะ · ลากหมุด = ย้าย · แตะหมุด = ลบ (ระบบถามยืนยัน)`,
+      `${GN(3)} <b>"คำนวณใหม่ตามจุดแวะ"</b> บันทึกจุดแวะและเส้นใหม่ · แผนที่ไม่ซูมออกเอง ดูผลได้ทันที`,
+      `${GN(4)} <b>"เลิกปรับ"</b> ถ้ายังมีจุดที่ไม่ได้คำนวณ ระบบเตือนก่อนออก`],
+      done: 'วางจุดแวะบนถนนที่ต้องการให้รถผ่าน ไม่ต้องวางทุกหัวมุม ส่วนใหญ่ 1–2 จุดก็พอ · ระบบแทรกจุดแวะตรงช่วงที่อ้อมน้อยที่สุดเอง' }] },
+  { id: 'a8', title: 'บันทึกน้ำมันรายเดือน (ไม่บังคับ)', intro: 'กรอกเดือนละครั้งจากใบเบิกน้ำมันหรือสมุดคุมรถ · เดือนที่ไม่กรอก ระบบใช้ค่าประมาณ = กม. ตามแผน ÷ อัตราสิ้นเปลือง',
+    parts: [{ img: 'a13', lead: 'จัดการเทศบาล → แท็บ <b>"น้ำมันรถ"</b>', steps: [
+      `${GN(1)} <b>เดือน</b> ที่จะกรอก (ค่าเริ่มต้น = เดือนก่อน)`,
+      `${GN(2)} <b>เชื้อเพลิงที่เติมทั้งเดือน</b> หน่วยตามชนิดเชื้อเพลิงของรถ · ช่องถัดไปเป็นค่าเชื้อเพลิง (บาท)`,
+      `${GN(3)} <b>เลขไมล์สิ้นเดือน</b> · เลขไมล์ต้นเดือนเติมจากสิ้นเดือนก่อนให้เอง (แก้ได้)`,
+      `${GN(4)} ระยะทางจริงและอัตราสิ้นเปลืองจริงคำนวณให้ทันทีขณะกรอก`,
+      `${GN(5)} <b>"บันทึกเดือน…"</b> บันทึกทุกคันพร้อมกัน`],
+      done: 'แก้ตัวเลขแล้วกดบันทึกซ้ำได้ · ลบบันทึกของคันใด ให้ลบตัวเลขทุกช่องของแถวนั้นแล้วกดบันทึก · เลขไมล์สิ้นเดือนน้อยกว่าต้นเดือนระบบไม่ยอมบันทึก' }] },
+  { id: 'a9', title: 'บัญชีผู้ใช้และที่เก็บรูป', intro: 'admin เพิ่มบัญชีผู้ปฏิบัติงานได้ตามเพดานที่เจ้าของโครงการกำหนด (แสดงที่แถบสีฟ้าด้านบน)',
+    parts: [{ img: 'a14', lead: 'จัดการเทศบาล → แท็บ <b>"บัญชีผู้ใช้"</b>', steps: [
+      `${GN(1)} <b>"＋ เพิ่มผู้บันทึก"</b> ตั้งชื่อล็อกอิน (a-z 0-9 เช่น ubn-rec4) ชื่อแสดง และรหัสผ่าน (เว้นว่าง = ระบบสุ่มแบบจำง่าย) → ได้ใบส่งมอบบัญชีพิมพ์แจกได้`,
+      `${GN(2)} <b>"รีเซ็ตรหัส"</b> เมื่อผู้ปฏิบัติงานลืมรหัสผ่าน · รหัสใหม่แสดงครั้งเดียว ให้พิมพ์หรือจดส่งต่อทันที`],
+      done: 'ผู้ปฏิบัติงานที่ลาออก กด "แก้" แล้วเปลี่ยนสถานะเป็นปิดใช้งาน · ส่งรหัสผ่านให้เจ้าตัวโดยตรง อย่าส่งในกลุ่มไลน์' },
+    { img: 'a15', lead: 'จัดการเทศบาล → แท็บ <b>"ตั้งค่าเทศบาล"</b>', steps: [
+      `${GN(1)} <b>ที่เก็บรูป</b> ค่าเริ่มต้นใช้ที่เก็บกลางของโครงการ ไม่ต้องตั้งอะไร · ถ้าต้องการเก็บใน Google Drive ของเทศบาลเอง เลือกแบบที่ 2 แล้วกด "ดูวิธีทำทีละขั้น (มีภาพ)" ให้ผู้ดูแลบัญชี Google ของเทศบาลทำ`,
+      `${GN(2)} <b>"บันทึกการตั้งค่า"</b>`] }] },
+  { id: 'a10', title: 'แดชบอร์ด', intro: 'ตัวเลขทุกตัวคำนวณสดจากข้อมูล ณ เวลาที่เปิด ไม่ต้องสั่งปรับปรุง',
+    parts: [{ img: 'a16', lead: 'เมนู <b>"แดชบอร์ด"</b>', steps: [
+      `${GN(1)} 4 หน้า: <b>ภาพรวม</b> (ผู้บริหาร) · <b>วิเคราะห์เชิงลึก</b> (กรองตามถนน/ระดับ) · <b>ทรัพย์สินถัง</b> (ชำรุด/หาย มูลค่าประมาณการ) · <b>รถและเส้นทาง</b>`,
+      `${GN(2)} ตัวเลขหลัก แตะไอคอน (?) ที่หัวการ์ดเพื่ออ่านความหมายของตัวเลข`] },
+    { img: 'a17', lead: 'หน้า <b>"รถและเส้นทาง"</b>', steps: [
+      `${GN(1)} <b>เลือกเดือน</b>`,
+      `${GN(2)} รอบวิ่ง/สัปดาห์ · กม./เดือน ตามแผน · กม./เดือน จริง (เลขไมล์) · เชื้อเพลิงต่อเดือนแยกตามชนิด · ค่าเชื้อเพลิง`,
+      `${GN(3)} <b>ข้อมูลที่ยังไม่ครบ</b> บอกว่ารอบหรือรถคันไหนขาดอะไร (ตัวเลขอาจต่ำกว่าจริงจนกว่าจะเติมครบ)`,
+      `${GN(4)} <b>รายงานพิมพ์</b> และ <b>CSV รายคัน / รายรอบ</b> สำหรับนำไปคำนวณต่อ เช่น การปล่อยก๊าซเรือนกระจก`],
+      done: 'เลื่อนลงจะเห็นกราฟ กม. ตามแผนเทียบจริง ตารางรายคัน ตารางรายรอบ (ขาไป/ขากลับ) และแผนที่รวมทุกเส้นทาง' }] },
+  { id: 'a11', title: 'รายงานสำหรับผู้บริหาร', intro: 'รายงาน 6 ฉบับ เปิดหน้าต่างใหม่ แล้วกด "พิมพ์ / บันทึก PDF" · มีช่องลงนาม 3 ช่องท้ายรายงาน',
+    parts: [{ img: 'a18', lead: 'เมนู <b>"รายงาน"</b>', steps: [
+      `${GN(1)} สรุปภาพรวมเมือง 1 หน้า · ทะเบียนจุดวางถัง รายถนน · แผนเส้นทางเก็บขน · ทรัพย์สินถัง · รถ เส้นทาง และเชื้อเพลิง (รายเดือน) · จุดที่ยังขาดข้อมูล`,
+      `${GN(2)} <b>"เปิดรายงาน"</b> ของฉบับที่ต้องการ · รายงานรถและเชื้อเพลิงใช้เดือนที่เลือกในแดชบอร์ด "รถและเส้นทาง"`],
+      done: 'เบราว์เซอร์กันหน้าต่างใหม่ (ป๊อปอัป) ให้กดอนุญาตที่แถบที่อยู่ แล้วกดเปิดรายงานอีกครั้ง · รายงานแจ้งคนขับรายเส้นทางอยู่ที่หน้าเส้นทางรถ' }] },
+  { id: 'a12', title: 'ดูแลข้อมูลจุด และเมื่อติดปัญหา', intro: 'ผู้ปฏิบัติงานแก้ไขจุดได้แต่ยกเลิกไม่ได้ · admin เป็นผู้ยกเลิกจุดหรือถังที่บันทึกผิดหรือซ้ำ',
+    parts: [{ img: 'a19', lead: 'เปิดหน้าจุด (จากแผนที่หรือเมนู "จุด")', steps: [
+      `${GN(1)} <b>"ยกเลิกจุดนี้"</b> จุดซ้ำหรือจุดที่ไม่มีแล้ว · ข้อมูลยังเก็บไว้ แต่ไม่นับในยอดรวมและแผนที่`,
+      `${GN(2)} <b>"ยกเลิก"</b> ท้ายแถวถัง ใช้กับแถวถังที่บันทึกผิด · ถังชำรุดหรือหายให้ "แก้" แล้วเปลี่ยนสภาพแทน (ยังเป็นทะเบียน แต่ไม่นับความจุ)`],
+      done: 'ติดปัญหา: อ่านกล่องสีแดงก่อน (บอกเสมอว่าเกิดอะไรและต้องทำอย่างไร) · ทุกหน้ามีปุ่ม (?) · เมนู "ช่วยเหลือ" มีตารางข้อความทั้งหมด · ถ้ายังแก้ไม่ได้ ติดต่อเจ้าของโครงการ ผศ.พัฒนศักดิ์ ปทุมวัน pattanasak.p@ubru.ac.th พร้อมภาพหน้าจอ (อย่าให้เห็นรหัสผ่าน)' }] }
+];
+const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=3" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=3" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
 const GUIDE_CSS = `<style>.gn{display:inline-block;min-width:26px;height:26px;line-height:26px;border-radius:50%;background:#E11D48;color:#fff;font-weight:700;text-align:center;font-size:15px;margin-right:4px}
-  .gpart{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:18px;align-items:start;margin-top:14px}.gpart ol{margin:6px 0;padding-left:0;list-style:none}.gpart li{margin:8px 0;line-height:1.7}
+  .gpart{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:18px;align-items:start;margin-top:14px}.gpart.wide{grid-template-columns:1fr;gap:8px}.gpart.wide .gimg{max-width:860px}.gpart ol{margin:6px 0;padding-left:0;list-style:none}.gpart li{margin:8px 0;line-height:1.7}
   .gimg{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;display:block}.gdone{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.7}
   .gsec{margin-top:26px;border-top:2px solid #1F3A5F;padding-top:10px}.gtoc a{display:block;padding:10px 4px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--brand)}
   @media (max-width:720px){.gpart{grid-template-columns:1fr}.gimg{max-width:340px;margin:0 auto}} @media print{.gpart{break-inside:avoid}.noprint{display:none}}</style>`;
@@ -2284,21 +2397,24 @@ function pageGuide(view) {
   const sub = location.hash.split('/')[1] || ''; window.scrollTo(0, 0);
   if (sub === 'photo') return pageGuidePhoto(view);
   if (sub === 'recorder') return pageGuideRecorder(view);
+  if (sub === 'admin') return pageGuideAdmin(view);
   const card = (href, title, who, desc, ready = true) => `<div class="card" style="border-left:6px solid ${ready ? 'var(--brand)' : '#9CA3AF'}"><h3 style="margin-top:0">${title}</h3><div class="muted">${who}</div><p style="margin:6px 0">${desc}</p>${ready ? `<a class="btn" style="text-decoration:none" href="${href}">เปิดคู่มือ</a>` : '<span class="pill">กำลังจัดทำ</span>'}</div>`;
   view.innerHTML = `${GUIDE_CSS}<div style="max-width:860px;margin:0 auto"><div class="card"><h2 style="margin:0">คู่มือการใช้งาน UBWast</h2><div class="muted" style="margin-top:4px">อ่านได้โดยไม่ต้องเข้าสู่ระบบ · เลือกคู่มือตามหน้าที่ของท่าน</div></div>
     ${card('#guide/recorder', 'ผู้ปฏิบัติงาน (ผู้บันทึกข้อมูลภาคสนาม)', 'เจ้าหน้าที่ที่ลงพื้นที่ บันทึกจุดวางถัง ถัง และรูป ด้วยมือถือ', 'เข้าสู่ระบบ · รู้จักหน้าจอ · เพิ่มจุดทีละช่อง · แก้ไขจุด · ทำงานตอนไม่มีสัญญาณ · ดูเส้นทางรถ · เมื่อเห็นข้อความสีแดง')}
-    ${card('#guide/admin', 'ผู้ดูแลระบบของเทศบาล (admin)', 'เจ้าหน้าที่ที่ดูแลถนน รถ เส้นทาง บัญชีผู้ใช้ และพิมพ์รายงาน', 'ระหว่างจัดทำ ใช้ "คู่มือใช้งานฉบับเอกสาร" ในเมนู ช่วยเหลือ หลังเข้าสู่ระบบ', false)}
+    ${card('#guide/admin', 'ผู้ดูแลระบบของเทศบาล (admin)', 'เจ้าหน้าที่ที่ดูแลถนน รถ เส้นทาง น้ำมันรถ บัญชีผู้ใช้ และพิมพ์รายงาน', 'ลำดับงานครั้งแรก · ถนนและซอย · รถและเชื้อเพลิง · เส้นทาง 4 ขั้น (ขาไป/ขากลับ/จุดแวะ) · น้ำมันรายเดือน · บัญชีผู้ใช้ · แดชบอร์ด · รายงาน · ดูแลข้อมูลจุด')}
     ${card('#guide/photo', 'ผู้ดูแลบัญชี Google ของเทศบาล', 'ทำครั้งเดียว เมื่อเทศบาลต้องการเก็บรูปไว้ใน Google Drive ของเทศบาลเอง', 'ติดตั้ง "ตัวรับรูป" ใน Apps Script ประมาณ 10 นาที')}
     <div class="row noprint"><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#help' : '#'}">${S.me ? 'กลับไปหน้าช่วยเหลือ' : 'กลับไปหน้าเข้าสู่ระบบ'}</a></div></div>`;
 }
-function pageGuideRecorder(view) {
-  const part = p => `<div class="gpart">${p.img ? GIMG(p.img) : ''}<div style="${p.img ? '' : 'grid-column:1/-1'}">${p.lead ? `<div style="margin-bottom:4px">${p.lead}</div>` : ''}<ol>${p.steps.map(x => `<li>${x}</li>`).join('')}</ol>${p.done ? `<div class="gdone"><b>ถูกต้องเมื่อ / หมายเหตุ:</b> ${p.done}</div>` : ''}</div></div>`;
+function pageGuideRecorder(view) { return pageGuideDoc(view, { data: GUIDE_REC, dir: 'rec', title: 'คู่มือผู้ปฏิบัติงาน (ผู้บันทึกข้อมูลภาคสนาม)', lead: 'คู่มือนี้พาใช้ระบบตั้งแต่เข้าสู่ระบบครั้งแรก จนบันทึกจุดวางถังได้เอง อ่านจบประมาณ 15 นาที' }); }
+function pageGuideAdmin(view) { return pageGuideDoc(view, { data: GUIDE_ADM, dir: 'adm', wide: true, title: 'คู่มือผู้ดูแลระบบของเทศบาล (admin)', lead: 'คู่มือนี้พาตั้งค่าเทศบาลครั้งแรกจนพร้อมใช้งาน และงานประจำเดือนของ admin อ่านจบประมาณ 30 นาที · ภาพเป็นจอคอมพิวเตอร์ (ใช้บนมือถือได้ แต่การจัดเส้นทางทำบนคอมพิวเตอร์สะดวกกว่า)' }); }
+function pageGuideDoc(view, cfg) {
+  const part = p => `<div class="gpart${cfg.wide ? ' wide' : ''}">${p.img ? GIMG(p.img, cfg.dir) : ''}<div style="${p.img ? '' : 'grid-column:1/-1'}">${p.lead ? `<div style="margin-bottom:4px">${p.lead}</div>` : ''}<ol>${p.steps.map(x => `<li>${x}</li>`).join('')}</ol>${p.done ? `<div class="gdone"><b>ถูกต้องเมื่อ / หมายเหตุ:</b> ${p.done}</div>` : ''}</div></div>`;
   view.innerHTML = `${GUIDE_CSS}<div class="card" style="max-width:980px;margin:0 auto">
-    <div class="row" style="justify-content:space-between"><h2 style="margin:0">คู่มือผู้ปฏิบัติงาน (ผู้บันทึกข้อมูลภาคสนาม)</h2><button class="secondary small noprint" onclick="window.print()">${ICON.print} พิมพ์ / บันทึก PDF</button></div>
-    <p>คู่มือนี้พาใช้ระบบตั้งแต่เข้าสู่ระบบครั้งแรก จนบันทึกจุดวางถังได้เอง อ่านจบประมาณ 15 นาที · <b>เลขวงกลมสีแดง</b> ${GN(1)} ในภาพ ตรงกับเลขในขั้นตอนด้านข้าง</p>
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">${cfg.title}</h2><button class="secondary small noprint" onclick="window.print()">${ICON.print} พิมพ์ / บันทึก PDF</button></div>
+    <p>${cfg.lead} · <b>เลขวงกลมสีแดง</b> ${GN(1)} ในภาพ ตรงกับเลขในขั้นตอนด้านข้าง</p>
     <div class="banner info">ภาพในคู่มือใช้ <b>ข้อมูลตัวอย่าง</b> (ถนนตัวอย่าง จุดตัวอย่าง) ของจริงจะเป็นชื่อถนนและจุดของเทศบาลท่าน · ชื่อปุ่มในคู่มือตรงกับที่เห็นบนหน้าจอ</div>
-    <h3>สารบัญ</h3><div class="gtoc noprint">${GUIDE_REC.map((g, i) => `<a href="javascript:void 0" onclick="gGo('${g.id}')">${i + 1}. ${g.title}</a>`).join('')}</div>
-    ${GUIDE_REC.map((g, i) => `<section class="gsec" id="${g.id}"><h3 style="margin:0 0 4px">${i + 1}. ${g.title}</h3><div class="muted">${g.intro}</div>${g.parts.map(part).join('')}<div class="noprint" style="text-align:right;margin-top:6px"><a href="javascript:void 0" onclick="window.scrollTo({top:0,behavior:'smooth'})">กลับสารบัญ ↑</a></div></section>`).join('')}
+    <h3>สารบัญ</h3><div class="gtoc noprint">${cfg.data.map((g, i) => `<a href="javascript:void 0" onclick="gGo('${g.id}')">${i + 1}. ${g.title}</a>`).join('')}</div>
+    ${cfg.data.map((g, i) => `<section class="gsec" id="${g.id}"><h3 style="margin:0 0 4px">${i + 1}. ${g.title}</h3><div class="muted">${g.intro}</div>${g.parts.map(part).join('')}<div class="noprint" style="text-align:right;margin-top:6px"><a href="javascript:void 0" onclick="window.scrollTo({top:0,behavior:'smooth'})">กลับสารบัญ ↑</a></div></section>`).join('')}
     <div class="row noprint" style="margin-top:18px"><a class="btn secondary" style="text-decoration:none" href="#guide">คู่มืออื่น</a><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#map' : '#'}">${S.me ? 'กลับไปหน้าแผนที่' : 'ไปหน้าเข้าสู่ระบบ'}</a></div>
     <div class="muted" style="margin-top:10px">ปรับปรุงคู่มือ: ${esc(CREDIT.updated)}</div></div>`;
 }
@@ -2483,8 +2599,37 @@ const SHOTS = {
   routes: { wait: 4000, run: async () => [['#view select', 1], ['#routeInfo .kpis', 2], ['button[onclick^="printDriverReport"]', 3]] },
   routes2: { wait: 4000, run: async () => { shotTop($('#rtAll').closest('.card'), 125); await shotWait(300); return [[$('#rtAll').closest('.card'), 1], ['#map', 2, { pad: 2 }]]; } },
   error: { run: async () => { $('#btnSave').click(); await shotWait(700); window.scrollTo(0, 0); await shotWait(100); return [['#f_name', 1, { box: false }], ['.toast.err', 2]]; } },
-  help: { run: async () => [[[...document.querySelectorAll('#tabs a')].find(a => a.textContent === 'ช่วยเหลือ'), 1], ['#view a[href="#guide"]', 2]] }
+  help: { run: async () => [[[...document.querySelectorAll('#tabs a')].find(a => a.textContent === 'ช่วยเหลือ'), 1], ['#view a[href="#guide"]', 2]] },
+  // ---- คู่มือ admin เทศบาล (DEC-112) · จอคอมพิวเตอร์ ----
+  astart: { run: async () => [['nav.subtabs', 1], ['#view ol li', 2], ['#view ol li a.btn', 3]] },
+  aroads: { run: async () => [[shotText('ดึงถนน/ซอยจาก OpenStreetMap'), 1], [$('#sec_road button[onclick^="crudForm(\'road\')"]'), 2], ['#sec_road tbody button', 3], ['#sec_soi h4', 4]] },
+  atrucks: { run: async () => [['#sec_truck tbody tr button', 1], [$('#sec_truck button[onclick^="crudForm(\'truck\')"]'), 2], [[...document.querySelectorAll('#sec_truck th')].find(t => t.textContent.includes('เชื้อเพลิง')), 3]] },
+  atruckform: { run: async () => { crudForm('truck', SPECS.truck._rows[0].id); await shotWait(300); return [['#c_fuel_type', 1], ['#c_fuel_economy', 2], ['#c_model_year', 3], ['#c_save', 4]]; } },
+  acards: { run: async () => { shotTop($('.rgrid').closest('.card'), 130); await shotWait(200); return [[shotText('＋ เพิ่มเส้นทาง', 'a'), 1], ['.rcard', 2], ['.rcard a.btn', 3], [[...document.querySelectorAll('.rcard')].find(c => c.querySelector('.pill[style*="fff7ed"]')).querySelector('.pill[style*="fff7ed"]'), 4]]; } },
+  aedit1: { run: async () => { await shotRoute('สาย 1 (ก+ข)'); return [['#re_name', 1], ['#re_truck', 2], ['#re_round', 3], ['#c_re_days', 4]]; } },
+  aedit2: { run: async () => { await shotRoute('สาย 1 (ก+ข)'); shotTop($$step(1), 70); await shotWait(200); return [['#c_start_site_id', 1], [shotText('เลือก/เรียงถนน'), 2], [shotText('จัดลำดับจุด', 'button'), 3], [$('.step button[onclick*="\'out\'"]'), 4]]; } },
+  aedit3: { wait: 1500, run: async () => { await shotRoute('สาย 1 (ก+ข)'); await reCompare(); shotTop($$step(2), 70); await shotWait(300); return [['#c_dump_site_id', 1], ['#c_end_site_id', 2], [$('input[name=re_mode]').closest('label'), 3], ['#btnCmp', 4], ['#km_auto', 5], [$('.step button[onclick*="\'back\'"]'), 6]]; } },
+  aedit4: { run: async () => { const id = await shotSnap('สาย 1 (ก+ข)'); location.hash = '#route-edit/' + id; await shotWait(3500); shotTop($$step(3), 70); await shotWait(300); return [[$$step(3).querySelector('.banner.info'), 1], ['#map', 2, { pad: 2 }], ['#btnRe', 3]]; } },
+  arroads: { run: async () => { const id = await shotRoute('สาย 1 (ก+ข)'); await routeRoads(id); await shotWait(300); return [['#rrList', 1], ['#rrAdd', 2], [shotText('บันทึกลำดับ', 'button'), 3]]; } },
+  astops: { run: async () => { const id = await shotRoute('สาย 1 (ก+ข)'); await routeStops(id); await shotWait(300); return [[shotText('จัดอัตโนมัติ', 'button'), 1], ['#rsList', 2], [shotText('บันทึกลำดับ', 'button'), 3], [[...document.querySelectorAll('#modal button')].find(b => b.textContent.trim() === 'ลากเส้นตามถนน'), 4]]; } },
+  avia: { wait: 1500, run: async () => { const id = await shotSnap('สาย 1 (ก+ข)'); S._adj = { routeId: id, leg: 'back' }; location.hash = '#routes/' + id; await shotWait(3500);
+    const c = S._adj.map.getCenter(); S._adj.via.push([+(c.lat - 0.004).toFixed(6), +(c.lng - 0.006).toFixed(6)]); S._adj.viaBack.push([+(c.lat + 0.004).toFixed(6), +(c.lng + 0.006).toFixed(6)]); viaDraw(); shotTop('#viaBar', 130); await shotWait(300);
+    return [[$('#viaBar input[name=vleg]').closest('.row'), 1], ['.viapin.back', 2], ['#btnVia', 3], [shotText('เลิกปรับ', 'button'), 4]]; } },
+  afuel: { run: async () => [['#fuelMonth', 1], ['#fuelTable .fq', 2], ['#fuelTable .o2', 3], ['#fuelTable .calc', 4], ['#btnFuel', 5]] },
+  ausers: { run: async () => [[shotText('＋ เพิ่มผู้บันทึก', 'button'), 1], [shotText('รีเซ็ตรหัส', 'button'), 2]] },
+  asettings: { run: async () => [[$('input[name=photoMode]').closest('label'), 1], [shotText('บันทึกการตั้งค่า', 'button'), 2]] },
+  adash: { wait: 2500, run: async () => [['nav.subtabs', 1], ['#view .kpis', 2]] },
+  afleet: { wait: 1500, run: async () => { await shotSnap('สาย 1 (ก+ข)'); await shotSnap('สาย 2 (ค)'); S._fleetMonth = prevMonth(); location.hash = '#dashboard/fleet'; await shotWait(3500);
+    return [['#view input[type=month]', 1], ['#view .kpis', 2], ['#view .banner.warn', 3], [shotText('รายงานพิมพ์', 'button').parentNode, 4]]; } },
+  areports: { run: async () => [['#view .grid2', 1, { pad: 2 }], [[...document.querySelectorAll('#view .grid2 .card')].find(c => c.textContent.includes('เชื้อเพลิง')).querySelector('button'), 2]] },
+  aplace: { run: async () => { const [p] = await api.list('v_place', { eq: { place_code: 'ถนนตัวอย่าง ก-1' } }); location.hash = '#place/' + p.id; await shotWait(1500);
+    return [[shotText('ยกเลิกจุด', 'button'), 1], ['#view table button.danger', 2]]; } }
 };
+// ตัวช่วยถ่ายภาพคู่มือ admin
+const shotText = (t, sel = 'button, a') => [...document.querySelectorAll(sel)].find(x => x.textContent.trim().includes(t));
+const $$step = i => document.querySelectorAll('.step')[i];
+async function shotRoute(name) { const [rt] = await api.list('route', { eq: { name } }); if (location.hash !== '#route-edit/' + rt.id) { location.hash = '#route-edit/' + rt.id; await shotWait(2500); } return rt.id; }
+async function shotSnap(name) { const [rt] = await api.list('route', { eq: { name } }); const st = await reStops(rt.id, true); const res = await snapTrip(rt, st); await api.update('route', rt.id, res.patch); return rt.id; }
 async function shotStart() {
   const sh = SHOTS[SHOT] || {}; document.body.classList.add('shot');
   Queue.save([]); if (sh.pre) sh.pre();
