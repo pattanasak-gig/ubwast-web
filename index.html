@@ -179,6 +179,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const fmt = n => (n == null ? '-' : Number(n).toLocaleString('th-TH', { maximumFractionDigits: 2 }));
 const thDate = iso => iso ? new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
 const IS_DEMO = CONFIG.DEMO || /[?&]demo=1/.test(location.search);
+// DEC-105 โหมดถ่ายภาพคู่มือ ใช้ได้เฉพาะโหมดสาธิต: ?demo=1&as=<ชื่อล็อกอินสาธิต>&shot=<ชื่อภาพ>#หน้า → ล็อกอินอัตโนมัติ เติมข้อมูลตัวอย่าง วางเลขวงกลมสีแดง
+const SHOT_Q = new URLSearchParams(location.search), SHOT = IS_DEMO ? SHOT_Q.get('shot') : null;
 
 function toast(msg, isErr) {
   const t = document.createElement('div'); t.className = 'toast' + (isErr ? ' err' : ''); t.textContent = msg;
@@ -507,7 +509,7 @@ async function render() {
   try {
     if (!S.me) { S.me = await api.me(); }
     if (location.hash.startsWith('#about')) { renderTabs(); if (!S.me) $('#who').textContent = ''; return pageAbout(view); }   // DEC-103 เปิดได้โดยไม่ต้องล็อกอิน
-    if (location.hash.startsWith('#guide/')) { renderTabs(); if (!S.me) $('#who').textContent = ''; return pageGuidePhoto(view); }   // คู่มือสำหรับเทศบาล เปิดได้โดยไม่ต้องล็อกอิน (DEC-095)
+    if (location.hash === '#guide' || location.hash.startsWith('#guide/')) { renderTabs(); if (!S.me) $('#who').textContent = ''; return pageGuide(view); }   // คู่มือ เปิดได้โดยไม่ต้องล็อกอิน (DEC-095 · DEC-105)
     if (!S.me) { renderTabs(); $('#who').textContent = ''; return pageLogin(view); }
     await loadMasters();
     $('#who').textContent = `${S.me.display_name} · ${roleLabel(S.me.role)}${S.me.municipality_id ? ' · ' + (muniOf(S.me.municipality_id).code || '') : ''}`;
@@ -538,11 +540,12 @@ const roleLabel = r => ({ super_admin: 'super admin', admin: 'admin เทศบ
 function pageLogin(view) {
   view.innerHTML = `<div class="card login">
     <h2 style="margin-top:0">เข้าสู่ระบบ</h2>
-    ${IS_DEMO ? `<div class="banner info">โหมดสาธิต: ชื่อล็อกอิน owner · demo1-admin · demo1-rec1 · demo2-admin · demo2-rec1 รหัสผ่าน demo</div>` : ''}${S._loginNote ? `<div class="banner warn">${esc(S._loginNote)}</div>` : ''}${!navigator.onLine ? '<div class="banner warn">ไม่มีสัญญาณอินเทอร์เน็ต: ต้องมีสัญญาณจึงเข้าสู่ระบบได้</div>' : ''}
+    ${IS_DEMO && !SHOT ? `<div class="banner info">โหมดสาธิต: ชื่อล็อกอิน owner · demo1-admin · demo1-rec1 · demo2-admin · demo2-rec1 รหัสผ่าน demo</div>` : ''}${S._loginNote ? `<div class="banner warn">${esc(S._loginNote)}</div>` : ''}${!navigator.onLine ? '<div class="banner warn">ไม่มีสัญญาณอินเทอร์เน็ต: ต้องมีสัญญาณจึงเข้าสู่ระบบได้</div>' : ''}
     <label>ชื่อล็อกอิน</label><input id="u" autocomplete="username" autocapitalize="none">
     <label>รหัสผ่าน</label><input id="p" type="password" autocomplete="current-password">
     <div style="margin-top:14px"><button id="btnLogin" style="width:100%">เข้าสู่ระบบ</button></div>
     <p class="muted">ลืมรหัสผ่าน: ติดต่อ admin ของเทศบาลหรือเจ้าของโครงการเพื่อรีเซ็ต (ระบบไม่มีการส่งอีเมล)</p>
+    <a id="guideLink" class="btn secondary" style="display:block;text-align:center;text-decoration:none" href="#guide">คู่มือการใช้งาน (เปิดอ่านได้โดยไม่ต้องเข้าสู่ระบบ)</a>
   </div>`;
   const doLogin = async () => {
     const b = $('#btnLogin'); b.disabled = true;
@@ -1659,7 +1662,7 @@ function pageAbout(view) {
     <div class="row" style="margin-top:12px"><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#help' : '#'}" onclick="${S.me ? '' : 'location.hash=\'\';render();return false;'}">${S.me ? 'กลับไปหน้าช่วยเหลือ' : 'กลับไปหน้าเข้าสู่ระบบ'}</a></div>
   </div>`;
 }
-function renderCredit() { const f = $('#credit'); if (f) f.innerHTML = `${esc(CREDIT.short)} · <a href="#about">เกี่ยวกับระบบ</a>`; }
+function renderCredit() { const f = $('#credit'); if (f) f.innerHTML = `${esc(CREDIT.short)} · <a href="#guide">คู่มือการใช้งาน</a> · <a href="#about">เกี่ยวกับระบบ</a>`; }
 // เอกสารพิมพ์ทุกฉบับ: เครดิตท้ายทุกหน้ากระดาษ (ตำแหน่ง fixed ตอนพิมพ์ + ตารางห่อ tfoot เว้นที่ด้านล่างทุกหน้าไม่ให้ทับเนื้อหา)
 const PRINT_CREDIT_CSS = '.pgwrap{width:100%;border-collapse:collapse;border:0;margin:0}.pgwrap>thead>tr>td,.pgwrap>tbody>tr>td,.pgwrap>tfoot>tr>td{border:0;padding:0}.pgcredit{margin-top:14px;text-align:center;font-size:9pt;color:#555;border-top:1px solid #ccc;padding-top:3px}@media print{.pgcredit{position:fixed;bottom:0;left:0;right:0;margin:0;background:#fff}}';
 function withCredit(doc) {
@@ -1667,6 +1670,134 @@ function withCredit(doc) {
   return doc.replace('</style>', PRINT_CREDIT_CSS + '</style>')
     .replace(/<body([^>]*)>/, '<body$1><table class="pgwrap"><tfoot><tr><td><div style="height:12mm"></div></td></tr></tfoot><tbody><tr><td>')
     .replace(/<\/body>(?![\s\S]*<\/body>)/, '</td></tr></tbody></table>' + credit + '</body>');
+}
+// =====================================================================
+// คู่มือออนไลน์แบบมีภาพ (DEC-105) — เปิดได้โดยไม่ต้องล็อกอิน · ภาพจับจากโหมดสาธิต (?shot=) เก็บใน help/rec/
+//   เลขวงกลมสีแดงในภาพ = เลขในขั้นตอน · แก้ข้อความที่ GUIDE_REC ที่เดียว
+// =====================================================================
+const GN = k => `<span class="gn">${k}</span>`;   // เลขวงกลมสีแดงแบบเดียวกับในภาพ
+const GUIDE_REC = [
+  { id: 'g1', title: 'ก่อนเริ่มใช้งาน', intro: 'ระบบนี้ใช้ผ่านเว็บบนมือถือ ไม่ต้องติดตั้งแอป ใช้มือถือ Android หรือ iPhone ที่ต่ออินเทอร์เน็ตได้',
+    parts: [{ steps: [
+      'ขอ <b>ชื่อล็อกอิน</b> และ <b>รหัสผ่านเริ่มต้น</b> จาก admin ของเทศบาล (ระบบไม่สมัครเอง ไม่ใช้อีเมล)',
+      'เปิดเบราว์เซอร์ในมือถือ (Android ใช้ Chrome · iPhone ใช้ Safari) พิมพ์ที่อยู่ <b class="mono">' + esc(CREDIT.url.replace('https://', '')) + '</b>',
+      'ทำไอคอนไว้ที่หน้าจอมือถือ จะได้ไม่ต้องพิมพ์ที่อยู่ทุกครั้ง: <br>• <b>Android (Chrome)</b> กดปุ่ม <b>⋮</b> มุมขวาบน → <b>"เพิ่มลงในหน้าจอหลัก"</b> (Add to Home screen) → <b>"เพิ่ม"</b><br>• <b>iPhone (Safari)</b> กดปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรชี้ขึ้น) ด้านล่าง → <b>"เพิ่มไปยังหน้าจอโฮม"</b> (Add to Home Screen) → <b>"เพิ่ม"</b><br><span class="muted">ชื่อเมนูอาจต่างเล็กน้อยตามรุ่นของมือถือ</span>',
+      'ครั้งแรกที่กดปุ่ม <b>"ใช้ GPS"</b> มือถือจะถามว่าอนุญาตให้เว็บรู้ตำแหน่งไหม ให้กด <b>"อนุญาต"</b> (Allow) · ครั้งแรกที่กด <b>"ถ่ายรูป"</b> จะถามเรื่องกล้อง ให้กด <b>"อนุญาต"</b> เช่นกัน'],
+    done: 'เปิดที่อยู่แล้วเห็นหน้า <b>"เข้าสู่ระบบ"</b> ตามภาพในหัวข้อถัดไป' }] },
+  { id: 'g2', title: 'เข้าสู่ระบบ และเปลี่ยนรหัสผ่าน', intro: 'เข้าครั้งแรกด้วยรหัสผ่านที่ admin ให้ แล้วเปลี่ยนเป็นรหัสของท่านเอง เพื่อไม่ให้คนอื่นใช้ชื่อของท่านบันทึกข้อมูล',
+    parts: [{ img: 'r01', steps: [
+      `${GN(1)} พิมพ์ <b>ชื่อล็อกอิน</b> ตามที่ admin ให้ (ตัวอักษรเล็กทั้งหมด เช่น ubn-rec1)`,
+      `${GN(2)} พิมพ์ <b>รหัสผ่าน</b>`,
+      `${GN(3)} กดปุ่ม <b>"เข้าสู่ระบบ"</b>`,
+      `${GN(4)} ปุ่ม <b>"คู่มือการใช้งาน"</b> เปิดคู่มือนี้ได้ทุกเมื่อ แม้ยังไม่เข้าสู่ระบบ`],
+      done: 'เห็นแผนที่ และชื่อของท่านที่แถบสีเขียวด้านบน' },
+    { img: 'r04', lead: 'เปลี่ยนรหัสผ่าน: กดปุ่ม <b>"บัญชี"</b> มุมขวาบน', steps: [
+      `${GN(1)} พิมพ์ <b>รหัสผ่านใหม่</b> อย่างน้อย 8 ตัว`,
+      `${GN(2)} พิมพ์รหัสเดิมซ้ำอีกครั้งในช่อง <b>"พิมพ์ซ้ำ"</b>`,
+      `${GN(3)} กด <b>"บันทึกรหัสผ่าน"</b>`,
+      `${GN(4)} <b>"ออกจากระบบ"</b> ใช้เมื่อยืมมือถือคนอื่น หรือใช้เครื่องร่วมกัน`],
+      done: 'ขึ้นข้อความ <b>"เปลี่ยนรหัสผ่านแล้ว"</b> · ครั้งต่อไปใช้รหัสใหม่ · ลืมรหัสผ่าน ให้แจ้ง admin ของเทศบาลตั้งให้ใหม่' }] },
+  { id: 'g3', title: 'รู้จักหน้าจอแผนที่', intro: 'หน้าแรกหลังเข้าสู่ระบบ แสดงจุดวางถังทุกจุดของเทศบาล',
+    parts: [{ img: 'r02', steps: [
+      `${GN(1)} <b>เมนูหลัก</b> แผนที่ · จุด (รายการ) · เส้นทางรถ · ช่วยเหลือ`,
+      `${GN(2)} <b>คำอธิบายสีหมุด</b> สีบอกความจุรวมของถังในจุดนั้น (เขียว = น้อย ไล่ไปถึงม่วง = มาก)`,
+      `${GN(3)} สลับ <b>"แผนที่"</b> กับ <b>"ดาวเทียม"</b> ภาพดาวเทียมช่วยดูตำแหน่งจริง เช่น หน้าบ้านหรือหัวมุม`,
+      `${GN(4)} ปุ่ม <b>"＋ เพิ่มจุด"</b> ใช้บ่อยที่สุด (หัวข้อ 4)`,
+      `${GN(5)} ปุ่ม <b>"บัญชี"</b> เปลี่ยนรหัสผ่าน / ออกจากระบบ`],
+      done: 'ใช้สองนิ้วถ่างเพื่อซูมเข้า บีบเพื่อซูมออก ลากนิ้วเดียวเพื่อเลื่อนแผนที่' },
+    { img: 'r03', lead: 'ดูข้อมูลของจุดบนแผนที่', steps: [
+      `${GN(1)} แตะที่ <b>หมุด</b> จะเห็นรหัสจุด ชื่อ ถนน จำนวนใบ และลิตร`,
+      `${GN(2)} แตะ <b>"เปิดรายละเอียด"</b> เพื่อดูถังและรูปของจุดนั้น หรือแก้ไข (หัวข้อ 5)`] }] },
+  { id: 'g4', title: 'เพิ่มจุดใหม่ (ทำที่จุดจริง)', intro: 'ให้ยืนอยู่ที่จุดวางถังจริงก่อนเริ่ม เพราะระบบใช้ตำแหน่งของมือถือเป็นพิกัดของจุด กรอกจากบนลงล่างทีละช่อง ใช้เวลาประมาณ 1–2 นาทีต่อจุด',
+    parts: [{ img: 'r05', lead: 'กดปุ่ม <b>"＋ เพิ่มจุด"</b> มุมขวาล่าง', steps: [
+      `${GN(1)} <b>ชื่ออ้างอิง</b> (ต้องกรอก) ชื่อที่คนในพื้นที่เข้าใจ เช่น หน้าวัดใต้ · ปากซอย 3 · หน้าตลาดสด`,
+      `${GN(2)} <b>ประเภทจุด</b> เลือกให้ตรงที่สุด`,
+      `${GN(3)} <b>ถนน</b> (ต้องเลือก) ถนนที่จุดนี้ตั้งอยู่ · ไม่พบถนนในรายการ ให้แจ้ง admin เพิ่มให้`,
+      `${GN(4)} <b>ซอย</b> ถ้าจุดอยู่ในซอย เลือกซอย · ไม่อยู่ในซอยเว้นไว้ (—)`,
+      `${GN(5)} กด <b>"ใช้ GPS"</b> ยืนกลางแจ้ง ไม่อยู่ใต้หลังคาหรือต้นไม้ใหญ่ รอ 2–5 วินาที`,
+      `${GN(6)} ตัวเลขพิกัดขึ้นเองทั้ง 2 ช่อง และมีบรรทัด <b>"ความคลาดเคลื่อน ± … เมตร"</b> ถ้าเกิน 20 เมตร กด "ใช้ GPS" ซ้ำ`],
+      done: 'ช่อง "รหัสจุด" เว้นว่างได้ ระบบตั้งให้เอง (ชื่อถนน-ลำดับ) · "หมายเหตุ" ใส่เมื่อมีเรื่องควรรู้ เช่น ถังวางบนทางเท้า' },
+    { img: 'r06', lead: 'เลื่อนลงมาที่ <b>"ถังในจุดนี้"</b> · 1 แถว = ถังชุดเดียวกัน (ประเภท สี สภาพ ปีที่ซื้อ เหมือนกัน)', steps: [
+      `${GN(1)} <b>ประเภทถัง</b> ดูขนาดที่ตัวถังหรือเทียบกับรูปถังของเทศบาล`,
+      `${GN(2)} <b>จำนวนใบ</b> นับถังประเภทนี้ในจุดนี้`,
+      `${GN(3)} <b>สีถัง</b> ถ้าสีตรงกับประเภทอยู่แล้ว เลือก "ตามประเภท/ไม่ระบุ"`,
+      `${GN(4)} <b>สภาพ</b> ปกติ · ชำรุด · หาย (ถังชำรุดหรือหาย ระบบไม่นับเป็นความจุ แต่ยังเก็บไว้เป็นทะเบียน)`,
+      `${GN(5)} <b>ปีงบที่ซื้อ</b> ไม่ทราบ เลือก "ไม่ทราบปี"`,
+      `${GN(6)} มีถังต่างประเภทหรือต่างสภาพในจุดเดียวกัน กด <b>"＋ เพิ่มแถวถัง"</b> แล้วกรอกแถวใหม่ · กรอกเกิน กด "ลบแถว"`],
+      done: '"เลขครุภัณฑ์" และ "ราคา/ใบ" ไม่ต้องกรอกถ้าไม่ทราบ (เว้นราคาว่าง = ระบบใช้ราคามาตรฐานของประเภทถังนั้น)' },
+    { img: 'r07', lead: 'ถ่ายรูปแล้วบันทึก (รูปไม่บังคับ แต่ช่วยให้คนอื่นหาจุดเจอ)', steps: [
+      `${GN(1)} <b>"ถ่ายรูป"</b> เปิดกล้องหลัง ถ่ายทีละรูป ถ้าต้องการหลายรูปให้กดซ้ำ · ถ่ายให้เห็นถังและสิ่งที่จำได้ เช่น ป้ายร้าน รั้ววัด`,
+      `${GN(2)} <b>"เลือกจากคลังรูป"</b> ใช้รูปที่ถ่ายไว้แล้วในมือถือ เลือกได้หลายรูป`,
+      `${GN(3)} รูปย่อแสดงใต้ปุ่ม ถ่ายผิดกด <b>"ลบ"</b> ใต้รูปนั้น (จำนวนรูปสูงสุดแสดงที่หัวข้อ "รูป" ปกติจุดละ 3 รูป)`,
+      `${GN(4)} ตรวจข้อมูลอีกครั้ง แล้วกด <b>"บันทึก"</b>`],
+      done: 'ขึ้นข้อความว่าบันทึกแล้ว และเปิดหน้าของจุดที่เพิ่งเพิ่ม (ภาพในหัวข้อ 5) · หมุดใหม่จะเห็นบนแผนที่ทันที' }] },
+  { id: 'g5', title: 'ค้นหา ดู และแก้ไขจุด', intro: 'ใช้เมื่อกลับไปตรวจจุดเดิม เช่น ถังเพิ่ม ถังหาย หรือถ่ายรูปเพิ่ม',
+    parts: [{ img: 'r09', lead: 'กดเมนู <b>"จุด"</b>', steps: [
+      `${GN(1)} พิมพ์ <b>รหัส ชื่อ หรือชื่อถนน</b> บางส่วนเพื่อค้นหา รายการจะสั้นลงทันที`,
+      `${GN(2)} แตะ <b>รหัสจุด</b> (ตัวสีเขียวขีดเส้นใต้) เพื่อเปิดจุดนั้น · แตะหัวตารางเพื่อเรียงลำดับ`,
+      `${GN(3)} ปุ่ม <b>"＋ เพิ่มจุด"</b> มีในหน้านี้ด้วย`] },
+    { img: 'r08', lead: 'หน้ารายละเอียดของจุด', steps: [
+      `${GN(1)} <b>"แก้ไขจุด"</b> แก้ชื่อ ถนน ซอย พิกัด หรือหมายเหตุ (ย้ายพิกัด: ไปยืนที่จุดแล้วกด "ใช้ GPS" ใหม่)`,
+      `${GN(2)} <b>"＋ เพิ่มถัง"</b> เพิ่มถังชุดใหม่ · ปุ่ม <b>"แก้"</b> ท้ายแถว แก้จำนวนหรือสภาพของถังชุดนั้น (เช่น ถังชำรุดเปลี่ยนสภาพเป็น "ชำรุด")`,
+      `${GN(3)} <b>"ถ่ายรูป"</b> เพิ่มรูปของจุดนี้ (เลื่อนลงไปที่หัวข้อ "รูป")`],
+      done: 'ผู้ปฏิบัติงานแก้ไขได้ แต่ <b>ลบหรือยกเลิกจุดไม่ได้</b> ถ้าบันทึกจุดซ้ำหรือผิด ให้แจ้งรหัสจุดกับ admin ของเทศบาล' }] },
+  { id: 'g6', title: 'ทำงานตอนไม่มีสัญญาณ', intro: 'บันทึกต่อได้ตามปกติ ข้อมูลไม่หาย ระบบเก็บไว้ในมือถือแล้วส่งเองเมื่อมีสัญญาณ',
+    parts: [{ img: 'r10', steps: [
+      `${GN(1)} ในหน้าเพิ่มจุดจะมีแถบสีเหลือง <b>"ไม่มีสัญญาณ: จะเก็บไว้ในเครื่อง…"</b>`,
+      `${GN(2)} กด <b>"บันทึก"</b> ได้ตามปกติ`,
+      `${GN(3)} กล่องแจ้งเตือนบอกว่าไม่มีสัญญาณ เป็นเพียงการแจ้งให้ทราบ กด × เพื่อปิด`] },
+    { img: 'r11', lead: 'รายการที่ยังไม่ได้ส่ง', steps: [
+      `${GN(1)} ปุ่ม <b>"รอส่ง"</b> และตัวเลขจะขึ้นที่แถบด้านบน แตะเพื่อดูรายการ`,
+      `${GN(2)} รายการจุด ถัง และรูปที่รอส่ง`,
+      `${GN(3)} เมื่อกลับมามีสัญญาณ ระบบส่งเองภายในไม่กี่วินาที หรือกด <b>"ส่งตอนนี้"</b>`],
+      done: 'ส่งครบแล้วปุ่ม "รอส่ง" จะหายไป · <b>ข้อควรระวัง:</b> ก่อนส่งครบ อย่าล้างข้อมูลเบราว์เซอร์ อย่าเปลี่ยนมือถือ และอย่ากด "ลบ" ในรายการ (ลบ = ทิ้งข้อมูลนั้น)' }] },
+  { id: 'g7', title: 'ดูเส้นทางรถเก็บขยะ', intro: 'ดูว่ารถแต่ละคันวิ่งถนนไหน ผ่านกี่จุด (admin เป็นผู้กำหนดเส้นทาง ผู้ปฏิบัติงานดูได้อย่างเดียว)',
+    parts: [{ img: 'r12', lead: 'กดเมนู <b>"เส้นทางรถ"</b>', steps: [
+      `${GN(1)} <b>เลือกเส้นทาง / รถ</b>`,
+      `${GN(2)} ตัวเลขสรุป จำนวนถนน จุด ลิตรรวม และ % ของความจุรถ (ตัวเลขสีแดง = เกินความจุรถ)`,
+      `${GN(3)} <b>"รายงานแจ้งคนขับ"</b> เปิดรายการจุดเรียงตามลำดับ พิมพ์หรือบันทึกเป็น PDF ส่งให้คนขับได้`] },
+    { img: 'r12b', lead: 'เลื่อนลงมาจะเห็นแผนที่เส้นทาง', steps: [
+      `${GN(1)} ติ๊ก <b>"แสดงทุกเส้นทางของเทศบาล"</b> เพื่อดูเส้นทางอื่นพร้อมกัน (สีบอกความจุรวมของแต่ละเส้นทาง) · ไม่ติ๊ก = ดูเฉพาะเส้นทางที่เลือก`,
+      `${GN(2)} แผนที่แสดงเส้นทางและหมุดของจุดในเส้นทาง แตะเส้นเพื่อดูชื่อเส้นทาง แตะหมุดเพื่อดูจุด`] }] },
+  { id: 'g8', title: 'เมื่อเห็นกล่องแจ้งเตือนสีแดง', intro: 'กล่องสีแดงบอกเสมอว่า "เกิดอะไร" และ "ต้องทำอย่างไร" ไม่ต้องตกใจ อ่านบรรทัดที่สองแล้วทำตาม',
+    parts: [{ img: 'r13', steps: [
+      `${GN(1)} ช่องที่ยังไม่ได้กรอกจะมี <b>กรอบสีแดง</b> และหน้าจอเลื่อนไปที่ช่องนั้นให้เอง`,
+      `${GN(2)} กล่องแจ้งเตือนบอกว่าต้องกรอกอะไร · กรอกแล้วกด "บันทึก" อีกครั้ง`],
+      done: 'ข้อความที่พบบ่อย: <br>• <b>เชื่อมต่อไม่ได้</b> ตรวจสัญญาณ แล้วลองใหม่ (ถ้าบันทึกจุด ข้อมูลจะเข้า "รอส่ง" ไม่หาย)<br>• <b>หมดเวลาการใช้งาน</b> เข้าสู่ระบบใหม่ รายการที่รอส่งยังอยู่<br>• <b>อ่านตำแหน่ง GPS ไม่ได้</b> เปิดตำแหน่ง (Location) ของมือถือ และอนุญาตให้เบราว์เซอร์ใช้ตำแหน่ง<br>• <b>รูปนี้เปิดไม่ได้</b> แจ้ง admin ของเทศบาล<br>ตารางข้อความทั้งหมดอยู่ที่เมนู "ช่วยเหลือ" หัวข้อ "เมื่อเห็นกล่องแจ้งเตือนสีแดง"' }] },
+  { id: 'g9', title: 'ติดต่อใครเมื่อติดปัญหา', intro: 'ผู้ปฏิบัติงานติดต่อ <b>admin ของเทศบาล</b> ของท่านก่อนทุกเรื่อง',
+    parts: [{ img: 'r14', steps: [
+      `${GN(1)} เมนู <b>"ช่วยเหลือ"</b> ในระบบ มีวิธีใช้ทุกหน้า และทุกหน้ามีปุ่ม <b>(?)</b> เปิดวิธีใช้ของหน้านั้น`,
+      `${GN(2)} ปุ่ม <b>"เปิดคู่มือแบบมีภาพ"</b> กลับมาที่คู่มือนี้`],
+      done: 'แจ้ง admin ของเทศบาลเมื่อ: ลืมรหัสผ่าน · ไม่พบถนนหรือประเภทถังในรายการ · บันทึกจุดซ้ำหรือผิด · เจอข้อความสีแดงซ้ำหลายครั้ง (ถ่ายภาพหน้าจอส่งไปด้วย <b>แต่อย่าให้เห็นรหัสผ่าน</b>)' }] }
+];
+const GIMG = f => `<a href="help/rec/${f}.jpg?v=1" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/rec/${f}.jpg?v=1" alt="ภาพหน้าจอประกอบ" loading="lazy" width="390" height="844" class="gimg"></a>`;
+const GUIDE_CSS = `<style>.gn{display:inline-block;min-width:26px;height:26px;line-height:26px;border-radius:50%;background:#E11D48;color:#fff;font-weight:700;text-align:center;font-size:15px;margin-right:4px}
+  .gpart{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:18px;align-items:start;margin-top:14px}.gpart ol{margin:6px 0;padding-left:0;list-style:none}.gpart li{margin:8px 0;line-height:1.7}
+  .gimg{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;display:block}.gdone{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.7}
+  .gsec{margin-top:26px;border-top:2px solid #1F3A5F;padding-top:10px}.gtoc a{display:block;padding:10px 4px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--brand)}
+  @media (max-width:720px){.gpart{grid-template-columns:1fr}.gimg{max-width:340px;margin:0 auto}} @media print{.gpart{break-inside:avoid}.noprint{display:none}}</style>`;
+function gGo(id) { const el = document.getElementById(id); if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 120); }
+function pageGuide(view) {
+  const sub = location.hash.split('/')[1] || ''; window.scrollTo(0, 0);
+  if (sub === 'photo') return pageGuidePhoto(view);
+  if (sub === 'recorder') return pageGuideRecorder(view);
+  const card = (href, title, who, desc, ready = true) => `<div class="card" style="border-left:6px solid ${ready ? 'var(--brand)' : '#9CA3AF'}"><h3 style="margin-top:0">${title}</h3><div class="muted">${who}</div><p style="margin:6px 0">${desc}</p>${ready ? `<a class="btn" style="text-decoration:none" href="${href}">เปิดคู่มือ</a>` : '<span class="pill">กำลังจัดทำ</span>'}</div>`;
+  view.innerHTML = `${GUIDE_CSS}<div style="max-width:860px;margin:0 auto"><div class="card"><h2 style="margin:0">คู่มือการใช้งาน UBWast</h2><div class="muted" style="margin-top:4px">อ่านได้โดยไม่ต้องเข้าสู่ระบบ · เลือกคู่มือตามหน้าที่ของท่าน</div></div>
+    ${card('#guide/recorder', 'ผู้ปฏิบัติงาน (ผู้บันทึกข้อมูลภาคสนาม)', 'เจ้าหน้าที่ที่ลงพื้นที่ บันทึกจุดวางถัง ถัง และรูป ด้วยมือถือ', 'เข้าสู่ระบบ · รู้จักหน้าจอ · เพิ่มจุดทีละช่อง · แก้ไขจุด · ทำงานตอนไม่มีสัญญาณ · ดูเส้นทางรถ · เมื่อเห็นข้อความสีแดง')}
+    ${card('#guide/admin', 'ผู้ดูแลระบบของเทศบาล (admin)', 'เจ้าหน้าที่ที่ดูแลถนน รถ เส้นทาง บัญชีผู้ใช้ และพิมพ์รายงาน', 'ระหว่างจัดทำ ใช้ "คู่มือใช้งานฉบับเอกสาร" ในเมนู ช่วยเหลือ หลังเข้าสู่ระบบ', false)}
+    ${card('#guide/photo', 'ผู้ดูแลบัญชี Google ของเทศบาล', 'ทำครั้งเดียว เมื่อเทศบาลต้องการเก็บรูปไว้ใน Google Drive ของเทศบาลเอง', 'ติดตั้ง "ตัวรับรูป" ใน Apps Script ประมาณ 10 นาที')}
+    <div class="row noprint"><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#help' : '#'}">${S.me ? 'กลับไปหน้าช่วยเหลือ' : 'กลับไปหน้าเข้าสู่ระบบ'}</a></div></div>`;
+}
+function pageGuideRecorder(view) {
+  const part = p => `<div class="gpart">${p.img ? GIMG(p.img) : ''}<div style="${p.img ? '' : 'grid-column:1/-1'}">${p.lead ? `<div style="margin-bottom:4px">${p.lead}</div>` : ''}<ol>${p.steps.map(x => `<li>${x}</li>`).join('')}</ol>${p.done ? `<div class="gdone"><b>ถูกต้องเมื่อ / หมายเหตุ:</b> ${p.done}</div>` : ''}</div></div>`;
+  view.innerHTML = `${GUIDE_CSS}<div class="card" style="max-width:980px;margin:0 auto">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">คู่มือผู้ปฏิบัติงาน (ผู้บันทึกข้อมูลภาคสนาม)</h2><button class="secondary small noprint" onclick="window.print()">${ICON.print} พิมพ์ / บันทึก PDF</button></div>
+    <p>คู่มือนี้พาใช้ระบบตั้งแต่เข้าสู่ระบบครั้งแรก จนบันทึกจุดวางถังได้เอง อ่านจบประมาณ 15 นาที · <b>เลขวงกลมสีแดง</b> ${GN(1)} ในภาพ ตรงกับเลขในขั้นตอนด้านข้าง</p>
+    <div class="banner info">ภาพในคู่มือใช้ <b>ข้อมูลตัวอย่าง</b> (ถนนตัวอย่าง จุดตัวอย่าง) ของจริงจะเป็นชื่อถนนและจุดของเทศบาลท่าน · ชื่อปุ่มในคู่มือตรงกับที่เห็นบนหน้าจอ</div>
+    <h3>สารบัญ</h3><div class="gtoc noprint">${GUIDE_REC.map((g, i) => `<a href="javascript:void 0" onclick="gGo('${g.id}')">${i + 1}. ${g.title}</a>`).join('')}</div>
+    ${GUIDE_REC.map((g, i) => `<section class="gsec" id="${g.id}"><h3 style="margin:0 0 4px">${i + 1}. ${g.title}</h3><div class="muted">${g.intro}</div>${g.parts.map(part).join('')}<div class="noprint" style="text-align:right;margin-top:6px"><a href="javascript:void 0" onclick="window.scrollTo({top:0,behavior:'smooth'})">กลับสารบัญ ↑</a></div></section>`).join('')}
+    <div class="row noprint" style="margin-top:18px"><a class="btn secondary" style="text-decoration:none" href="#guide">คู่มืออื่น</a><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#map' : '#'}">${S.me ? 'กลับไปหน้าแผนที่' : 'ไปหน้าเข้าสู่ระบบ'}</a></div>
+    <div class="muted" style="margin-top:10px">ปรับปรุงคู่มือ: ${esc(CREDIT.updated)}</div></div>`;
 }
 function pageGuidePhoto(view) {
   const flow = `<svg viewBox="0 0 720 150" role="img" aria-label="ภาพรวมการทำงาน" style="width:100%;max-width:720px;height:auto;display:block;margin:8px auto;font-family:inherit">
@@ -1691,7 +1822,8 @@ function pageHelp(view) {
   const sec = (title, keys) => `<div class="card"><h3 style="margin-top:0">${title}</h3>${keys.map(k => `<details style="margin:6px 0"><summary><b>${esc(HELP[k].title)}</b></summary>${helpBody(HELP[k])}</details>`).join('')}</div>`;
   const mid = CONFIG.MANUAL_MUNI_DOC_ID; const manualCard = mid ? `<div class="card" style="border-left:6px solid var(--brand)"><h3 style="margin-top:0">คู่มือใช้งานฉบับเอกสาร</h3><div class="muted">คู่มือสำหรับเทศบาล 9 หัวข้อ (ผู้บันทึกและ admin) ดาวน์โหลดเก็บไว้หรือพิมพ์แจกเจ้าหน้าที่ได้ · ไฟล์อยู่ใน Google Drive ของโครงการ</div>
       <div class="row" style="margin-top:10px;flex-wrap:wrap"><a class="btn" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/export?format=pdf" target="_blank" rel="noopener">ดาวน์โหลด PDF</a><a class="btn secondary" style="text-decoration:none" href="https://docs.google.com/document/d/${mid}/preview" target="_blank" rel="noopener">อ่านออนไลน์</a>${isSuper() && CONFIG.MANUAL_OWNER_URL ? `<a class="btn secondary" style="text-decoration:none" href="${esc(CONFIG.MANUAL_OWNER_URL)}" target="_blank" rel="noopener">คู่มือเจ้าของโครงการ</a>` : ''}<a class="btn secondary" style="text-decoration:none" href="#about">เกี่ยวกับระบบ</a></div></div>` : '';
-  view.innerHTML = `${manualCard}<div class="card"><h3 style="margin-top:0">ช่วยเหลือและคู่มือ</h3><div class="muted">ทุกหน้ามีไอคอน (?) เปิดขั้นตอนของหน้านั้นได้ทันที · หน้านี้รวมทุกเรื่องไว้ที่เดียว · บทบาทของท่าน: <b>${roleLabel(S.me.role)}</b></div>
+  const guideCard = `<div class="card" style="border-left:6px solid var(--brand)"><h3 style="margin-top:0">คู่มือทีละขั้นพร้อมภาพ</h3><div class="muted">อ่านบนมือถือได้ ไม่ต้องเข้าสู่ระบบ ส่งลิงก์ให้เพื่อนร่วมงานได้</div><div class="row" style="margin-top:10px"><a class="btn" style="text-decoration:none" href="#guide">เปิดคู่มือแบบมีภาพ</a></div></div>`;
+  view.innerHTML = `${guideCard}${manualCard}<div class="card"><h3 style="margin-top:0">ช่วยเหลือและคู่มือ</h3><div class="muted">ทุกหน้ามีไอคอน (?) เปิดขั้นตอนของหน้านั้นได้ทันที · หน้านี้รวมทุกเรื่องไว้ที่เดียว · บทบาทของท่าน: <b>${roleLabel(S.me.role)}</b></div>
     <h4>ภาพรวมระบบใน 1 นาที</h4><ol style="padding-left:22px"><li><b>ผู้บันทึก</b> ลงพื้นที่ → เพิ่มจุด (GPS · ถัง · รูป) บนมือถือ ทำงานได้แม้ไม่มีสัญญาณ</li><li><b>admin เทศบาล</b> ดูแลถนน รถ เส้นทาง บัญชี → ดูแดชบอร์ด → พิมพ์รายงานส่งผู้บริหาร</li><li><b>เจ้าของโครงการ</b> ดูทุกเทศบาล ตั้งค่าส่วนกลาง สร้างเทศบาลใหม่</li></ol>
     <div class="banner info">ติดปัญหาที่คู่มือไม่ครอบคลุม: admin เทศบาลติดต่อเจ้าของโครงการ · ผู้บันทึกติดต่อ admin ของเทศบาล</div></div>
     ${sec('สำหรับผู้บันทึก (ใช้บนมือถือ)', rec)}${isAdmin() ? sec('สำหรับ admin เทศบาล', adm) : ''}${isSuper() ? sec('สำหรับเจ้าของโครงการ', sup.concat(['photo-owner'])) : ''}
@@ -1785,12 +1917,78 @@ async function printReport(kind) {
 }
 
 // =====================================================================
+// DEC-105 โหมดถ่ายภาพคู่มือ (เฉพาะโหมดสาธิต ไม่มีผลกับระบบจริง) · สคริปต์ถ่ายภาพรอ window.__shotReady แล้วจับภาพหน้าจอ
+// แต่ละภาพ: pre = ทำก่อนเปิดหน้า · run = เติมข้อมูลตัวอย่าง แล้วคืนรายการ [ตัวเลือก, เลข] ที่จะวางวงกลมสีแดง
+// =====================================================================
+const shotEl = x => typeof x === 'string' ? $(x) : x;
+const shotWait = ms => new Promise(r => setTimeout(r, ms));
+function shotFill(sel, v) { const el = $(sel); if (!el) return; if (el.tagName === 'SELECT') { const o = [...el.options].find(o => o.text.includes(v)); if (o) el.value = o.value; } else el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }
+function shotTop(x, gap = 72) { const el = shotEl(x); if (el) window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - gap); }
+async function shotPhoto(label, color) {   // รูปตัวอย่างวาดในเครื่อง (ไม่ใช่รูปจริงของพื้นที่ใด)
+  const c = document.createElement('canvas'); c.width = 400; c.height = 400; const g = c.getContext('2d');
+  g.fillStyle = color; g.fillRect(0, 0, 400, 400); g.fillStyle = '#fff'; g.font = 'bold 44px sans-serif'; g.textAlign = 'center'; g.fillText(label, 200, 215);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .8)); return new File([blob], label + '.jpg', { type: 'image/jpeg' });
+}
+function shotMark(list) {
+  document.querySelectorAll('.shotmk').forEach(x => x.remove());
+  for (const [sel, num, o = {}] of list) {   // o.side: tr = มุมขวาบน (ค่าเริ่มต้น ไม่บังป้ายชื่อช่อง) · mr = ขวากลาง · o.box: false = ไม่ตีกรอบ
+    const pad = o.pad ?? 4, side = o.side || 'tr';
+    const el = shotEl(sel); if (!el) { console.warn('shot: ไม่พบ', sel); continue; }
+    const r = el.getBoundingClientRect(), fixed = getComputedStyle(el).position === 'fixed' || !!el.closest('header');
+    const oy = fixed ? 0 : window.scrollY, pos = fixed ? 'fixed' : 'absolute';
+    const box = document.createElement('div'); box.className = 'shotmk'; if (o.box === false) box.style.display = 'none';
+    box.style.cssText = `position:${pos};z-index:9998;pointer-events:none;border:3px solid #E11D48;border-radius:10px;left:${r.left - pad}px;top:${r.top + oy - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px`;
+    const dot = document.createElement('div'); dot.className = 'shotmk'; dot.textContent = num;
+    const dx = Math.min(Math.max(side === 'tl' ? r.left - pad - 14 : r.right + pad - 18, 2), window.innerWidth - 32);
+    const dy = side === 'mr' ? r.top + oy + r.height / 2 - 15 : Math.max(r.top + oy - pad - 14, fixed ? 2 : oy + 2);
+    dot.style.cssText = `position:${pos};z-index:9999;pointer-events:none;left:${dx}px;top:${dy}px;width:30px;height:30px;border-radius:50%;background:#E11D48;color:#fff;font:700 17px/30px sans-serif;text-align:center;box-shadow:0 0 0 2px #fff`;
+    document.body.append(box, dot);
+  }
+}
+const SHOTS = {
+  login: { run: async () => { $('#u').value = 'ubn-rec1'; $('#p').value = '12345678'; return [['#u', 1], ['#p', 2], ['#btnLogin', 3], ['#guideLink', 4]]; } },
+  map: { wait: 3500, run: async () => [['#tabs', 1], ['.legend.card', 2], ['.leaflet-control-layers', 3], ['.fab', 4], ['header button:last-of-type', 5]] },
+  mappop: { wait: 3500, run: async () => { const p = document.querySelectorAll('path.leaflet-interactive')[2]; p && p.dispatchEvent(new MouseEvent('click', { bubbles: true })); await shotWait(600); return [[p, 1, { pad: 6 }], ['.leaflet-popup-content a', 2]]; } },
+  me: { run: async () => [['#pw1', 1], ['#pw2', 2], ['button[onclick="changePw()"]', 3], ['button[onclick="logout()"]', 4]] },
+  add1: { run: async () => { shotFill('#f_name', 'หน้าตลาดสดเทศบาล'); shotFill('#f_type', 'ตลาด'); shotFill('#f_road', 'ถนนตัวอย่าง ก'); $('#f_lat').value = '15.006512'; $('#f_lng').value = '100.004873'; $('#gpsInfo').textContent = 'ความคลาดเคลื่อน ±6 เมตร';
+    return [['#f_name', 1], ['#f_type', 2], ['#f_road', 3], ['#f_soi', 4], ['button[onclick="getGps()"]', 5], [$('#f_lat').closest('.row'), 6]]; } },
+  add2: { run: async () => { $('.b_amt').value = '2'; shotFill('.b_color', 'เขียว'); shotTop('#binRows', 120);
+    return [['.b_type', 1], ['.b_amt', 2, { side: 'mr' }], ['.b_color', 3], ['.b_cond', 4, { side: 'mr' }], ['.b_fy', 5], ['button[onclick="addBinRow()"]', 6]]; } },
+  add3: { run: async () => { S._newPhotos = [await shotPhoto('รูปที่ 1', '#2E7D32'), await shotPhoto('รูปที่ 2', '#1F3A5F')]; drawPhotoList(); shotFill('#f_name', 'หน้าตลาดสดเทศบาล');
+    const cam = [...document.querySelectorAll('label.btn')].find(x => x.textContent.includes('ถ่ายรูป')), lib = [...document.querySelectorAll('label.btn')].find(x => x.textContent.includes('คลังรูป'));
+    window.scrollTo(0, document.body.scrollHeight); await shotWait(200); return [[cam, 1], [lib, 2], ['#f_photoList', 3], ['#btnSave', 4]]; } },
+  place: { run: async () => { const b = [...document.querySelectorAll('button')]; return [[b.find(x => x.textContent === 'แก้ไขจุด'), 1], [b.find(x => x.textContent.includes('เพิ่มถัง')), 2], [[...document.querySelectorAll('label.btn')].find(x => x.textContent.includes('ถ่ายรูป')), 3]]; } },
+  places: { run: async () => [['#q', 1], ['#list a', 2], ['.fab', 3]] },
+  offline: { pre: () => Object.defineProperty(navigator, 'onLine', { get: () => false }),
+    run: async () => { shotFill('#f_name', 'หน้าตลาดสดเทศบาล'); window.dispatchEvent(new Event('offline')); window.scrollTo(0, document.body.scrollHeight); await shotWait(300);
+      return [[$('#view .banner.warn'), 1], ['#btnSave', 2], ['.toast.err', 3]]; } },
+  queue: { pre: () => { Queue.save([]); [['place', 'จุด หน้าตลาดสดเทศบาล'], ['bin', 'ถัง 2 ใบ · หน้าตลาดสดเทศบาล'], ['photo', 'รูปที่ 1 · หน้าตลาดสดเทศบาล']].forEach(([kind, label]) => Queue.push({ kind, label })); },
+    run: async () => [['#btnQueue', 1], ['#view table', 2], ['button[onclick="Queue.sync().then(render)"]', 3]] },
+  routes: { wait: 4000, run: async () => [['#view select', 1], ['#routeInfo .kpis', 2], ['button[onclick^="printDriverReport"]', 3]] },
+  routes2: { wait: 4000, run: async () => { shotTop($('#rtAll').closest('.card'), 125); await shotWait(300); return [[$('#rtAll').closest('.card'), 1], ['#map', 2, { pad: 2 }]]; } },
+  error: { run: async () => { $('#btnSave').click(); await shotWait(700); window.scrollTo(0, 0); await shotWait(100); return [['#f_name', 1, { box: false }], ['.toast.err', 2]]; } },
+  help: { run: async () => [[[...document.querySelectorAll('#tabs a')].find(a => a.textContent === 'ช่วยเหลือ'), 1], ['#view a[href="#guide"]', 2]] }
+};
+async function shotStart() {
+  const sh = SHOTS[SHOT] || {}; document.body.classList.add('shot');
+  Queue.save([]); if (sh.pre) sh.pre();
+  if (SHOT_Q.get('as')) S.me = await api.login(SHOT_Q.get('as'), 'demo');
+  Queue.refreshBadge(); renderCredit(); await render(); await shotWait(sh.wait || 800); window.scrollTo(0, 0);
+  try { if (sh.run) shotMark(await sh.run()); } catch (e) { console.error('shot', e); }
+  window.__shotReady = true;
+}
+
+// =====================================================================
 // เริ่มทำงาน
 // =====================================================================
-Queue.refreshBadge();
-renderCredit();
-render();
-if (navigator.onLine) setTimeout(() => Queue.sync(), 3000);
+if (SHOT) shotStart();
+else {
+  Queue.refreshBadge();
+  renderCredit();
+  const top0 = () => window.scrollTo(0, 0);   // DEC-105 ลิงก์ที่ลงท้าย #map ทำให้เบราว์เซอร์เลื่อนไปที่กล่อง id="map" เอง จนมองไม่เห็นคำอธิบายสีด้านบน
+  render().then(top0); window.addEventListener('load', () => setTimeout(top0, 0), { once: true });
+  if (navigator.onLine) setTimeout(() => Queue.sync(), 3000);
+}
 </script>
 </body>
 </html>
