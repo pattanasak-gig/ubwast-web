@@ -711,7 +711,8 @@ async function pagePlaceEdit(view, id) {
     <label>ประเภทจุด</label><select id="f_type">${S.cache.place_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}" ${t.id === p.place_type_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <label>ถนน *</label><select id="f_road" onchange="fillSoi()">${roads.map(r => `<option value="${r.id}" ${r.id === p.road_id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
     <label>ซอย (ถ้ามี)</label><select id="f_soi"></select>
-    <label>พิกัด (กดปุ่ม GPS หรือพิมพ์ทศนิยม)</label><div class="row" style="align-items:flex-end"><div style="flex:1"><label class="mini" for="f_lat">ละติจูด</label><input id="f_lat" inputmode="decimal" placeholder="เช่น 15.2285" value="${p.lat ?? ''}"></div><div style="flex:1"><label class="mini" for="f_lng">ลองจิจูด</label><input id="f_lng" inputmode="decimal" placeholder="เช่น 104.8564" value="${p.lng ?? ''}"></div><button class="secondary" type="button" onclick="getGps()">${ICON.gps} ใช้ GPS</button></div><div id="gpsInfo" class="muted"></div>
+    <label>พิกัด (กด "ใช้ GPS" ที่จุดจริง หรือวางพิกัด/ลิงก์จาก Google Maps)</label><div class="row" style="align-items:flex-end"><div style="flex:1"><label class="mini" for="f_lat">ละติจูด</label><input id="f_lat" inputmode="decimal" placeholder="เช่น 15.2285" value="${p.lat ?? ''}"></div><div style="flex:1"><label class="mini" for="f_lng">ลองจิจูด</label><input id="f_lng" inputmode="decimal" placeholder="เช่น 104.8564" value="${p.lng ?? ''}"></div><button class="secondary" type="button" onclick="getGps()">${ICON.gps} ใช้ GPS</button></div><div id="gpsInfo" class="muted"></div>
+    ${latlngPaste('f_src', '#f_lat', '#f_lng', '#gpsInfo')}
     ${isNew ? `<label>รหัสจุด (เว้นว่าง = ระบบตั้งให้ "ชื่อถนน-ลำดับ")</label><input id="f_code" placeholder="อัตโนมัติ">` : ''}
     <label>หมายเหตุ</label><textarea id="f_note" rows="2">${esc(p.note || '')}</textarea>
     ${isNew ? `<h4>ถังในจุดนี้ (เพิ่มได้หลายแถว)</h4><div class="muted">1 แถว = ถังชุดเดียวกัน (ประเภท · สี · สภาพ · ปีงบที่ซื้อเดียวกัน) · ปีงบและราคาไม่บังคับ</div><div id="binRows"></div><button class="secondary small" onclick="addBinRow()">＋ เพิ่มแถวถัง</button>
@@ -740,6 +741,42 @@ function addBinRow() { const d = document.createElement('div'); d.className = 'b
     ${f('เลขครุภัณฑ์ (ถ้ามี)', `<input class="b_asset">`)}${f('ราคา/ใบ (ว่าง = มาตรฐาน)', `<input class="b_cost" type="number" min="0" step="any" inputmode="decimal">`)}
     <div style="justify-content:flex-end"><button class="small danger" type="button" onclick="this.parentNode.parentNode.remove()">ลบแถว</button></div>`;
   $('#binRows').appendChild(d); bindLabels(d); }
+// DEC-107 วางพิกัดเป็นตัวเลขหรือลิงก์ Google Maps (แนวทางจาก UBRU AppTech DEC-111)
+// รับ: "15.240311, 104.823275" · ลิงก์เต็ม (!3dLAT!4dLNG ก่อน เพราะแม่นที่ตัวสถานที่ · /@LAT,LNG = กึ่งกลางจอ) · ?q= ll= query= · ลิงก์ย่อ maps.app.goo.gl ส่งให้ห้องเครื่องแกะ (resolve_link)
+function parseLatLng(text) {
+  const t0 = String(text || '').trim(); if (!t0) return null;
+  let dec = t0; try { dec = decodeURIComponent(decodeURIComponent(t0)); } catch (_) {}   // ลิงก์ที่ผ่านหน้า consent ของ Google เข้ารหัส ! @ , ไว้
+  return parseLatLng1(t0) || (dec !== t0 ? parseLatLng1(dec) : null);
+}
+function parseLatLng1(t) {
+  const ok = (a, b) => (isFinite(a) && isFinite(b) && Math.abs(a) <= 90 && Math.abs(b) <= 180) ? { lat: +(+a).toFixed(6), lng: +(+b).toFixed(6) } : null;
+  let m;
+  if ((m = t.match(/!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/))) return ok(m[1], m[2]);
+  if ((m = t.match(/[@/](-?\d+\.\d+),(-?\d+\.\d+)/))) return ok(m[1], m[2]);
+  if ((m = t.match(/[?&](?:q|ll|query|destination|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i))) return ok(m[1], m[2]);
+  if ((m = t.match(/^\s*(-?\d+\.\d+)\s*[,\s]\s*(-?\d+\.\d+)\s*$/))) return ok(m[1], m[2]);
+  return null;
+}
+const latlngPaste = (id, latSel, lngSel, infoSel) => `<div class="row" style="margin-top:8px"><input id="${id}" aria-label="วางพิกัดหรือลิงก์ Google Maps" placeholder="วางพิกัด เช่น 15.240311, 104.823275 หรือลิงก์ Google Maps" style="flex:1;min-width:200px" onpaste="setTimeout(() => applyLatLng('#${id}', '${latSel}', '${lngSel}', '${infoSel}'), 0)"><button class="secondary small" type="button" onclick="applyLatLng('#${id}', '${latSel}', '${lngSel}', '${infoSel}')">ใช้ค่านี้</button></div>
+  <div class="muted" style="font-size:14px">ใน Google Maps: คอมพิวเตอร์ คลิกขวาที่จุด แล้วคลิกตัวเลขพิกัดบรรทัดแรก (คัดลอกให้เอง) · มือถือ กดค้างที่จุด แล้วคัดลอกตัวเลขพิกัด หรือกด "แชร์" → คัดลอกลิงก์ · จากนั้นวางในช่องนี้</div>`;
+async function applyLatLng(srcSel, latSel, lngSel, infoSel) {
+  const raw = $(srcSel).value.trim(); if (!raw) return needField(srcSel, 'วางตัวเลขพิกัด เช่น 15.240311, 104.823275 หรือวางลิงก์ Google Maps ก่อนกด "ใช้ค่านี้"');
+  let p = parseLatLng(raw);
+  if (!p && /^https?:\/\//i.test(raw)) {
+    if (!navigator.onLine) return toastErr('ยังแกะลิงก์ไม่ได้', 'ไม่มีสัญญาณ ลิงก์ต้องใช้อินเทอร์เน็ต ให้กด "ใช้ GPS" แทน หรือรอมีสัญญาณ');
+    toast('กำลังอ่านลิงก์…');
+    try { const r = await api.engine('resolve_link', { url: raw }); p = parseLatLng(r.url);
+      if (!p) return toastErr('ลิงก์นี้ไม่มีพิกัด', 'ลิงก์ชื่อสถานที่บางแบบไม่มีตัวเลขพิกัด ให้เปิดลิงก์ใน Google Maps แล้วกดค้างที่จุด คัดลอกตัวเลขพิกัดมาวางแทน'); }
+    catch (e) { if (/ไม่รู้จักคำสั่ง|ไม่รองรับ resolve_link/.test(String(e && e.message))) return toastErr('ระบบยังอ่านลิงก์ย่อไม่ได้', 'ใช้ตัวเลขพิกัดแทน: ใน Google Maps กดค้างที่จุด แล้วคัดลอกตัวเลขพิกัดมาวาง (ลิงก์แบบเต็มที่มีตัวเลขพิกัดใช้ได้ตามปกติ)'); return fail(e, 'อ่านลิงก์ไม่สำเร็จ'); }
+  }
+  if (!p) return needField(srcSel, 'อ่านพิกัดไม่ได้ · รูปแบบที่ใช้ได้: ตัวเลข "15.240311, 104.823275" (ละติจูดก่อน ลองจิจูดตามหลัง) หรือลิงก์ Google Maps');
+  $(latSel).value = p.lat; $(lngSel).value = p.lng; $(srcSel).value = ''; $(srcSel).classList.remove('invalid');
+  const m = muniOf(S.me && S.me.municipality_id || S.scopeMuni) || {}; let far = false;   // เตือน (ไม่บล็อก) เมื่อพิกัดอยู่นอกพื้นที่เทศบาลมาก เช่น คัดลอกผิดจุด
+  if (Array.isArray(m.map_bounds) && m.map_bounds.length === 2) { try { far = !L.latLngBounds(m.map_bounds).pad(0.5).contains([p.lat, p.lng]); } catch (_) {} }
+  if (infoSel && $(infoSel)) $(infoSel).textContent = `ได้พิกัดจากที่วาง ${p.lat}, ${p.lng}`;
+  if (far) toastErr('พิกัดนี้อยู่นอกพื้นที่เทศบาล', `ได้ ${p.lat}, ${p.lng} ซึ่งห่างจากพื้นที่ของเทศบาลมาก ตรวจว่าคัดลอกถูกจุดหรือไม่ ถ้าถูกแล้วบันทึกต่อได้`);
+  else toast(`ได้พิกัด ${p.lat}, ${p.lng}`);
+}
 function getGps() {
   if (!navigator.geolocation) return toastErr('อุปกรณ์นี้ไม่รองรับ GPS', 'พิมพ์พิกัดเองจากแอปแผนที่ (กดค้างที่ตำแหน่ง → คัดลอกตัวเลข) หรือใช้มือถือเครื่องอื่น');
   $('#gpsInfo').textContent = 'กำลังอ่านตำแหน่ง…';
@@ -1571,7 +1608,7 @@ function muniForm() {
 const HELP = {
   map: { title: 'แผนที่จุดวางถัง', who: 'ทุกคน', steps: [['ดูจุดทั้งหมด', 'หมุดสีตามความจุของจุด (ดูคำอธิบายสีด้านบน) · ซูมด้วยปุ่ม + − หรือสองนิ้ว · ปุ่มมุมขวาบนสลับ แผนที่/ดาวเทียม', 'เห็นหมุดครบตามจำนวนจุดที่มีพิกัด'], ['ตั้งพื้นที่เริ่มต้น (admin)', 'เลื่อน/ซูมให้เห็นเขตเทศบาลพอดี → ปุ่ม "บันทึกมุมมองนี้เป็นพื้นที่เริ่มต้น"', 'ทุกคนในเทศบาลเปิดแผนที่แล้วเห็นเขตเทศบาลทันที'], ['ดูรายละเอียดจุด', 'แตะหมุด → กล่องข้อมูล → "เปิดรายละเอียด"', 'เห็นถัง รูป และผู้บันทึก'], ['เพิ่มจุดใหม่', 'ปุ่มเขียว "เพิ่มจุด" มุมขวาล่าง', 'เปิดฟอร์มเพิ่มจุด']], tips: 'จุดที่ไม่มีพิกัดจะไม่ปรากฏบนแผนที่ แต่อยู่ในเมนู "จุด" · ถ้าแผนที่พื้นหลังไม่ขึ้น ให้รอสัญญาณแล้วเปิดใหม่' },
   places: { title: 'รายการจุด', who: 'ทุกคน', steps: [['ค้นหา', 'พิมพ์รหัส ชื่อ หรือถนนในช่องค้นหา', 'รายการกรองทันที'], ['เปิดจุด', 'แตะรหัสจุด', 'หน้ารายละเอียด แก้ไข เพิ่มถัง เพิ่มรูป'], ['ส่งออก', 'ปุ่ม "ส่งออก CSV" (เปิดด้วย Excel ได้)', 'ไฟล์ ubwast_places_วันที่.csv']], tips: 'จุดที่ถูกยกเลิกยังอยู่ในรายการแต่ไม่นับในยอด' },
-  'place-edit': { title: 'เพิ่ม/แก้ไขจุด', who: 'ผู้บันทึก และ admin', steps: [['ตั้งชื่ออ้างอิง', 'ช่อง "ชื่ออ้างอิง" เช่น หน้าวัดกลาง หน้าตลาดสด', 'ชื่อที่คนในพื้นที่เข้าใจ'], ['เลือกถนน (และซอย)', 'ช่อง "ถนน" · ถ้าไม่มีถนนให้ admin เพิ่มที่ "จัดการเทศบาล"', 'รหัสจุดจะถูกตั้งเป็น ชื่อถนน-ลำดับ อัตโนมัติ'], ['เก็บพิกัด', 'ยืนที่จุดจริง → กด "ใช้ GPS" → รอ "ความคลาดเคลื่อน ± เมตร"', 'ค่าคลาดเคลื่อนต่ำกว่า 20 เมตร ถ้ามากกว่านั้นให้กดใหม่กลางแจ้ง'], ['ใส่ถัง', 'แถวถัง: ประเภท · จำนวนใบ · สี · สภาพ · ปีงบ (ไม่บังคับ) · ถังต่างชนิดเพิ่มแถวใหม่', 'จำนวนใบมากกว่า 0'], ['ถ่ายรูป', 'ปุ่ม "ถ่ายรูป" เปิดกล้องหลัง ถ่ายทีละรูป กดซ้ำเพื่อเพิ่ม · หรือ "เลือกจากคลังรูป" เลือกได้หลายรูป · ไม่เกินจำนวนที่กำหนด', 'เห็นรูปย่อใต้ปุ่ม ลบได้ก่อนบันทึก · ระบบย่อรูปและส่งให้เองหลังบันทึก'], ['บันทึก', 'ปุ่ม "บันทึก"', 'ข้อความ "บันทึกจุด … แล้ว" และเปิดหน้าจุด']], tips: 'ไม่มีสัญญาณ: บันทึกได้ตามปกติ ระบบเก็บไว้ในเครื่องและส่งเองเมื่อมีสัญญาณ (ดูเมนู "รอส่ง" ด้านบน) · ผู้บันทึกแก้ไขได้แต่ยกเลิกไม่ได้ ถ้าบันทึกผิดให้แจ้ง admin' },
+  'place-edit': { title: 'เพิ่ม/แก้ไขจุด', who: 'ผู้บันทึก และ admin', steps: [['ตั้งชื่ออ้างอิง', 'ช่อง "ชื่ออ้างอิง" เช่น หน้าวัดกลาง หน้าตลาดสด', 'ชื่อที่คนในพื้นที่เข้าใจ'], ['เลือกถนน (และซอย)', 'ช่อง "ถนน" · ถ้าไม่มีถนนให้ admin เพิ่มที่ "จัดการเทศบาล"', 'รหัสจุดจะถูกตั้งเป็น ชื่อถนน-ลำดับ อัตโนมัติ'], ['เก็บพิกัด', 'ยืนที่จุดจริง → กด "ใช้ GPS" → รอ "ความคลาดเคลื่อน ± เมตร" · ทำจากคอมพิวเตอร์: วางตัวเลขพิกัดหรือลิงก์ Google Maps ในช่องใต้ปุ่ม GPS', 'ค่าคลาดเคลื่อนต่ำกว่า 20 เมตร ถ้ามากกว่านั้นให้กดใหม่กลางแจ้ง'], ['ใส่ถัง', 'แถวถัง: ประเภท · จำนวนใบ · สี · สภาพ · ปีงบ (ไม่บังคับ) · ถังต่างชนิดเพิ่มแถวใหม่', 'จำนวนใบมากกว่า 0'], ['ถ่ายรูป', 'ปุ่ม "ถ่ายรูป" เปิดกล้องหลัง ถ่ายทีละรูป กดซ้ำเพื่อเพิ่ม · หรือ "เลือกจากคลังรูป" เลือกได้หลายรูป · ไม่เกินจำนวนที่กำหนด', 'เห็นรูปย่อใต้ปุ่ม ลบได้ก่อนบันทึก · ระบบย่อรูปและส่งให้เองหลังบันทึก'], ['บันทึก', 'ปุ่ม "บันทึก"', 'ข้อความ "บันทึกจุด … แล้ว" และเปิดหน้าจุด']], tips: 'ไม่มีสัญญาณ: บันทึกได้ตามปกติ ระบบเก็บไว้ในเครื่องและส่งเองเมื่อมีสัญญาณ (ดูเมนู "รอส่ง" ด้านบน) · ผู้บันทึกแก้ไขได้แต่ยกเลิกไม่ได้ ถ้าบันทึกผิดให้แจ้ง admin' },
   queue: { title: 'รายการรอส่ง (ทำงานตอนไม่มีสัญญาณ)', who: 'ผู้บันทึก', steps: [['ดูว่ามีอะไรค้าง', 'ปุ่ม "รอส่ง N" บนหัวเว็บ', 'รายการจุด ถัง รูป ที่ยังไม่ถึงเซิร์ฟเวอร์'], ['ส่งเมื่อมีสัญญาณ', 'ระบบส่งเองทันทีที่มีสัญญาณ หรือกด "ส่งตอนนี้"', 'รายการหายไปและขึ้น "ส่งข้อมูลที่ค้างแล้ว"'], ['รายการที่ส่งไม่ผ่าน', 'อ่านข้อความสีแดง แก้ที่ต้นเหตุ (เช่น ถนนถูกปิด) แล้วส่งใหม่', 'ไม่มีรายการสีแดง']], tips: 'อย่าล้างข้อมูลเบราว์เซอร์ขณะมีรายการค้าง ข้อมูลจะหาย' },
   routes: { title: 'เส้นทางรถ', who: 'ทุกคน (จัดการโดย admin)', steps: [['เลือกเส้นทาง', 'ช่องเลือกด้านบน', 'การ์ดแสดง ถนน จุด ลิตร และ % ของความจุรถ'], ['อ่านแผนที่', 'เส้นทึบ = เส้นทางบนถนน · เลขบนหมุด = ลำดับเก็บ · สีเส้น = ความจุรวมของเส้นทาง (ดูคำอธิบายสี)', 'เห็นทางวิ่งจากจุดแรกถึงจุดสุดท้าย'], ['พิมพ์รายงานคนขับ', 'ปุ่ม "รายงานแจ้งคนขับ" → พิมพ์หรือบันทึก PDF', 'ตารางลำดับจุดพร้อมช่องติ๊ก "เก็บแล้ว"'], ['จัดลำดับ/ลากเส้น (admin)', 'จัดการเทศบาล → รถและเส้นทาง → เส้นทาง → "ลำดับจุด / เส้นถนน"', 'เส้นทึบและเลขลำดับปรากฏในหน้านี้']], tips: 'เส้นประตรง = เส้นทางที่ยังไม่ได้กด "ลากเส้นตามถนน" · ถ้ารถวิ่งข้ามถนนที่ไม่รับผิดชอบ เส้นจะวิ่งตามถนนจริงให้เอง' },
   me: { title: 'บัญชีของฉัน', who: 'ทุกคน', steps: [['เปลี่ยนรหัสผ่าน', 'กรอกรหัสใหม่ 2 ช่อง (อย่างน้อย 8 ตัว) → "บันทึกรหัสผ่าน"', 'ข้อความ "เปลี่ยนรหัสผ่านแล้ว"'], ['ออกจากระบบ', 'ปุ่ม "ออกจากระบบ" (ใช้เมื่อเครื่องใช้ร่วมกับคนอื่น)', 'กลับไปหน้าล็อกอิน']], tips: 'ลืมรหัสผ่าน: ระบบไม่มีการส่งอีเมล ให้ admin ของเทศบาลกด "รีเซ็ตรหัส" แล้วแจ้งรหัสใหม่' },
@@ -1715,7 +1752,8 @@ const GUIDE_REC = [
       `${GN(3)} <b>ถนน</b> (ต้องเลือก) ถนนที่จุดนี้ตั้งอยู่ · ไม่พบถนนในรายการ ให้แจ้ง admin เพิ่มให้`,
       `${GN(4)} <b>ซอย</b> ถ้าจุดอยู่ในซอย เลือกซอย · ไม่อยู่ในซอยเว้นไว้ (—)`,
       `${GN(5)} กด <b>"ใช้ GPS"</b> ยืนกลางแจ้ง ไม่อยู่ใต้หลังคาหรือต้นไม้ใหญ่ รอ 2–5 วินาที`,
-      `${GN(6)} ตัวเลขพิกัดขึ้นเองทั้ง 2 ช่อง และมีบรรทัด <b>"ความคลาดเคลื่อน ± … เมตร"</b> ถ้าเกิน 20 เมตร กด "ใช้ GPS" ซ้ำ`],
+      `${GN(6)} ตัวเลขพิกัดขึ้นเองทั้ง 2 ช่อง และมีบรรทัด <b>"ความคลาดเคลื่อน ± … เมตร"</b> ถ้าเกิน 20 เมตร กด "ใช้ GPS" ซ้ำ`,
+      `${GN(7)} ไม่ได้อยู่ที่จุดจริง (เช่น แก้ข้อมูลจากคอมพิวเตอร์): วาง <b>ตัวเลขพิกัด</b> หรือ <b>ลิงก์ Google Maps</b> ในช่องนี้ ระบบเติมละติจูดและลองจิจูดให้เอง`],
       done: 'ช่อง "รหัสจุด" เว้นว่างได้ ระบบตั้งให้เอง (ชื่อถนน-ลำดับ) · "หมายเหตุ" ใส่เมื่อมีเรื่องควรรู้ เช่น ถังวางบนทางเท้า' },
     { img: 'r06', lead: 'เลื่อนลงมาที่ <b>"ถังในจุดนี้"</b> · 1 แถว = ถังชุดเดียวกัน (ประเภท สี สภาพ ปีที่ซื้อ เหมือนกัน)', steps: [
       `${GN(1)} <b>ประเภทถัง</b> ดูขนาดที่ตัวถังหรือเทียบกับรูปถังของเทศบาล`,
@@ -1770,7 +1808,7 @@ const GUIDE_REC = [
       `${GN(2)} ปุ่ม <b>"เปิดคู่มือแบบมีภาพ"</b> กลับมาที่คู่มือนี้`],
       done: 'แจ้ง admin ของเทศบาลเมื่อ: ลืมรหัสผ่าน · ไม่พบถนนหรือประเภทถังในรายการ · บันทึกจุดซ้ำหรือผิด · เจอข้อความสีแดงซ้ำหลายครั้ง (ถ่ายภาพหน้าจอส่งไปด้วย <b>แต่อย่าให้เห็นรหัสผ่าน</b>)' }] }
 ];
-const GIMG = f => `<a href="help/rec/${f}.jpg?v=1" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/rec/${f}.jpg?v=1" alt="ภาพหน้าจอประกอบ" loading="lazy" width="390" height="844" class="gimg"></a>`;
+const GIMG = f => `<a href="help/rec/${f}.jpg?v=2" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/rec/${f}.jpg?v=2" alt="ภาพหน้าจอประกอบ" loading="lazy" width="390" height="844" class="gimg"></a>`;
 const GUIDE_CSS = `<style>.gn{display:inline-block;min-width:26px;height:26px;line-height:26px;border-radius:50%;background:#E11D48;color:#fff;font-weight:700;text-align:center;font-size:15px;margin-right:4px}
   .gpart{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:18px;align-items:start;margin-top:14px}.gpart ol{margin:6px 0;padding-left:0;list-style:none}.gpart li{margin:8px 0;line-height:1.7}
   .gimg{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;display:block}.gdone{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.7}
@@ -1951,7 +1989,7 @@ const SHOTS = {
   mappop: { wait: 3500, run: async () => { const p = document.querySelectorAll('path.leaflet-interactive')[2]; p && p.dispatchEvent(new MouseEvent('click', { bubbles: true })); await shotWait(600); return [[p, 1, { pad: 6 }], ['.leaflet-popup-content a', 2]]; } },
   me: { run: async () => [['#pw1', 1], ['#pw2', 2], ['button[onclick="changePw()"]', 3], ['button[onclick="logout()"]', 4]] },
   add1: { run: async () => { shotFill('#f_name', 'หน้าตลาดสดเทศบาล'); shotFill('#f_type', 'ตลาด'); shotFill('#f_road', 'ถนนตัวอย่าง ก'); $('#f_lat').value = '15.006512'; $('#f_lng').value = '100.004873'; $('#gpsInfo').textContent = 'ความคลาดเคลื่อน ±6 เมตร';
-    return [['#f_name', 1], ['#f_type', 2], ['#f_road', 3], ['#f_soi', 4], ['button[onclick="getGps()"]', 5], [$('#f_lat').closest('.row'), 6]]; } },
+    return [['#f_name', 1], ['#f_type', 2], ['#f_road', 3], ['#f_soi', 4], ['button[onclick="getGps()"]', 5], [$('#f_lat').closest('.row'), 6, { side: 'tl' }], ['#f_src', 7]]; } },
   add2: { run: async () => { $('.b_amt').value = '2'; shotFill('.b_color', 'เขียว'); shotTop('#binRows', 120);
     return [['.b_type', 1], ['.b_amt', 2, { side: 'mr' }], ['.b_color', 3], ['.b_cond', 4, { side: 'mr' }], ['.b_fy', 5], ['button[onclick="addBinRow()"]', 6]]; } },
   add3: { run: async () => { S._newPhotos = [await shotPhoto('รูปที่ 1', '#2E7D32'), await shotPhoto('รูปที่ 2', '#1F3A5F')]; drawPhotoList(); shotFill('#f_name', 'หน้าตลาดสดเทศบาล');
