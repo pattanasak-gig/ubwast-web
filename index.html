@@ -790,15 +790,39 @@ async function pageMap(view) {
 // =====================================================================
 // หน้า: รายการจุด
 // =====================================================================
-async function pagePlaces(view) {
-  const rows = await api.list('v_place', { eq: scopeEq(), order: ['place_code'] });
-  view.innerHTML = `${scopeSelector()}<div class="card"><div class="row"><input id="q" aria-label="ค้นหา รหัส ชื่อ หรือถนน" placeholder="ค้นหา รหัส/ชื่อ/ถนน" style="flex:1;min-width:200px"><button class="secondary small" onclick="exportCsv(S._places,'places')">ส่งออก CSV</button></div>
-    <div class="row" style="justify-content:space-between;margin:6px 0"><span class="muted">${rows.length} จุด</span>${helpBtn('places')}</div><div id="list"></div></div>
+async function pagePlaces(view) {   // DEC-128 ตัวกรอง (คำค้น ถนน สถานะ ระดับ ประเภท ข้อมูลที่ขาด เรื่องแจ้ง) + แบ่งหน้า
+  const rows = await api.list('v_place', { eq: scopeEq(), order: ['place_code'] }), OR = await openReports();
+  const f = S._pf = S._pf || { q: '', road: '', st: 'active', tier: '', type: '', miss: '', rep: '', size: 20, page: 0 };
+  const roads = [...new Map(rows.map(r => [r.road_id, r.road_name])).entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'th'));
+  const types = [...new Set(rows.map(r => r.place_type_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
+  const opt = (v, l, cur) => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
+  view.innerHTML = `${scopeSelector()}<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">จุดวางถัง ${helpBtn('places')}</h3><button class="secondary small" onclick="exportCsv(S._places,'places')">ส่งออก CSV (ตามตัวกรอง)</button></div>
+    <div class="row" style="margin-top:8px"><input id="pq" type="search" aria-label="ค้นหา รหัส ชื่อ ถนน ซอย" placeholder="ค้นหา รหัส / ชื่อ / ถนน / ซอย" value="${esc(f.q)}" style="flex:1;min-width:200px"></div>
+    <div class="grid2" style="gap:8px;margin-top:8px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+      <div><label class="mini" for="pRoad">ถนน</label><select id="pRoad">${opt('', 'ทุกถนน', f.road)}${roads.map(([id, nm]) => opt(id, nm, f.road)).join('')}</select></div>
+      <div><label class="mini" for="pSt">สถานะ</label><select id="pSt">${opt('active', 'ใช้งาน', f.st)}${opt('inactive', 'ยกเลิกแล้ว', f.st)}${opt('', 'ทั้งหมด', f.st)}</select></div>
+      <div><label class="mini" for="pTier">ระดับความจุ</label><select id="pTier">${opt('', 'ทุกระดับ', f.tier)}${S.cache.capacity_tier.map(t => opt(t.label, t.label, f.tier)).join('')}</select></div>
+      <div><label class="mini" for="pType">ประเภทจุด</label><select id="pType">${opt('', 'ทุกประเภท', f.type)}${types.map(t => opt(t, t, f.type)).join('')}</select></div>
+      <div><label class="mini" for="pMiss">ข้อมูลที่ยังขาด</label><select id="pMiss">${opt('', '—', f.miss)}${opt('gps', 'ไม่มีพิกัด', f.miss)}${opt('photo', 'ไม่มีรูป', f.miss)}${opt('bins', 'ไม่มีถัง', f.miss)}</select></div>
+      <div><label class="mini" for="pRep">เรื่องแจ้งจากประชาชน</label><select id="pRep">${opt('', '—', f.rep)}${opt('open', 'มีเรื่องค้าง', f.rep)}</select></div></div>
+    <div class="row" style="justify-content:space-between;margin:8px 0"><span id="pCount" class="muted"></span><span class="row" style="gap:6px"><button class="small secondary" type="button" onclick="S._pf={q:'',road:'',st:'active',tier:'',type:'',miss:'',rep:'',size:S._pf.size,page:0};render()">ล้างตัวกรอง</button><label class="muted row" style="margin:0;gap:4px">หน้าละ <select id="pSize" style="width:auto">${[20, 50, 100].map(x => opt(x, x, f.size)).join('')}</select></label></span></div>
+    <div id="list"></div><div id="pPager" class="row" style="justify-content:center;margin-top:8px"></div></div>
     ${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
-  S._places = rows;
-  const draw = () => { const q = $('#q').value.trim().toLowerCase(); const f = rows.filter(r => !q || [r.place_code, r.name, r.road_name, r.soi_name].join(' ').toLowerCase().includes(q));
-    $('#list').innerHTML = `<table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ถนน</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th></th></tr></thead><tbody>${f.map(r => `<tr><td><i class="dot" style="background:${r.tier_color}"></i><a href="#place/${r.id}">${esc(r.place_code)}</a></td><td>${esc(r.name)}${r.status !== 'active' ? ' <span class="pill">ยกเลิก</span>' : ''}</td><td>${esc(r.road_name)}${r.soi_name ? ' ' + esc(r.soi_name) : ''}</td><td style="text-align:right">${fmt(r.total_bins)}</td><td style="text-align:right">${fmt(r.total_liters)}</td><td>${r.photo_count ? '📷' + r.photo_count : ''}</td></tr>`).join('')}</tbody></table>`; };
-  $('#q').oninput = draw; draw();
+  const draw = () => {
+    const q = f.q.trim().toLowerCase();
+    const list = rows.filter(r => (!q || [r.place_code, r.name, r.road_name, r.soi_name].join(' ').toLowerCase().includes(q)) && (!f.road || r.road_id === f.road) && (!f.st || r.status === f.st) && (!f.tier || r.tier_label === f.tier) && (!f.type || r.place_type_name === f.type)
+      && (!f.miss || (f.miss === 'gps' ? r.lat == null : f.miss === 'photo' ? !+r.photo_count : !+r.total_bins)) && (!f.rep || OR.has(r.id)));
+    S._places = list; const pages = Math.max(1, Math.ceil(list.length / f.size)); f.page = Math.min(f.page, pages - 1); const slice = list.slice(f.page * f.size, (f.page + 1) * f.size);
+    $('#pCount').textContent = `${fmt(list.length)} จุด จากทั้งหมด ${fmt(rows.length)} · หน้า ${f.page + 1}/${pages}`;
+    $('#list').innerHTML = `<div style="overflow:auto"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>ถนน</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th></th></tr></thead><tbody>${slice.map(r => { const rp = OR.get(r.id);
+      return `<tr style="${r.status !== 'active' ? 'opacity:.6' : ''}"><td style="white-space:nowrap"><i class="dot" style="background:${rp ? REPORT_RED : r.tier_color}"></i><a href="#place/${r.id}">${esc(r.place_code)}</a></td><td>${esc(r.name)}${r.status !== 'active' ? ' <span class="pill" style="background:#fee2e2;color:#7f1d1d">ยกเลิกแล้ว</span>' : ''}${rp ? ` <span class="pill" style="background:${REPORT_RED};color:#fff">เรื่องค้าง ${fmt(rp.length)}</span>` : ''}</td><td>${esc(r.road_name)}${r.soi_name ? ' ' + esc(r.soi_name) : ''}</td><td style="text-align:right">${fmt(r.total_bins)}</td><td style="text-align:right">${fmt(r.total_liters)}</td><td>${r.photo_count ? '📷' + r.photo_count : '<span class="muted">ไม่มีรูป</span>'}${r.lat == null ? ' <span class="pill">ไม่มีพิกัด</span>' : ''}</td></tr>`; }).join('') || '<tr><td colspan="6" class="muted">ไม่พบจุดตามเงื่อนไข</td></tr>'}</tbody></table></div>`;
+    $('#pPager').innerHTML = pages > 1 ? `<button class="small secondary" ${f.page === 0 ? 'disabled' : ''} onclick="S._pf.page=0;S._pfDraw()">« แรก</button><button class="small secondary" ${f.page === 0 ? 'disabled' : ''} onclick="S._pf.page--;S._pfDraw()">‹ ก่อนหน้า</button><span class="muted">หน้า ${f.page + 1}/${pages}</span><button class="small secondary" ${f.page >= pages - 1 ? 'disabled' : ''} onclick="S._pf.page++;S._pfDraw()">ถัดไป ›</button><button class="small secondary" ${f.page >= pages - 1 ? 'disabled' : ''} onclick="S._pf.page=${pages - 1};S._pfDraw()">สุดท้าย »</button>` : '';
+  };
+  S._pfDraw = () => { draw(); $('#list').scrollIntoView({ block: 'start', behavior: 'smooth' }); };
+  $('#pq').oninput = e => { f.q = e.target.value; f.page = 0; draw(); };
+  for (const [id, k] of [['pRoad', 'road'], ['pSt', 'st'], ['pTier', 'tier'], ['pType', 'type'], ['pMiss', 'miss'], ['pRep', 'rep']]) $('#' + id).onchange = e => { f[k] = e.target.value; f.page = 0; draw(); };
+  $('#pSize').onchange = e => { f.size = +e.target.value; f.page = 0; draw(); };
+  draw();
 }
 
 // =====================================================================
@@ -810,18 +834,18 @@ async function pagePlace(view, id) {
   const photos = await api.list('place_photo', { eq: { place_id: id, status: 'active' }, order: ['seq'] });
   const canEdit = S.me.role !== 'super_admin' || S.scopeMuni === p.municipality_id;
   view.innerHTML = `<div class="card">
-    <div class="row" style="justify-content:space-between"><h3 style="margin:0"><i class="dot" style="background:${p.tier_color}"></i>${esc(p.place_code)}</h3>${p.status !== 'active' ? '<span class="pill">ยกเลิกแล้ว</span>' : ''}</div>
+    <div class="row" style="justify-content:space-between"><h3 style="margin:0"><i class="dot" style="background:${p.tier_color}"></i>${esc(p.place_code)}</h3>${p.status !== 'active' ? '<span class="pill" style="background:#fee2e2;color:#7f1d1d">ยกเลิกแล้ว</span>' : '<span class="pill" style="background:#dcfce7;color:#14532d">ใช้งาน</span>'}</div>${placeOffBanner(p, true)}
     <div style="font-size:18px">${esc(p.name)}</div>
     <div class="muted">${esc(p.place_type_name || '')} · ${esc(p.road_name)}${p.soi_name ? ' ' + esc(p.soi_name) : ''} · ${esc(p.municipality_name)}</div>
     <div class="muted">พิกัด ${p.lat ?? '-'}, ${p.lng ?? '-'} ${p.lat != null ? `· <a target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=18/${p.lat}/${p.lng}">เปิดแผนที่</a>` : ''}</div>
     <div class="kpis" style="margin-top:10px"><div class="kpi"><div class="v">${fmt(p.total_bins)}</div><div class="l">ใบ</div></div><div class="kpi"><div class="v">${fmt(p.total_liters)}</div><div class="l">ลิตร · ${esc(p.tier_label || '')}</div></div></div>
-    <div class="row" style="margin-top:10px">${canEdit ? `<button class="secondary" onclick="go('#place-edit/${p.id}')">แก้ไขจุด</button>` : ''}${canEdit && isAdmin() && p.status === 'active' ? `<button class="danger" onclick="cancelRow('place','${p.id}')">ยกเลิกจุดนี้</button>` : ''}${isAdmin() ? `<button class="danger" onclick="delAsk('place','${p.id}','${esc(p.place_code || p.name).replace(/'/g, '&#39;')}','#places')">ลบถาวร</button>` : ''}</div>
+    <div class="row" style="margin-top:10px">${canEdit ? `<button class="secondary" onclick="go('#place-edit/${p.id}')">แก้ไขจุด</button>` : ''}${canEdit && isAdmin() && p.status === 'active' ? `<button class="danger" onclick="cancelRow('place','${p.id}')">ยกเลิกจุดนี้</button>` : ''}${canEdit && isAdmin() && p.status !== 'active' ? `<button onclick="restoreRow('place','${p.id}')">นำกลับมาใช้งาน</button>` : ''}${isAdmin() ? `<button class="danger" onclick="delAsk('place','${p.id}','${esc(p.place_code || p.name).replace(/'/g, '&#39;')}','#places')">ลบถาวร</button>` : ''}</div>
     <p class="muted">บันทึกโดย ${esc(p.created_by_name || p.created_by || '-')} เมื่อ ${thDate(p.created_at)} · แก้ล่าสุดโดย ${esc(p.updated_by_name || '-')} ${thDate(p.updated_at)}</p>
   </div>
   <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">ถัง (${bins.length} แถว)</h4>${canEdit ? `<button class="small" onclick="binForm('${p.id}')">＋ เพิ่มถัง</button>` : ''}</div>
     <table><thead><tr><th>ประเภท</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th>ปีงบ</th><th>ครุภัณฑ์</th><th></th></tr></thead><tbody>
     ${bins.map(b => `<tr style="${b.status !== 'active' ? 'opacity:.5' : ''}"><td>${esc(b.bin_type_name)}${b.bin_color ? ` <span class="muted">สี${esc(b.bin_color)}</span>` : ''}${condPill(b.condition)}</td><td style="text-align:right">${b.amount}</td><td style="text-align:right">${fmt(b.liters)}</td><td>${b.fiscal_year || '<span class="muted">-</span>'}</td><td>${esc(b.asset_no || '')}</td>
-      <td>${canEdit && b.status === 'active' ? `<button class="small secondary" onclick="binForm('${p.id}','${b.id}')">แก้</button> ${isAdmin() ? `<button class="small danger" onclick="cancelRow('bin','${b.id}')">ยกเลิก</button>` : ''}` : ''}${isAdmin() ? ` <button class="small danger" onclick="delAsk('bin','${b.id}','${esc(b.bin_type_name || '')}')">ลบ</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">ยังไม่มีถัง</td></tr>'}</tbody></table></div>
+      <td>${b.status !== 'active' ? '<span class="pill" style="background:#fee2e2;color:#7f1d1d">ยกเลิกแล้ว</span> ' : ''}${canEdit && b.status === 'active' ? `<button class="small secondary" onclick="binForm('${p.id}','${b.id}')">แก้</button> ${isAdmin() ? `<button class="small danger" onclick="cancelRow('bin','${b.id}')">ยกเลิก</button>` : ''}` : ''}${canEdit && isAdmin() && b.status !== 'active' ? `<button class="small" onclick="restoreRow('bin','${b.id}')">นำกลับมาใช้</button>` : ''}${isAdmin() ? ` <button class="small danger" onclick="delAsk('bin','${b.id}','${esc(b.bin_type_name || '')}')">ลบ</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">ยังไม่มีถัง</td></tr>'}</tbody></table></div>
   <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">รูป (${photos.length}/${maxPhotos()})</h4>${canEdit && photos.length < maxPhotos() ? PDPA_PHOTO_WARN : ''}${canEdit && photos.length < maxPhotos() ? `<span class="row"><label class="btn small" style="display:inline-block;margin:0">📷 ถ่ายรูป<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addPhoto('${p.id}', this.files[0]); this.value=''"></label><label class="btn small secondary" style="display:inline-block;margin:0">เลือกจากคลัง<input type="file" accept="image/*" class="hidden" onchange="addPhoto('${p.id}', this.files[0]); this.value=''"></label></span>` : (canEdit ? `<span class="muted">ครบ ${maxPhotos()} รูปแล้ว${isAdmin() ? ' · ยกเลิกรูปเก่าเพื่อเพิ่มใหม่' : ''}</span>` : '')}</div>
     <div class="photos" style="margin-top:8px">${photos.map(ph => `<div style="text-align:center"><a href="${esc(ph.url)}" target="_blank" rel="noopener"><img src="${esc(ph.url)}" alt="รูป ${ph.seq}" loading="lazy" onerror="photoMissing(this, '${ph.id}', ${canEdit && isAdmin() ? 'true' : 'false'})"></a>${canEdit && isAdmin() ? `<br><button class="small danger" style="margin-top:4px" onclick="cancelRow('place_photo','${ph.id}')">ยกเลิกรูป</button>` : ''}</div>`).join('') || '<span class="muted">ยังไม่มีรูป</span>'}</div></div>`;
 }
@@ -847,9 +871,15 @@ const fySelect = (cls, current) => { const fy = currentFY(); const cur = current
 const condSelect = (cls, current) => `<select class="${cls}">${CONDITIONS.map(c => `<option value="${c}" ${c === (current || 'ปกติ') ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
 const condPill = c => c && c !== 'ปกติ' ? ` <span class="pill" style="background:${c === 'หาย' ? '#fee2e2' : '#ffedd5'}">${esc(c)} · ไม่นับความจุ</span>` : '';
 async function cancelRow(table, id) {
-  if (!confirm('ยืนยันยกเลิกรายการนี้? (ข้อมูลยังอยู่ แต่จะไม่นับในยอดรวม)')) return;
+  if (!confirm('ยืนยันยกเลิกรายการนี้? (ข้อมูลยังอยู่ แต่จะไม่นับในยอดรวม ไม่แสดงบนแผนที่ · นำกลับมาใช้ได้ภายหลัง)')) return;
   try { await api.update(table, id, { status: 'inactive' }); toast('ยกเลิกแล้ว'); render(); } catch (e) { fail(e, 'ยกเลิกไม่สำเร็จ'); }
 }
+// DEC-128 นำรายการที่ยกเลิกกลับมาใช้ (admin)
+async function restoreRow(table, id) {
+  if (!confirm('นำรายการนี้กลับมาใช้งาน? (กลับไปนับในยอดรวมและแสดงบนแผนที่)')) return;
+  try { await api.update(table, id, { status: 'active' }); toast('นำกลับมาใช้งานแล้ว'); S.cache.loaded = false; render(); } catch (e) { fail(e, 'นำกลับมาใช้ไม่สำเร็จ'); }
+}
+const placeOffBanner = (p, withBtn) => p && p.status !== 'active' ? `<div class="banner err" style="margin:8px 0"><b>จุดนี้ถูกยกเลิกแล้ว</b> · ไม่แสดงบนแผนที่ ไม่นับในยอดรวมและรายงาน ประชาชนแจ้งเหตุที่จุดนี้ไม่ได้${withBtn && isAdmin() ? ` <button class="small" style="margin-left:6px" onclick="restoreRow('place','${p.id}')">นำกลับมาใช้งาน</button>` : isAdmin() ? '' : ' · ให้ admin ของเทศบาลนำกลับมาใช้'}</div>` : '';
 
 // ---- ฟอร์มจุด ----
 async function pagePlaceEdit(view, id) {
@@ -859,7 +889,7 @@ async function pagePlaceEdit(view, id) {
   const sois = await api.list('soi', { eq: { municipality_id: muniId, status: 'active' }, order: ['name'] });
   const p = isNew ? { status: 'active' } : (await api.list('place', { eq: { id } }))[0];
   if (!roads.length) return view.innerHTML = `<div class="card">เทศบาลนี้ยังไม่มีถนนในระบบ ให้ admin ของเทศบาลเพิ่มถนนก่อนที่เมนู "จัดการเทศบาล"</div>`;
-  view.innerHTML = `<div class="card"><h3 style="margin-top:0">${isNew ? 'เพิ่มจุด' : 'แก้ไขจุด ' + esc(p.place_code)} ${helpBtn('place-edit')}</h3>
+  view.innerHTML = `<div class="card"><h3 style="margin-top:0">${isNew ? 'เพิ่มจุด' : 'แก้ไขจุด ' + esc(p.place_code)} ${helpBtn('place-edit')}${!isNew && p.status !== 'active' ? ' <span class="pill" style="background:#fee2e2;color:#7f1d1d">ยกเลิกแล้ว</span>' : ''}</h3>${isNew ? '' : placeOffBanner(p, true)}
     <label>ชื่ออ้างอิง (เช่น หน้าวัด… หน้าโรงเรียน…) *${fh('place.name')}</label><input id="f_name" maxlength="200" value="${esc(p.name || '')}">
     <label>ประเภทจุด${fh('place.type')}</label><select id="f_type">${S.cache.place_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}" ${t.id === p.place_type_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <label>ถนน *${fh('place.road')}</label><select id="f_road" onchange="fillSoi()">${roads.map(r => `<option value="${r.id}" ${r.id === p.road_id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
@@ -1500,19 +1530,20 @@ const issueName = k => (ISSUES.find(x => x[0] === k) || [, k])[1], rsName = k =>
 const maskPhone = p => String(p || '').replace(/^(\d{3})\d{3}(\d{4})$/, '$1-xxx-$2');
 const rsPill = st => `<span class="pill" style="${RCLOSED.includes(st) ? 'background:#dcfce7;color:#14532d' : st === 'new' ? `background:${REPORT_RED};color:#fff` : 'background:#fef3c7;color:#78350f'}">${esc(rsName(st))}</span>`;
 const PDPA_PHOTO_WARN = '<div class="banner warn" style="margin:6px 0"><b>ระวังข้อมูลส่วนบุคคล (PDPA):</b> ถ่ายเฉพาะถังและจุดวางถัง · หลีกเลี่ยงใบหน้าคน ทะเบียนรถ บ้านเลขที่ และป้ายชื่อร้านค้า/บริษัท ถ้าติดมาให้ถ่ายใหม่ · รูปจุดแสดงบนหน้าสาธารณะ</div>';
-// เรื่องที่ยังเปิดรายจุด (สาธารณะจาก public_dashboard · เจ้าหน้าที่จากตาราง)
+// เรื่องที่ยังเปิดรายจุด (สาธารณะจาก public_dashboard · เจ้าหน้าที่จากตาราง) · DEC-128 เก็บทุกเรื่องของจุด (ใหม่สุดก่อน)
+const groupOpen = rows => { const m = new Map(); for (const r of rows.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))) { if (!m.has(r.place_id)) m.set(r.place_id, []); m.get(r.place_id).push(r); } return m; };
 async function openReports() {
-  if (!S.me) return new Map(((S.pub && S.pub.open_reports) || []).map(r => [r.place_id, r]));
-  try { const rows = (await api.list('citizen_report', { eq: scopeEq() })).filter(r => !RCLOSED.includes(r.status)).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))); return new Map(rows.map(r => [r.place_id, r])); } catch (_) { return new Map(); }
+  if (!S.me) return groupOpen((S.pub && S.pub.open_reports) || []);
+  try { return groupOpen((await api.list('citizen_report', { eq: scopeEq() })).filter(r => !RCLOSED.includes(r.status))); } catch (_) { return new Map(); }
 }
 const POPUP_OPT = { maxWidth: 230, autoPanPaddingTopLeft: [8, 100], autoPanPaddingBottomRight: [8, 16] };   // กันปุ่มซูม/ชั้นแผนที่บังป๊อปอัปบนมือถือ
 const repLegend = '<span><i class="dot" style="background:#fff;border:3px solid ' + REPORT_RED + '"></i>มีเรื่องแจ้งจากประชาชน</span>';
 function placePopup(p, rep) {
   const pubM = !S.me && S.pub ? (S.pub.munis || []).find(m => m.id === p.municipality_id) : null;
   return `${p.photo_url ? `<img src="${esc(p.photo_url)}" alt="รูปจุด ${esc(p.place_code)}" loading="lazy" style="width:220px;max-width:100%;height:150px;object-fit:cover;border-radius:6px;display:block;margin-bottom:6px">` : ''}<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${esc(p.road_name || '')}<br>${fmt(p.total_bins)} ใบ · <b>${fmt(p.total_liters)} ลิตร</b>${p.tier_label ? ' · ' + esc(p.tier_label) : ''}
-    ${rep ? `<div style="margin-top:6px;color:${REPORT_RED}"><b>มีเรื่องแจ้ง</b> ${esc(rep.code)}: ${(rep.issues || []).map(issueName).map(esc).join(' · ')}<br>สถานะ: ${esc(rsName(rep.status))}${rep.reporters > 1 ? ` · ผู้แจ้ง ${fmt(rep.reporters)} คน` : ''}</div>` : ''}
+    ${rep && rep.length ? `<div style="margin-top:6px;color:${REPORT_RED}"><b>มีเรื่องแจ้งค้าง ${fmt(rep.length)} เรื่อง</b>${rep.length > 1 || rep[0].reporters > 1 ? ` · ผู้แจ้งรวม ${fmt(rep.reduce((a, r) => a + (+r.reporters || 1), 0))} คน` : ''}<ol style="margin:2px 0 0;padding-left:18px;max-height:120px;overflow:auto">${rep.map(r => `<li>${esc(r.code)}: ${(r.issues || []).map(issueName).map(esc).join(' · ')}<br><span style="color:#374151">สถานะ: ${esc(rsName(r.status))}${r.reporters > 1 ? ` · ผู้แจ้ง ${fmt(r.reporters)} คน` : ''}</span></li>`).join('')}</ol></div>` : ''}
     ${!S.me && pubM && pubM.report_enabled !== false && 'report_enabled' in pubM ? `<div style="margin-top:8px"><button class="small" type="button" onclick="reportForm('${p.id}')">แจ้งเหตุที่จุดนี้</button></div>` : ''}
-    ${S.me ? `<br><a href="#place/${p.id}">รายละเอียด/รูป</a>${rep ? ` · <a href="#complaints">ดูเรื่องแจ้ง</a>` : ''}` : ''}`;
+    ${S.me ? `<br><a href="#place/${p.id}">รายละเอียด/รูป</a>${rep && rep.length ? ` · <a href="#complaints">ดูเรื่องแจ้ง</a>` : ''}` : ''}`;
 }
 // ฟอร์มแจ้งเหตุ (ประชาชน)
 function reportForm(placeId) {
@@ -1575,9 +1606,10 @@ async function pageComplaints(view) {
   const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null, kpi = (v, l, sub) => `<div class="kpi"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}${sub ? `<br><span>${sub}</span>` : ''}</div></div>`;
   const byIssue = ISSUES.map(([k, l]) => [l, reps.filter(r => (r.issues || []).includes(k)).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
   const next = st => RSTATUS.filter(([k]) => !['new', 'merged', st].includes(k));
-  const card = r => { const p = pl(r.place_id), e = ev(r.id), phs = ph(r.id);
+  const openAt = pid => reps.filter(x => x.place_id === pid && !RCLOSED.includes(x.status)).length;
+  const card = r => { const p = pl(r.place_id), e = ev(r.id), phs = ph(r.id), same = openAt(r.place_id);
     return `<div class="card" id="cr_${r.id}" style="${!RCLOSED.includes(r.status) ? `border-left:6px solid ${REPORT_RED}` : ''}"><div class="row" style="justify-content:space-between"><div><b>${esc(r.code)}</b> · <a href="#place/${r.place_id}">${esc(p.place_code || '')}</a> ${esc(p.name || '')} <span class="muted">${esc(p.road_name || '')}</span></div>${rsPill(r.status)}</div>
-      <div style="margin-top:4px">${(r.issues || []).map(k => `<span class="pill">${esc(issueName(k))}</span>`).join(' ')}${r.reporters > 1 ? ` <span class="pill" style="background:#fee2e2">ผู้แจ้ง ${fmt(r.reporters)} คน</span>` : ''}</div>
+      <div style="margin-top:4px">${(r.issues || []).map(k => `<span class="pill">${esc(issueName(k))}</span>`).join(' ')}${r.reporters > 1 ? ` <span class="pill" style="background:#fee2e2">ผู้แจ้ง ${fmt(r.reporters)} คน</span>` : ''}${same > 1 ? ` <span class="pill" style="background:#fde68a">จุดนี้มีเรื่องค้าง ${fmt(same)} เรื่อง</span>` : ''}${p.status && p.status !== 'active' ? ' <span class="pill" style="background:#fee2e2;color:#7f1d1d">จุดถูกยกเลิกแล้ว</span>' : ''}</div>
       <div class="muted" style="margin-top:4px">แจ้งเมื่อ ${thDate(r.created_at)}${canAnswer() ? ` · โทร: ${phs.map(x => `<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>`).join(', ') || '<span class="muted">ลบแล้ว (ครบ 1 ปี)</span>'}` : ' · เบอร์ผู้แจ้งเห็นเฉพาะ admin และหัวหน้าพนักงาน'}</div>
       ${(r.photos || []).length ? `<div class="photos" style="margin-top:6px">${r.photos.map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener"><img src="${esc(x.url)}" alt="รูปจากผู้แจ้ง" loading="lazy"></a>`).join('')}</div>` : ''}
       <details style="margin-top:6px"><summary>ขั้นตอน (${e.length})</summary><ol style="margin:4px 0;padding-left:20px">${e.map(x => `<li>${esc(rsName(x.status))} <span class="muted">${thDate(x.created_at)}</span>${x.photo_url ? `<br><img src="${esc(x.photo_url)}" alt="รูปหลังแก้ไข" loading="lazy" style="width:140px;border-radius:6px">` : ''}</li>`).join('')}</ol></details>
@@ -1652,7 +1684,7 @@ async function pageDashOverview(view) {
     <div class="grid2" style="margin-top:12px">
       <div class="finding"><div class="fv">${fmt1(pct(top.liters, totL))}%</div><div>ของความจุทั้งหมดอยู่ในจุดระดับสูงสุด "${esc(top.t.label || '')}" ซึ่งมีเพียง <b>${fmt(top.n)} จุด</b> (${fmt1(pct(top.n, places.length))}% ของจุด)</div></div>
       <div class="finding"><div class="fv">${topType ? fmt1(pct(topType.liters, totL)) : '0.0'}%</div><div>ของความจุทั้งหมดมาจากถังประเภท "${esc(topType ? topType.name : '-')}" (${fmt(topType ? topType.bins : 0)} ใบ = ${fmt1(pct(topType ? topType.bins : 0, totB))}% ของใบ)</div></div></div>
-    <div class="card">${cardTitle('แผนที่: วงใหญ่ = ความจุมาก · สี = ระดับความจุ · แดง = มีเรื่องแจ้ง', 'map')}<div class="legend" style="margin-bottom:6px">${tiers.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}${repLegend}</div>${S.me ? '' : '<div class="muted" style="margin-bottom:6px">กดหมุดเพื่อดูรูปและ <b>แจ้งเหตุ</b> (ถังเต็ม สกปรก หาย ชำรุด ฯลฯ)</div>'}<div id="map" style="height:420px"></div></div>
+    <div class="card">${cardTitle('แผนที่: วงใหญ่ = ความจุมาก · สี = ระดับความจุ · แดง = มีเรื่องแจ้ง', 'map')}<div class="legend" style="margin-bottom:6px">${tiers.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}${repLegend}</div>${S.me ? '' : '<div class="muted" style="margin-bottom:6px">กดหมุดเพื่อดูรูปและ <b>แจ้งเหตุ</b> (ถังเต็ม สกปรก หาย ชำรุด ฯลฯ)</div>'}<div id="map" style="height:min(80vh,680px);min-height:500px"></div></div>
     <div class="card">${cardTitle('จำนวนจุด เทียบ ความจุ แบ่งตามระดับ', 'stack')}<div class="muted">แถวบน = % ของจำนวนจุด · แถวล่าง = % ของความจุ (ลิตร) · ชิ้นสีเดียวกันคือระดับเดียวกัน</div><div class="chartbox" style="height:170px"><canvas id="cStack"></canvas></div></div>
     <div class="grid2">
       <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">10 ถนนความจุสูงสุด ${infoBtn('roads')}</h4>${S.me ? '<span class="muted">กดชื่อถนนเพื่อเจาะดู</span>' : ''}</div><div style="margin-top:8px">${roadsWith.slice(0, 10).map(r => hbar(esc(r.road_name) + ((S.me ? S.scopeMuni : S.pubMuni) ? '' : ` <span class="muted">(${esc(r.municipality_code)})</span>`), +r.total_liters, +roadsWith[0].total_liters, DASH.navy, `${fmt(r.total_liters)} ล. · <span class="muted">${fmt(r.places)} จุด</span>`, S.me ? `#dashboard/research?road=${r.road_id}` : '')).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div>
