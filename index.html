@@ -1348,7 +1348,6 @@ function emMethod(c) {
 }
 // ภาคผนวกงานวิจัย: ค่าการปล่อยจากการฝังกลบทางเลือก (ไม่แสดงในหน้าผู้บริหาร · DEC-120 ข้อ 5ค)
 const LANDFILL_EXCLUDED = [
-  ['0.7933 kgCO2e/กก. ขยะอาหาร', 'Hutangkoon et al. (2026) อ้างว่ามาจาก Thai National LCI Database (TGO, 2022) แต่ต้นฉบับ อบก. ฉบับ ก.ค. 2565 ลำดับ 728 (เศษอาหาร ฝังกลบ) = 2.53 ตัวเลขไม่ตรงกัน จึงไม่ใช้จนกว่าจะพบต้นฉบับ'],
   ['0.74–0.80 tCO2e/ตันขยะอาหาร/ปี', 'Saiphet & Kunta (2023) Environmental Research, Engineering and Management 79(3) หน้า 69 — เป็นค่ารวมการขนส่งและการกำจัดของเทศบาลที่ใช้ฝังกลบ ไม่ใช่ค่าเฉพาะการฝังกลบ เทียบตรงไม่ได้']];
 function printCarbonResearch() {
   const { res, sel } = S._em || {}; if (!res || res.length !== 1) return; const { m, c } = res[0];
