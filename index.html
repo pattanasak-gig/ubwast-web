@@ -162,7 +162,7 @@ const CONFIG = {
   <h1 id="title">ระบบข้อมูลจุดวางถังขยะ</h1>
   <span id="who" class="muted" style="color:#dbeafe;font-size:13px"></span>
   <button id="btnQueue" class="hidden" onclick="go('#queue')">รอส่ง <b id="queueCount">0</b></button>
-  <button onclick="go('#me')">บัญชี</button>
+  <button id="btnAcct" onclick="go(S.me ? '#me' : '#login')">เข้าสู่ระบบ</button>
 </header>
 <nav class="tabs" id="tabs"></nav>
 <main id="view"></main>
@@ -251,7 +251,7 @@ function fail(e, ctx) {
   toastErr(f.title, f.hint, f.raw && f.raw !== f.title ? f.raw : '');
   if (f.kind === 'session' && S.me && api.name === 'supabase') sessionLost();
 }
-async function sessionLost() { try { await api.logout(); } catch (_) {} S.me = null; S.cache = {}; S._loginNote = 'หมดเวลาการใช้งาน กรุณาเข้าสู่ระบบใหม่ · รายการที่ยังไม่ได้ส่งเก็บไว้ในเมนู "รอส่ง" ไม่หาย'; go('#'); render(); }
+async function sessionLost() { try { await api.logout(); } catch (_) {} S.me = null; S.cache = {}; S._loginNote = 'หมดเวลาการใช้งาน กรุณาเข้าสู่ระบบใหม่ · รายการที่ยังไม่ได้ส่งเก็บไว้ในเมนู "รอส่ง" ไม่หาย'; go('#login'); render(); }
 // ตรวจช่องบังคับ: ทำกรอบแดง เลื่อนไปที่ช่อง และบอกชื่อช่องที่ขาด · คืน false เพื่อให้เรียกแบบ return needField(...)
 function needField(sel, msg) {
   document.querySelectorAll('.invalid').forEach(x => x.classList.remove('invalid'));
@@ -298,6 +298,7 @@ const SupaBackend = () => {
     },
     async changePassword(pw) { unwrap(await sb.auth.updateUser({ password: pw })); },
     async list(name, o) { return unwrap(await applyOpts(sb.from(name).select(o?.select || '*'), o)); },
+    async rpc(fn, args) { return unwrap(await sb.rpc(fn, args || {})); },   // DEC-114 ฟังก์ชันฐานข้อมูล (public_dashboard เรียกได้โดยไม่ต้องล็อกอิน)
     async insert(table, row) { return unwrap(await sb.from(table).insert(row).select().single()); },
     async insertMany(table, rows) { if (!rows.length) return []; return unwrap(await sb.from(table).insert(rows).select()); },
     async update(table, id, patch, pk = 'id') { return unwrap(await sb.from(table).update(patch).eq(pk, id).select().single()); },
@@ -412,6 +413,16 @@ const DemoBackend = () => {
     async login(username, password) { const u = D.app_user.find(x => x.username === username.trim().toLowerCase()); if (!u || password !== 'demo') throw new Error('ชื่อล็อกอินหรือรหัสผ่านไม่ถูกต้อง (สาธิต: รหัสผ่านคือ demo)'); me = u; return { ...u }; },
     async logout() { me = null; },
     async me() { return me ? { ...me } : null; },
+    async rpc(fn) {   // เลียนแบบ public_dashboard() ของ sql/018: เฉพาะข้อมูลสรุป ไม่ต้องล็อกอิน
+      if (fn !== 'public_dashboard') throw new Error('สาธิต: ไม่รองรับ ' + fn);
+      const mu = D.municipality.filter(m => m.status === 'active' && m.public_dashboard !== false), ids = new Set(mu.map(m => m.id));
+      const places = views.v_place().filter(p => p.status === 'active' && ids.has(p.municipality_id)).map(p => ({ id: p.id, municipality_id: p.municipality_id, municipality_code: p.municipality_code, place_code: p.place_code, name: p.name, road_id: p.road_id, road_name: p.road_name, lat: p.lat, lng: p.lng, total_bins: p.total_bins, total_liters: p.total_liters, tier_label: p.tier_label, tier_color: p.tier_color }));
+      const pid = new Set(places.map(p => p.id));
+      return { munis: mu.map(m => ({ id: m.id, code: m.code, name: m.name, map_bounds: m.map_bounds || null })), places,
+        bins: views.v_bin().filter(b => b.status === 'active' && b.condition === 'ปกติ' && pid.has(b.place_id)).map(b => ({ place_id: b.place_id, municipality_id: b.municipality_id, bin_type_name: b.bin_type_name, amount: b.amount, liters: b.liters, condition: b.condition })),
+        roads: views.v_road_summary().filter(r => +r.places > 0 && ids.has(r.municipality_id)).map(r => ({ municipality_id: r.municipality_id, municipality_code: r.municipality_code, road_id: r.road_id, road_name: r.road_name, places: r.places, total_bins: r.total_bins, total_liters: r.total_liters })),
+        msum: views.v_municipality_summary().filter(x => ids.has(x.municipality_id)), tiers: D.capacity_tier.slice(), settings: D.app_setting.filter(a => ['system_name', 'kg_per_liter'].includes(a.key)) };
+    },
     async changePassword() { },
     async list(name, o) { const rows = views[name] ? views[name]() : D[name]; return filt(scope(name, rows), o); },
     async insert(table, row) {
@@ -498,7 +509,7 @@ async function loadMasters(force) {
   if (!S.scopeMuni) S.scopeMuni = S.me.municipality_id || (munis[0] && munis[0].id) || null;
 }
 const scopeEq = () => (S.scopeMuni ? { municipality_id: S.scopeMuni } : {});
-const muniOf = id => S.munis.find(m => m.id === id) || {};
+const muniOf = id => S.munis.find(m => m.id === id) || (S.pub && S.pub.munis.find(m => m.id === id)) || {};
 const isSuper = () => S.me && S.me.role === 'super_admin';
 const isAdmin = () => S.me && (S.me.role === 'admin' || isSuper());
 const setting = k => (S.cache.app_setting.find(s => s.key === k) || {}).value || '';
@@ -518,6 +529,7 @@ const TABS = () => [
   ['#help', 'ช่วยเหลือ']
 ];
 function renderTabs() {
+  if (!S.me) { const h = location.hash; $('#tabs').innerHTML = [['#', 'ภาพรวม', !h.startsWith('#about') && h !== '#login' && !h.startsWith('#guide')], ['#about', 'เกี่ยวกับระบบ', h.startsWith('#about')]].map(([href, l, a]) => `<a href="${href}" class="${a ? 'active' : ''}">${l}</a>`).join(''); return; }
   $('#tabs').innerHTML = S.me ? TABS().map(([h, l]) => `<a href="${h}" class="${location.hash.startsWith(h) ? 'active' : ''}">${l}</a>`).join('') : '';
 }
 window.addEventListener('hashchange', render);
@@ -527,9 +539,14 @@ async function render() {
   const view = $('#view');
   try {
     if (!S.me) { S.me = await api.me(); }
+    renderCredit(); const ab = $('#btnAcct'); if (ab) ab.textContent = S.me ? 'บัญชี' : 'เข้าสู่ระบบ';
     if (location.hash.startsWith('#about')) { renderTabs(); if (!S.me) $('#who').textContent = ''; return pageAbout(view); }   // DEC-103 เปิดได้โดยไม่ต้องล็อกอิน
-    if (location.hash === '#guide' || location.hash.startsWith('#guide/')) { renderTabs(); if (!S.me) $('#who').textContent = ''; return pageGuide(view); }   // คู่มือ เปิดได้โดยไม่ต้องล็อกอิน (DEC-095 · DEC-105)
-    if (!S.me) { renderTabs(); $('#who').textContent = ''; return pageLogin(view); }
+    if (location.hash === '#guide' || location.hash.startsWith('#guide/')) {   // DEC-114 คู่มือเปิดได้เมื่อเข้าสู่ระบบ · ยกเว้นคู่มือติดตั้งตัวรับรูป (#guide/photo) ที่ส่งลิงก์ให้ผู้ดูแลบัญชี Google ของเทศบาลซึ่งไม่มีบัญชีระบบ
+      if (!S.me && location.hash !== '#guide/photo') { S._loginNote = 'คู่มือการใช้งานสำหรับเจ้าหน้าที่ กรุณาเข้าสู่ระบบก่อน'; history.replaceState(null, '', '#login'); renderTabs(); $('#who').textContent = ''; return pageLogin(view); }
+      renderTabs(); if (!S.me) $('#who').textContent = ''; return pageGuide(view);
+    }
+    if (!S.me) { renderTabs(); $('#who').textContent = ''; return location.hash === '#login' ? pageLogin(view) : pagePublic(view); }   // DEC-114 หน้าแรกสาธารณะ
+    if (location.hash === '#login') history.replaceState(null, '', '#map');
     await loadMasters();
     $('#who').textContent = `${S.me.display_name} · ${roleLabel(S.me.role)}${S.me.municipality_id ? ' · ' + (muniOf(S.me.municipality_id).code || '') : ''}`;
     Queue.refreshBadge();
@@ -565,7 +582,7 @@ function pageLogin(view) {
     <label>รหัสผ่าน</label><input id="p" type="password" autocomplete="current-password">
     <div style="margin-top:14px"><button id="btnLogin" style="width:100%">เข้าสู่ระบบ</button></div>
     <p class="muted">ลืมรหัสผ่าน: ติดต่อ admin ของเทศบาลหรือเจ้าของโครงการเพื่อรีเซ็ต (ระบบไม่มีการส่งอีเมล)</p>
-    <a id="guideLink" class="btn secondary" style="display:block;text-align:center;text-decoration:none" href="#guide">คู่มือการใช้งาน (เปิดอ่านได้โดยไม่ต้องเข้าสู่ระบบ)</a>
+    <a href="#" style="display:inline-block;padding:8px 0">← กลับหน้าแรก (ภาพรวม)</a>
   </div>`;
   const doLogin = async () => {
     const b = $('#btnLogin'); b.disabled = true;
@@ -1029,9 +1046,26 @@ const cardTitle = (text, key) => `<div class="cardhead"><h4>${text}</h4>${key ? 
 function showInfo(key) { const i = (S._info || {})[key]; if (!i) return toast('ยังไม่มีคำอธิบาย', true); openModal(`<h3 style="margin-top:0">${esc(i.title)}</h3><h4 style="margin-bottom:4px">กราฟนี้แสดงอะไร</h4><div>${esc(i.what)}</div><h4 style="margin-bottom:4px">อ่านอย่างไร</h4><div>${esc(i.how)}</div><h4 style="margin-bottom:4px">แปลผลจากข้อมูลตอนนี้ (คำนวณอัตโนมัติ)</h4><div class="banner info">${esc(i.interp)}</div><button onclick="closeModal()">ปิด</button>`); }
 const tiersSorted = () => S.cache.capacity_tier.slice().sort((a, b) => a.sort_order - b.sort_order);
 const tierOf = p => tiersSorted().find(t => t.label === p.tier_label) || tiersSorted()[0];
-const scopeName = () => (S.scopeMuni ? `${muniOf(S.scopeMuni).code || ''} · ${muniOf(S.scopeMuni).name || ''}` : 'ทุกเทศบาล');
+const scopeName = () => !S.me ? (S.pubMuni ? (muniOf(S.pubMuni).name || '') : 'ทุกเทศบาลที่เข้าร่วม') : (S.scopeMuni ? `${muniOf(S.scopeMuni).code || ''} · ${muniOf(S.scopeMuni).name || ''}` : 'ทุกเทศบาล');
 
+// DEC-114 หน้าแรกสาธารณะ: ภาพรวมจากฟังก์ชัน public_dashboard() (sql/018) ซึ่งคืนเฉพาะข้อมูลสรุป ไม่มีรูป ชื่อผู้บันทึก รถ น้ำมัน ค่าใช้จ่าย
+async function loadPublic(force) {
+  if (S.pub && !force && Date.now() - S.pub._at < 300000) return S.pub;   // จำไว้ 5 นาที
+  const d = await api.rpc('public_dashboard'); d._at = Date.now(); S.pub = d;
+  S.cache.capacity_tier = d.tiers || []; S.cache.app_setting = d.settings || [];
+  const sn = (d.settings || []).find(x => x.key === 'system_name'); if (sn && sn.value) { $('#title').textContent = sn.value; document.title = sn.value; }
+  if ((d.munis || []).length === 1) S.pubMuni = d.munis[0].id;
+  return d;
+}
+async function pagePublic(view) {
+  try { await loadPublic(); }
+  catch (e) { const f = friendlyError(e, 'โหลดข้อมูลภาพรวมไม่สำเร็จ'); console.error(e); return view.innerHTML = `<div class="card"><b>${esc(f.title)}</b><div class="muted" style="margin-top:4px">${esc(f.hint || 'ลองใหม่อีกครั้งภายหลัง')}</div><div class="row" style="margin-top:10px"><button onclick="S.pub=null;render()">ลองใหม่</button><a class="btn secondary" style="text-decoration:none" href="#login">เข้าสู่ระบบ (เจ้าหน้าที่)</a></div></div>`; }
+  return pageDashOverview(view);
+}
+const pubSelector = () => { const ms = (S.pub && S.pub.munis) || [];
+  return `<div class="card row" style="justify-content:space-between"><div class="row" style="gap:8px"><label style="margin:0" for="pubMuni">เทศบาล</label><select id="pubMuni" style="max-width:340px" onchange="S.pubMuni=this.value||null;render()">${ms.length > 1 ? '<option value="">ทุกเทศบาลที่เข้าร่วม</option>' : ''}${ms.map(m => `<option value="${m.id}" ${m.id === S.pubMuni ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div><span class="muted">ข้อมูลสาธารณะ ไม่ต้องเข้าสู่ระบบ · เจ้าหน้าที่ <a href="#login">เข้าสู่ระบบ</a></span></div>`; };
 async function loadDashData() {
+  if (!S.me) { const d = S.pub || { places: [], bins: [], roads: [], msum: [] }, f = r => !S.pubMuni || r.municipality_id === S.pubMuni; const places = d.places.filter(f), ids = new Set(places.map(p => p.id)); return { places, bins: d.bins.filter(b => ids.has(b.place_id)), roads: d.roads.filter(f), msum: d.msum.filter(f) }; }
   const [places, bins, roads, msum] = await Promise.all([
     api.list('v_place', { eq: { status: 'active', ...scopeEq() } }),
     api.list('v_bin', { eq: { status: 'active', ...scopeEq() } }),
@@ -1106,7 +1140,7 @@ async function pageDashOverview(view) {
     roads: { title: '10 ถนนความจุสูงสุด', what: 'ความจุรวม (ลิตร) ของทุกจุดบนถนน เรียงจากมากไปน้อย · ตัวเลขท้ายแท่ง = ลิตร และจำนวนจุด', how: 'ถนนที่ลิตรมากแต่จุดน้อย = ถังใหญ่ (คอนเทนเนอร์) · ถนนที่จุดมากแต่ลิตรน้อย = ถังเล็กจำนวนมาก · จำนวนจุดสะท้อนความครอบคลุมการสำรวจ ไม่ใช่สภาพจริงทั้งหมด · กดชื่อถนนเพื่อเจาะดูในหน้าวิเคราะห์', interp: roadsWith.length ? `${roadsWith.length > 10 ? `10 ถนนแรกถือ ${fmt1(pct(top10L, totL))}% ของความจุทั้งหมด จาก ${fmt(roadsWith.length)} ถนนที่มีจุด` : `มีถนนที่มีจุด ${fmt(roadsWith.length)} สาย (แสดงครบทุกสาย)`} · อันดับ 1 "${roadsWith[0].road_name}" ${fmt(roadsWith[0].total_liters)} ล. จาก ${fmt(roadsWith[0].places)} จุด (เฉลี่ย ${fmt(Math.round(roadsWith[0].total_liters / roadsWith[0].places))} ล./จุด)` : 'ยังไม่มีข้อมูล' },
     types: { title: 'ความจุตามประเภทถัง', what: 'ความจุรวม (ลิตร) แยกตามประเภทถัง = จำนวนใบ × ลิตรต่อใบ · แท่งม่วง = ประเภทที่ถือความจุมากที่สุด', how: 'เทียบ "ล." กับ "ใบ" ท้ายแท่ง: ประเภทที่ใบน้อยแต่ลิตรมากคือถังใหญ่ · ป้ายมุมขวาบนบอกจำนวนจุดที่ยังไม่มีข้อมูลถัง (ไม่ทราบ ≠ ศูนย์)', interp: topType ? `"${topType.name}" ${fmt(topType.bins)} ใบ (${fmt1(pct(topType.bins, totB))}% ของใบ) ถือความจุ ${fmt1(pct(topType.liters, totL))}%${types[1] ? ` · รองลงมา "${types[1].name}" ${fmt1(pct(types[1].liters, totL))}%` : ''}${noBins ? ` · มี ${fmt(noBins)} จุดที่ยังไม่มีข้อมูลถัง ควรสำรวจเพิ่ม` : ''}` : 'ยังไม่มีข้อมูล' }
   };
-  view.innerHTML = `${scopeSelector()}${dashTabs('')}
+  view.innerHTML = `${S.me ? scopeSelector() + dashTabs('') : pubSelector()}
     <div class="card" style="padding:12px 14px"><div style="font-size:20px;font-weight:700;color:${DASH.navy}">${esc(setting('system_name') || 'ระบบข้อมูลจุดวางถังขยะ')} — ภาพรวม</div>
       <div class="muted">${esc(scopeName())} · ข้อมูลล่าสุด ${thDate(updated)} · ${places.length ? '' : 'ยังไม่มีข้อมูลจุดในขอบเขตนี้'}</div></div>
     <div class="kpis">${card(fmt(places.length), 'จุด')}${card(fmt(totB), 'ถัง (ใบ)')}${card(fmt(totL), 'ลิตร', !isNaN(kg) ? `≈ ${fmt(Math.round(totL * kg))} กก.` : '')}${card(fmt(new Set(places.map(p => p.road_id)).size), 'ถนนที่มีจุด')}${card(fmt(places.length ? Math.round(totL / places.length) : 0), 'เฉลี่ยลิตร/จุด')}</div>
@@ -1116,17 +1150,17 @@ async function pageDashOverview(view) {
     <div class="card">${cardTitle('แผนที่: วงใหญ่ = ความจุมาก · สี = ระดับความจุ', 'map')}<div class="legend" style="margin-bottom:6px">${tiers.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}</div><div id="map" style="height:420px"></div></div>
     <div class="card">${cardTitle('จำนวนจุด เทียบ ความจุ แบ่งตามระดับ', 'stack')}<div class="muted">แถวบน = % ของจำนวนจุด · แถวล่าง = % ของความจุ (ลิตร) · ชิ้นสีเดียวกันคือระดับเดียวกัน</div><div class="chartbox" style="height:170px"><canvas id="cStack"></canvas></div></div>
     <div class="grid2">
-      <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">10 ถนนความจุสูงสุด ${infoBtn('roads')}</h4><span class="muted">กดชื่อถนนเพื่อเจาะดู</span></div><div style="margin-top:8px">${roadsWith.slice(0, 10).map(r => hbar(esc(r.road_name) + (S.scopeMuni ? '' : ` <span class="muted">(${esc(r.municipality_code)})</span>`), +r.total_liters, +roadsWith[0].total_liters, DASH.navy, `${fmt(r.total_liters)} ล. · <span class="muted">${fmt(r.places)} จุด</span>`, `#dashboard/research?road=${r.road_id}`)).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div>
+      <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">10 ถนนความจุสูงสุด ${infoBtn('roads')}</h4>${S.me ? '<span class="muted">กดชื่อถนนเพื่อเจาะดู</span>' : ''}</div><div style="margin-top:8px">${roadsWith.slice(0, 10).map(r => hbar(esc(r.road_name) + ((S.me ? S.scopeMuni : S.pubMuni) ? '' : ` <span class="muted">(${esc(r.municipality_code)})</span>`), +r.total_liters, +roadsWith[0].total_liters, DASH.navy, `${fmt(r.total_liters)} ล. · <span class="muted">${fmt(r.places)} จุด</span>`, S.me ? `#dashboard/research?road=${r.road_id}` : '')).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div>
         ${roadsWith.length > 10 ? `<div class="muted" style="margin-top:6px">อีก ${roadsWith.length - 10} ถนนรวม ${fmt(sum(roadsWith.slice(10), 'total_liters'))} ล. (ดูทั้งหมดในหน้าวิเคราะห์)</div>` : ''}</div>
       <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">ความจุตามประเภทถัง ${infoBtn('types')}</h4><span class="pill" title="จุดที่บันทึกแล้วแต่ยังไม่มีแถวถัง (ไม่ทราบ ≠ 0)">จุดที่ยังไม่มีข้อมูลถัง: <b>${fmt(noBins)}</b></span></div><div style="margin-top:8px">${types.map((t, i) => hbar(esc(t.name), t.liters, types[0].liters, i === 0 ? DASH.purple : DASH.gray2, `${fmt(t.liters)} ล. · <span class="muted">${fmt(t.bins)} ใบ</span>`)).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div></div></div>
-    ${!S.scopeMuni && isSuper() && msum.length > 1 ? `<div class="card"><h4 style="margin-top:0">เปรียบเทียบรายเทศบาล</h4><div style="overflow:auto"><table><thead><tr><th>เทศบาล</th><th style="text-align:right">จุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">ถนน</th><th style="text-align:right">จุดไม่มีถัง</th><th>ล่าสุด</th></tr></thead><tbody>${msum.map(m => `<tr><td><a href="#dashboard" onclick="S.scopeMuni='${m.municipality_id}'">${esc(m.municipality_code)} ${esc(m.municipality_name)}</a></td><td style="text-align:right">${fmt(m.places)}</td><td style="text-align:right">${fmt(m.total_bins)}</td><td style="text-align:right">${fmt(m.total_liters)}</td><td style="text-align:right">${fmt(m.roads_with_places)}</td><td style="text-align:right">${fmt(m.places_without_bins ?? '-')}</td><td class="muted">${thDate(m.data_updated_at)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
+    ${(S.me ? !S.scopeMuni && isSuper() : !S.pubMuni) && msum.length > 1 ? `<div class="card"><h4 style="margin-top:0">เปรียบเทียบรายเทศบาล</h4><div style="overflow:auto"><table><thead><tr><th>เทศบาล</th><th style="text-align:right">จุด</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">ถนน</th><th style="text-align:right">จุดไม่มีถัง</th><th>ล่าสุด</th></tr></thead><tbody>${msum.map(m => `<tr><td><a href="#dashboard" onclick="${S.me ? 'S.scopeMuni' : 'S.pubMuni'}='${m.municipality_id}';${S.me ? '' : 'render();return false;'}">${esc(m.municipality_code)} ${esc(m.municipality_name)}</a></td><td style="text-align:right">${fmt(m.places)}</td><td style="text-align:right">${fmt(m.total_bins)}</td><td style="text-align:right">${fmt(m.total_liters)}</td><td style="text-align:right">${fmt(m.roads_with_places)}</td><td style="text-align:right">${fmt(m.places_without_bins ?? '-')}</td><td class="muted">${thDate(m.data_updated_at)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
   // แผนที่: วงตามความจุ (รากที่สอง เพื่อให้พื้นที่วงแปรตามลิตร) + สลับแผนที่/ดาวเทียม
   const map = mkMap('map'); S.map = map;
   await addBaseLayer(map);
   const g = L.featureGroup().addTo(map); const maxL = Math.max(1, ...places.map(p => +p.total_liters));
   for (const p of places.filter(p => p.lat != null && p.lng != null)) L.circleMarker([p.lat, p.lng], { radius: 5 + 17 * Math.sqrt((+p.total_liters) / maxL), color: '#fff', weight: 1, fillColor: p.tier_color || tiers[0].color, fillOpacity: .85 })
-    .bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${esc(p.road_name)}<br>${fmt(p.total_bins)} ใบ · <b>${fmt(p.total_liters)} ลิตร</b> · ${esc(p.tier_label || '')}<br><a href="#place/${p.id}">รายละเอียด/รูป</a>`).addTo(g);
-  fitMuni(map, g);
+    .bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${esc(p.road_name)}<br>${fmt(p.total_bins)} ใบ · <b>${fmt(p.total_liters)} ลิตร</b> · ${esc(p.tier_label || '')}${S.me ? `<br><a href="#place/${p.id}">รายละเอียด/รูป</a>` : ''}`).addTo(g);
+  fitMuni(map, g, S.me ? null : S.pubMuni);
   // แท่ง 100% ซ้อน 2 แถว
   mkChart($('#cStack'), { type: 'bar', data: { labels: ['จำนวนจุด', 'ความจุ'], datasets: byTier.map(x => ({ label: x.t.label, data: [pct(x.n, places.length), pct(x.liters, totL)], rawVals: [x.n, x.liters], backgroundColor: x.t.color, borderWidth: 0 })) },
     options: { indexAxis: 'y', maintainAspectRatio: false, scales: { x: { stacked: true, min: 0, max: 100, ticks: { callback: v => v + '%' } }, y: { stacked: true } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmt1(c.raw)}% (${fmt(c.dataset.rawVals[c.dataIndex])} ${c.dataIndex ? 'ลิตร' : 'จุด'})` } } } } });
@@ -2175,10 +2209,10 @@ function pageAbout(view) {
     <h3>ติดต่อ</h3>
     <p>ผศ.พัฒนศักดิ์ ปทุมวัน · <a href="mailto:pattanasak.p@ubru.ac.th">pattanasak.p@ubru.ac.th</a></p>
     <p class="muted">ฉบับระบบ: ${esc(CREDIT.updated)}</p>
-    <div class="row" style="margin-top:12px"><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#help' : '#'}" onclick="${S.me ? '' : 'location.hash=\'\';render();return false;'}">${S.me ? 'กลับไปหน้าช่วยเหลือ' : 'กลับไปหน้าเข้าสู่ระบบ'}</a></div>
+    <div class="row" style="margin-top:12px"><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#help' : '#'}" onclick="${S.me ? '' : 'location.hash=\'\';render();return false;'}">${S.me ? 'กลับไปหน้าช่วยเหลือ' : 'กลับหน้าแรก'}</a></div>
   </div>`;
 }
-function renderCredit() { const f = $('#credit'); if (f) f.innerHTML = `${esc(CREDIT.short)} · <a href="#guide">คู่มือการใช้งาน</a> · <a href="#about">เกี่ยวกับระบบ</a>`; }
+function renderCredit() { const f = $('#credit'); if (f) f.innerHTML = `${esc(CREDIT.short)}${S.me ? ' · <a href="#guide">คู่มือการใช้งาน</a>' : ''} · <a href="#about">เกี่ยวกับระบบ</a>`; }
 // เอกสารพิมพ์ทุกฉบับ: เครดิตท้ายทุกหน้ากระดาษ (ตำแหน่ง fixed ตอนพิมพ์ + ตารางห่อ tfoot เว้นที่ด้านล่างทุกหน้าไม่ให้ทับเนื้อหา)
 const PRINT_CREDIT_CSS = '.pgwrap{width:100%;border-collapse:collapse;border:0;margin:0}.pgwrap>thead>tr>td,.pgwrap>tbody>tr>td,.pgwrap>tfoot>tr>td{border:0;padding:0}.pgcredit{margin-top:14px;text-align:center;font-size:9pt;color:#555;border-top:1px solid #ccc;padding-top:3px}@media print{.pgcredit{position:fixed;bottom:0;left:0;right:0;margin:0;background:#fff}}';
 function withCredit(doc) {
@@ -2199,13 +2233,12 @@ const GUIDE_REC = [
       'เปิดเบราว์เซอร์ในมือถือ (Android ใช้ Chrome · iPhone ใช้ Safari) พิมพ์ที่อยู่ <b class="mono">' + esc(CREDIT.url.replace('https://', '')) + '</b>',
       'ทำไอคอนไว้ที่หน้าจอมือถือ จะได้ไม่ต้องพิมพ์ที่อยู่ทุกครั้ง: <br>• <b>Android (Chrome)</b> กดปุ่ม <b>⋮</b> มุมขวาบน → <b>"เพิ่มลงในหน้าจอหลัก"</b> (Add to Home screen) → <b>"เพิ่ม"</b><br>• <b>iPhone (Safari)</b> กดปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรชี้ขึ้น) ด้านล่าง → <b>"เพิ่มไปยังหน้าจอโฮม"</b> (Add to Home Screen) → <b>"เพิ่ม"</b><br><span class="muted">ชื่อเมนูอาจต่างเล็กน้อยตามรุ่นของมือถือ</span>',
       'ครั้งแรกที่กดปุ่ม <b>"ใช้ GPS"</b> มือถือจะถามว่าอนุญาตให้เว็บรู้ตำแหน่งไหม ให้กด <b>"อนุญาต"</b> (Allow) · ครั้งแรกที่กด <b>"ถ่ายรูป"</b> จะถามเรื่องกล้อง ให้กด <b>"อนุญาต"</b> เช่นกัน'],
-    done: 'เปิดที่อยู่แล้วเห็นหน้า <b>"เข้าสู่ระบบ"</b> ตามภาพในหัวข้อถัดไป' }] },
+    done: 'เปิดที่อยู่แล้วเห็นหน้า <b>ภาพรวม</b> (ข้อมูลสาธารณะ) กดปุ่ม <b>"เข้าสู่ระบบ"</b> มุมขวาบน จะเห็นหน้าตามภาพในหัวข้อถัดไป' }] },
   { id: 'g2', title: 'เข้าสู่ระบบ และเปลี่ยนรหัสผ่าน', intro: 'เข้าครั้งแรกด้วยรหัสผ่านที่ admin ให้ แล้วเปลี่ยนเป็นรหัสของท่านเอง เพื่อไม่ให้คนอื่นใช้ชื่อของท่านบันทึกข้อมูล',
     parts: [{ img: 'r01', steps: [
       `${GN(1)} พิมพ์ <b>ชื่อล็อกอิน</b> ตามที่ admin ให้ (ตัวอักษรเล็กทั้งหมด เช่น ubn-rec1)`,
       `${GN(2)} พิมพ์ <b>รหัสผ่าน</b>`,
-      `${GN(3)} กดปุ่ม <b>"เข้าสู่ระบบ"</b>`,
-      `${GN(4)} ปุ่ม <b>"คู่มือการใช้งาน"</b> เปิดคู่มือนี้ได้ทุกเมื่อ แม้ยังไม่เข้าสู่ระบบ`],
+      `${GN(3)} กดปุ่ม <b>"เข้าสู่ระบบ"</b>`],
       done: 'เห็นแผนที่ และชื่อของท่านที่แถบสีเขียวด้านบน' },
     { img: 'r04', lead: 'เปลี่ยนรหัสผ่าน: กดปุ่ม <b>"บัญชี"</b> มุมขวาบน', steps: [
       `${GN(1)} พิมพ์ <b>รหัสผ่านใหม่</b> อย่างน้อย 8 ตัว`,
@@ -2378,7 +2411,7 @@ const GUIDE_ADM = [
       `${GN(2)} <b>"รีเซ็ตรหัส"</b> เมื่อผู้ปฏิบัติงานลืมรหัสผ่าน · รหัสใหม่แสดงครั้งเดียว ให้พิมพ์หรือจดส่งต่อทันที`],
       done: 'ผู้ปฏิบัติงานที่ลาออก กด "แก้" แล้วเปลี่ยนสถานะเป็นปิดใช้งาน · ส่งรหัสผ่านให้เจ้าตัวโดยตรง อย่าส่งในกลุ่มไลน์' },
     { img: 'a15', lead: 'จัดการเทศบาล → แท็บ <b>"ตั้งค่าเทศบาล"</b>', steps: [
-      `${GN(1)} <b>ที่เก็บรูป</b> ค่าเริ่มต้นใช้ที่เก็บกลางของโครงการ ไม่ต้องตั้งอะไร · ถ้าต้องการเก็บใน Google Drive ของเทศบาลเอง เลือกแบบที่ 2 แล้วกด "ดูวิธีทำทีละขั้น (มีภาพ)" ให้ผู้ดูแลบัญชี Google ของเทศบาลทำ`,
+      `${GN(1)} <b>ที่เก็บรูป</b> ค่าเริ่มต้นใช้ที่เก็บกลางของโครงการ ไม่ต้องตั้งอะไร · ถ้าต้องการเก็บใน Google Drive ของเทศบาลเอง เลือกแบบที่ 2 แล้วกด "ดูวิธีทำทีละขั้น (มีภาพ)" ให้ผู้ดูแลบัญชี Google ของเทศบาลทำ (คู่มือนี้เปิดได้โดยไม่ต้องเข้าสู่ระบบ ส่งลิงก์ให้ได้)`,
       `${GN(2)} <b>"บันทึกการตั้งค่า"</b>`] }] },
   { id: 'a10', title: 'แดชบอร์ด', intro: 'ตัวเลขทุกตัวคำนวณสดจากข้อมูล ณ เวลาที่เปิด ไม่ต้องสั่งปรับปรุง',
     parts: [{ img: 'a16', lead: 'เมนู <b>"แดชบอร์ด"</b>', steps: [
@@ -2401,7 +2434,7 @@ const GUIDE_ADM = [
       `${GN(2)} <b>"ยกเลิก"</b> ท้ายแถวถัง ใช้กับแถวถังที่บันทึกผิด · ถังชำรุดหรือหายให้ "แก้" แล้วเปลี่ยนสภาพแทน (ยังเป็นทะเบียน แต่ไม่นับความจุ)`],
       done: 'ติดปัญหา: อ่านกล่องสีแดงก่อน (บอกเสมอว่าเกิดอะไรและต้องทำอย่างไร) · ทุกหน้ามีปุ่ม (?) · เมนู "ช่วยเหลือ" มีตารางข้อความทั้งหมด · ถ้ายังแก้ไม่ได้ ติดต่อเจ้าของโครงการ ผศ.พัฒนศักดิ์ ปทุมวัน pattanasak.p@ubru.ac.th พร้อมภาพหน้าจอ (อย่าให้เห็นรหัสผ่าน)' }] }
 ];
-const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=3" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=3" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
+const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=4" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=4" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
 const GUIDE_CSS = `<style>.gn{display:inline-block;min-width:26px;height:26px;line-height:26px;border-radius:50%;background:#E11D48;color:#fff;font-weight:700;text-align:center;font-size:15px;margin-right:4px}
   .gpart{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:18px;align-items:start;margin-top:14px}.gpart.wide{grid-template-columns:1fr;gap:8px}.gpart.wide .gimg{max-width:860px}.gpart ol{margin:6px 0;padding-left:0;list-style:none}.gpart li{margin:8px 0;line-height:1.7}
   .gimg{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;display:block}.gdone{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.7}
@@ -2418,7 +2451,7 @@ function pageGuide(view) {
     ${card('#guide/recorder', 'ผู้ปฏิบัติงาน (ผู้บันทึกข้อมูลภาคสนาม)', 'เจ้าหน้าที่ที่ลงพื้นที่ บันทึกจุดวางถัง ถัง และรูป ด้วยมือถือ', 'เข้าสู่ระบบ · รู้จักหน้าจอ · เพิ่มจุดทีละช่อง · แก้ไขจุด · ทำงานตอนไม่มีสัญญาณ · ดูเส้นทางรถ · เมื่อเห็นข้อความสีแดง')}
     ${card('#guide/admin', 'ผู้ดูแลระบบของเทศบาล (admin)', 'เจ้าหน้าที่ที่ดูแลถนน รถ เส้นทาง น้ำมันรถ บัญชีผู้ใช้ และพิมพ์รายงาน', 'ลำดับงานครั้งแรก · ถนนและซอย · รถและเชื้อเพลิง · เส้นทาง 4 ขั้น (ขาไป/ขากลับ/จุดแวะ) · น้ำมันรายเดือน · บัญชีผู้ใช้ · แดชบอร์ด · รายงาน · ดูแลข้อมูลจุด')}
     ${card('#guide/photo', 'ผู้ดูแลบัญชี Google ของเทศบาล', 'ทำครั้งเดียว เมื่อเทศบาลต้องการเก็บรูปไว้ใน Google Drive ของเทศบาลเอง', 'ติดตั้ง "ตัวรับรูป" ใน Apps Script ประมาณ 10 นาที')}
-    <div class="row noprint"><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#help' : '#'}">${S.me ? 'กลับไปหน้าช่วยเหลือ' : 'กลับไปหน้าเข้าสู่ระบบ'}</a></div></div>`;
+    <div class="row noprint"><a class="btn secondary" style="text-decoration:none" href="${S.me ? '#help' : '#'}">${S.me ? 'กลับไปหน้าช่วยเหลือ' : 'กลับหน้าแรก'}</a></div></div>`;
 }
 function pageGuideRecorder(view) { return pageGuideDoc(view, { data: GUIDE_REC, dir: 'rec', title: 'คู่มือผู้ปฏิบัติงาน (ผู้บันทึกข้อมูลภาคสนาม)', lead: 'คู่มือนี้พาใช้ระบบตั้งแต่เข้าสู่ระบบครั้งแรก จนบันทึกจุดวางถังได้เอง อ่านจบประมาณ 15 นาที' }); }
 function pageGuideAdmin(view) { return pageGuideDoc(view, { data: GUIDE_ADM, dir: 'adm', wide: true, title: 'คู่มือผู้ดูแลระบบของเทศบาล (admin)', lead: 'คู่มือนี้พาตั้งค่าเทศบาลครั้งแรกจนพร้อมใช้งาน และงานประจำเดือนของ admin อ่านจบประมาณ 30 นาที · ภาพเป็นจอคอมพิวเตอร์ (ใช้บนมือถือได้ แต่การจัดเส้นทางทำบนคอมพิวเตอร์สะดวกกว่า)' }); }
@@ -2593,7 +2626,7 @@ function shotMark(list) {
   }
 }
 const SHOTS = {
-  login: { run: async () => { $('#u').value = 'ubn-rec1'; $('#p').value = '12345678'; return [['#u', 1], ['#p', 2], ['#btnLogin', 3], ['#guideLink', 4]]; } },
+  login: { run: async () => { $('#u').value = 'ubn-rec1'; $('#p').value = '12345678'; return [['#u', 1], ['#p', 2], ['#btnLogin', 3]]; } },
   map: { wait: 3500, run: async () => [['#tabs', 1], ['.legend.card', 2], ['.leaflet-control-layers', 3], ['.fab', 4], ['header button:last-of-type', 5]] },
   mappop: { wait: 3500, run: async () => { const p = document.querySelectorAll('path.leaflet-interactive')[2]; p && p.dispatchEvent(new MouseEvent('click', { bubbles: true })); await shotWait(600); return [[p, 1, { pad: 6 }], ['.leaflet-popup-content a', 2]]; } },
   me: { run: async () => [['#pw1', 1], ['#pw2', 2], ['button[onclick="changePw()"]', 3], ['button[onclick="logout()"]', 4]] },
