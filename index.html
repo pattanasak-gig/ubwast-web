@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ระบบข้อมูลจุดวางถังขยะ</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1b6e3a"><link rel="icon" href="pwa/icon-192.png"><link rel="apple-touch-icon" href="pwa/apple-touch-icon.png"><meta name="apple-mobile-web-app-title" content="จุดถังขยะ">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;700&display=swap" rel="stylesheet">   <!-- UX-B3 ฟอนต์ไทยเดียวกันทุกเครื่อง · display=swap: โหลดไม่ได้ก็ใช้ฟอนต์เครื่อง -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
@@ -99,6 +100,7 @@ const CONFIG = {
   .toast.err .x { position:absolute; top:2px; right:2px; background:none; border:0; color:#666; font-size:22px; min-width:44px; min-height:44px; cursor:pointer; }
   input.invalid, select.invalid, textarea.invalid { border-color: var(--danger) !important; box-shadow: 0 0 0 3px rgba(220,38,38,.18); }
   .photo-missing { width:100%; aspect-ratio:4/3; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#f3f4f6; border:1px dashed #bbb; border-radius:8px; color:#555; font-size:14px; padding:8px; box-sizing:border-box; }
+  #installBar .banner { margin: 8px 16px 0; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
   .fab { position: fixed; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); z-index: 60; border-radius: 999px; padding: 14px 18px; font-size: 16px; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
   .photos { display:flex; gap:8px; flex-wrap:wrap; }
   .photos img { width: 110px; height: 110px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
@@ -193,6 +195,7 @@ const CONFIG = {
   <button id="btnAcct" onclick="go(S.me ? '#me' : '#login')">เข้าสู่ระบบ</button>
 </header>
 <nav class="tabs" id="tabs"></nav>
+<div id="installBar"></div>
 <main id="view"></main>
 <footer class="credit" id="credit"></footer>
 <div id="toastHost" role="status" aria-live="polite"></div>
@@ -686,14 +689,14 @@ async function render() {
     await loadMasters();
     $('#who').textContent = `${S.me.display_name} · ${roleLabel(S.me.role)}${S.me.municipality_id ? ' · ' + (muniOf(S.me.municipality_id).code || '') : ''}`;
     Queue.refreshBadge();
-    const h = location.hash || '#map'; renderTabs(); refreshRepBadge();
+    const h = location.hash || '#map'; renderTabs(); refreshRepBadge(); installBar();
     if (h.startsWith('#trips')) return canLogTrip() ? pageTrips(view) : pageMap(view);   // DEC-117
     if (isDriver() && !/^#(trips|help|me|about|guide)/.test(h)) return pageTrips(view);   // คนขับเห็นเฉพาะเที่ยววิ่ง
     if (h.startsWith('#map')) return pageMap(view);
     if (h.startsWith('#places')) return pagePlaces(view);
     if (h.startsWith('#complaints')) return pageComplaints(view);
     if (h.startsWith('#place-edit/')) return pagePlaceEdit(view, h.split('/')[1]);
-    if (h.startsWith('#place/')) return pagePlace(view, h.split('/')[1]);
+    if (h.startsWith('#place/')) { const pid = h.split('/')[1]; await pagePlace(view, pid); if (S._justAdded === pid && canRecord()) { S._justAdded = null; view.insertAdjacentHTML('afterbegin', `<div class="banner info row" style="justify-content:space-between;gap:8px"><span>บันทึกจุดแล้ว · เดินไปจุดถัดไปแล้วกดเพิ่มได้เลย (ถนนและถังจำไว้ให้)</span><a class="btn small" style="text-decoration:none" href="#place-edit/new">＋ เพิ่มจุดถัดไป</a></div>`); } return; }
     if (h.startsWith('#dashboard')) return isAdmin() ? pageDashboard(view) : (view.innerHTML = '<div class="card"><b>แดชบอร์ดเปิดให้ admin ของเทศบาลและเจ้าของโครงการเท่านั้น</b><div class="muted">บัญชีผู้บันทึกใช้เมนู แผนที่ · จุด · เส้นทางรถ ได้ตามปกติ</div><a href="#map">ไปหน้าแผนที่</a></div>');
     if (h.startsWith('#route-edit/')) return pageRouteEdit(view, h.split('/')[1]);   // DEC-111
     if (h.startsWith('#routes')) return pageRoutes(view);
@@ -908,14 +911,24 @@ async function restoreRow(table, id) {
 const placeOffBanner = (p, withBtn) => p && p.status !== 'active' ? `<div class="banner err" style="margin:8px 0"><b>จุดนี้ถูกยกเลิกแล้ว</b> · ไม่แสดงบนแผนที่ ไม่นับในยอดรวมและรายงาน ประชาชนแจ้งเหตุที่จุดนี้ไม่ได้${withBtn && isAdmin() ? ` <button class="small" style="margin-left:6px" onclick="restoreRow('place','${p.id}')">นำกลับมาใช้งาน</button>` : isAdmin() ? '' : ' · ให้ admin ของเทศบาลนำกลับมาใช้'}</div>` : '';
 
 // ---- ฟอร์มจุด ----
+// DEC-132 ค่าจากจุดที่แล้ว (เก็บในเครื่องนี้ แยกตามบัญชี) ใช้เป็นค่าเริ่มต้นของจุดใหม่ · ผู้บันทึกเดินเก็บทีละถนน ไม่ต้องเลือกถนน/ถังซ้ำ
+const lastKey = () => 'ubw_last_place_' + ((S.me && S.me.id) || '') + '_' + (S.me.municipality_id || S.scopeMuni || '');
+const lastPlace = () => { try { return JSON.parse(localStorage.getItem(lastKey()) || 'null'); } catch (_) { return null; } };
+function rememberPlace(payload) {
+  const r = document.querySelector('#binRows .binrow'); const bin = r ? { type: $('.b_type', r).value, amt: parseInt($('.b_amt', r).value || '1') || 1, color: $('.b_color', r).value || '' } : null;
+  try { localStorage.setItem(lastKey(), JSON.stringify({ road: payload.road_id, soi: payload.soi_id, type: payload.place_type_id, bin })); } catch (_) {}
+}
 async function pagePlaceEdit(view, id) {
   const isNew = id === 'new';
   const muniId = S.me.municipality_id || S.scopeMuni;
   const roads = await api.list('road', { eq: { municipality_id: muniId, status: 'active' }, order: ['name'] });
   const sois = await api.list('soi', { eq: { municipality_id: muniId, status: 'active' }, order: ['name'] });
-  const p = isNew ? { status: 'active' } : (await api.list('place', { eq: { id } }))[0];
+  const L = isNew ? lastPlace() : null, okRoad = L && roads.some(r => r.id === L.road);
+  const p = isNew ? { status: 'active', ...(okRoad ? { road_id: L.road, soi_id: L.soi, place_type_id: L.type } : {}) } : (await api.list('place', { eq: { id } }))[0];
+  S._lastBin = okRoad ? L.bin : null;
   if (!roads.length) return view.innerHTML = `<div class="card">เทศบาลนี้ยังไม่มีถนนในระบบ ให้ admin ของเทศบาลเพิ่มถนนก่อนที่เมนู "จัดการเทศบาล"</div>`;
   view.innerHTML = `<div class="card"><h3 style="margin-top:0">${isNew ? 'เพิ่มจุด' : 'แก้ไขจุด ' + esc(p.place_code)} ${helpBtn('place-edit')}${!isNew && p.status !== 'active' ? ' <span class="pill" style="background:#fee2e2;color:#7f1d1d">ยกเลิกแล้ว</span>' : ''}</h3>${isNew ? '' : placeOffBanner(p, true)}
+    ${isNew && okRoad ? '<div class="banner info" style="margin:6px 0">ถนน ซอย ประเภทจุด และถังแถวแรก ใช้ค่าจากจุดที่แล้ว ตรวจให้ตรงก่อนบันทึก</div>' : ''}
     <label>ชื่ออ้างอิง (เช่น หน้าวัด… หน้าโรงเรียน…) *${fh('place.name')}</label><input id="f_name" maxlength="200" value="${esc(p.name || '')}">
     <label>ประเภทจุด${fh('place.type')}</label><select id="f_type">${S.cache.place_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}" ${t.id === p.place_type_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
     <label>ถนน *${fh('place.road')}</label><select id="f_road" onchange="fillSoi()">${roads.map(r => `<option value="${r.id}" ${r.id === p.road_id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
@@ -928,7 +941,7 @@ async function pagePlaceEdit(view, id) {
       <h4>รูป (ไม่บังคับ · สูงสุด ${maxPhotos()} รูป)${fh('place.photos')}</h4>${PDPA_PHOTO_WARN}<div class="row"><label class="btn small" style="display:inline-block;margin:0">📷 ถ่ายรูป<input type="file" accept="image/*" capture="environment" class="hidden" onchange="pickPhotos(this.files); this.value=''"></label><label class="btn small secondary" style="display:inline-block;margin:0">เลือกจากคลังรูป<input type="file" accept="image/*" multiple class="hidden" onchange="pickPhotos(this.files); this.value=''"></label></div><div id="f_photoList" class="photos" style="margin-top:8px"></div><div class="muted">"ถ่ายรูป" เปิดกล้องหลังทีละรูป กดซ้ำเพื่อถ่ายเพิ่ม · รูปจะถูกย่อให้เล็กลงก่อนส่ง</div>` : ''}
     <div class="row" style="margin-top:16px"><button id="btnSave" onclick="savePlace('${isNew ? '' : p.id}')">บันทึก</button><button class="secondary" onclick="history.back()">ยกเลิก</button></div>
     ${!navigator.onLine ? '<div class="banner warn" style="margin-top:10px">ไม่มีสัญญาณ: จะเก็บไว้ในเครื่องและส่งเมื่อมีสัญญาณ</div>' : ''}</div>`;
-  S._sois = sois; S._p = p; S._newPhotos = []; fillSoi(); if (isNew) addBinRow();
+  S._sois = sois; S._p = p; S._newPhotos = []; fillSoi(); if (isNew) addBinRow(S._lastBin);
 }
 function fillSoi() { const rid = $('#f_road').value; const list = S._sois.filter(s => s.road_id === rid); $('#f_soi').innerHTML = `<option value="">—</option>` + list.map(s => `<option value="${s.id}" ${s.id === S._p.soi_id ? 'selected' : ''}>${esc(s.name)}</option>`).join(''); }
 // รูปที่เลือกไว้ก่อนบันทึกจุด (MIS-015: แยกปุ่มถ่าย/เลือก เพราะ input ที่มี multiple+capture พร้อมกัน iPhone จะเปิดเฉพาะคลังรูป)
@@ -943,10 +956,10 @@ function pickPhotos(files) {
 }
 function drawPhotoList() { const box = $('#f_photoList'); if (!box) return; box.innerHTML = (S._newPhotos || []).map((f, i) => `<div style="text-align:center"><img src="${URL.createObjectURL(f)}" alt="รูปที่ ${i + 1}" style="width:96px;height:96px;object-fit:cover;border-radius:8px;display:block"><button type="button" class="small danger" style="margin-top:4px" onclick="removeNewPhoto(${i})">ลบ</button></div>`).join('') || '<span class="muted">ยังไม่ได้เลือกรูป</span>'; }
 function removeNewPhoto(i) { S._newPhotos.splice(i, 1); drawPhotoList(); }
-function addBinRow() { const d = document.createElement('div'); d.className = 'binrow';
+function addBinRow(def) { const d = document.createElement('div'); d.className = 'binrow';
   const f = (label, ctrl, k) => `<div><label class="mini">${label}${fh(k)}</label>${ctrl}</div>`;   // A3 ป้ายเล็กเหนือทุกช่อง (bindLabels ผูก for= ให้อัตโนมัติ)
-  d.innerHTML = `${f('ประเภทถัง', `<select class="b_type">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}">${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>`, 'bin.type').replace('<div>', '<div class="full">')}
-    ${f('จำนวนใบ', stepper('class="b_amt"', 1), 'bin.amount').replace('<div>', '<div class="wide">')}${f('สีถัง', binColorSelect('b_color', ''), 'bin.color')}${f('สภาพ', condSelect('b_cond', 'ปกติ'), 'bin.cond')}${f('ปีงบที่ซื้อ', fySelect('b_fy', ''), 'bin.fy')}
+  d.innerHTML = `${f('ประเภทถัง', `<select class="b_type">${S.cache.bin_type.filter(t => t.status === 'active').map(t => `<option value="${t.id}" ${def && def.type === t.id ? 'selected' : ''}>${esc(t.name)} (${fmt(t.liters)} ล.)</option>`).join('')}</select>`, 'bin.type').replace('<div>', '<div class="full">')}
+    ${f('จำนวนใบ', stepper('class="b_amt"', (def && def.amt) || 1), 'bin.amount').replace('<div>', '<div class="wide">')}${f('สีถัง', binColorSelect('b_color', (def && def.color) || ''), 'bin.color')}${f('สภาพ', condSelect('b_cond', 'ปกติ'), 'bin.cond')}${f('ปีงบที่ซื้อ', fySelect('b_fy', ''), 'bin.fy')}
     ${f('เลขครุภัณฑ์ (ถ้ามี)', `<input class="b_asset">`, 'bin.asset')}${f('ราคา/ใบ (ว่าง = มาตรฐาน)', `<input class="b_cost" type="number" min="0" step="any" inputmode="decimal">`, 'bin.cost')}
     <div style="justify-content:flex-end"><button class="small danger" type="button" onclick="this.parentNode.parentNode.remove()">ลบแถว</button></div>`;
   $('#binRows').appendChild(d); bindLabels(d); }
@@ -1119,13 +1132,14 @@ async function savePlace(id) {
       binRows.forEach(x => Queue.push({ kind: 'bin', placeRef: tempId, payload: x, label: 'ถังของ ' + name }));
       photoPayloads.forEach(ph => Queue.push({ kind: 'photo', placeRef: tempId, payload: ph, label: 'รูปของ ' + name }));
       if (Queue.bytes() > CONFIG.QUEUE_WARN_BYTES) toast('คิวพักข้อมูลในเครื่องใกล้เต็ม ควรส่งเมื่อมีสัญญาณโดยเร็ว', true);
-      toast('เก็บไว้ในเครื่องแล้ว จะส่งเมื่อมีสัญญาณ'); go('#places');
+      rememberPlace(payload); toast('เก็บไว้ในเครื่องแล้ว จะส่งเมื่อมีสัญญาณ'); go('#places');
     };
     if (!navigator.onLine) return queueAll('ไม่มีสัญญาณ');
     let row;
     try { row = await api.insert('place', payload); } catch (e) { if (isNetworkError(e)) return queueAll('ส่งไม่สำเร็จ'); throw e; }
     for (const x of binRows) { try { await api.insert('bin', { ...x, place_id: row.id }); } catch (e) { if (isNetworkError(e)) Queue.push({ kind: 'bin', placeRef: row.id, payload: x, label: 'ถังของ ' + name }); else fail(e, 'ถังบางแถวบันทึกไม่ได้ (จุดบันทึกแล้ว เพิ่มถังใหม่ได้ที่หน้าจุด)'); } }
     toast('บันทึกจุด ' + row.place_code + ' แล้ว' + (photoPayloads.length ? ' · กำลังส่งรูปต่อเบื้องหลัง' : ''));
+    rememberPlace(payload); S._justAdded = row.id;
     go('#place/' + row.id);                                   // ไปหน้าจุดทันที ไม่รอรูป (ส่งรูปใช้เวลาหลายวินาที)
     if (photoPayloads.length) uploadPhotosInBackground(row.id, photoPayloads, name);
   } catch (e) { fail(e, id ? 'บันทึกจุดไม่สำเร็จ' : 'เพิ่มจุดไม่สำเร็จ'); } finally { b.disabled = false; b.textContent = btnText; }
@@ -3645,6 +3659,20 @@ async function shotStart() {
 // =====================================================================
 // เริ่มทำงาน
 // =====================================================================
+// DEC-132 ติดตั้งเป็นแอปบนมือถือ: sw.js จำหน้าเว็บ/ไลบรารีไว้ (หน้าเว็บดึงรุ่นล่าสุดจากเน็ตก่อนเสมอ) · ไม่ใช้ในโหมดสาธิตและโหมดถ่ายภาพหน้าจอ
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+function installBar() {
+  const box = $('#installBar'); if (!box) return; let off = false; try { off = localStorage.getItem('ubw_install_off') === '1'; } catch (_) {}
+  const field = S.me && ['recorder', 'driver', 'supervisor', 'admin'].includes(S.me.role), phone = matchMedia('(max-width: 820px)').matches;
+  if (IS_DEMO || SHOT || off || isStandalone() || !field || !phone || !(S._installEvt || isIOS())) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="banner info"><span style="flex:1;min-width:180px"><b>ติดตั้งเป็นแอปบนหน้าจอมือถือ</b> เปิดได้ทันทีจากไอคอน ไม่ต้องพิมพ์ลิงก์${isIOS() && !S._installEvt ? ' · กดปุ่มแชร์ของ Safari แล้วเลือก "เพิ่มไปยังหน้าจอโฮม"' : ''}</span>${S._installEvt ? '<button class="small" type="button" onclick="installApp()">ติดตั้ง</button>' : ''}<button class="small secondary" type="button" onclick="installOff()">ไม่ต้อง</button></div>`;
+}
+async function installApp() { const ev = S._installEvt; if (!ev) return; ev.prompt(); try { await ev.userChoice; } catch (_) {} S._installEvt = null; installBar(); }
+function installOff() { try { localStorage.setItem('ubw_install_off', '1'); } catch (_) {} installBar(); }
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); S._installEvt = e; installBar(); });
+window.addEventListener('appinstalled', () => { S._installEvt = null; installBar(); toast('ติดตั้งแล้ว เปิดจากไอคอน "จุดถังขยะ" บนหน้าจอได้เลย'); });
+if ('serviceWorker' in navigator && !IS_DEMO && !SHOT && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
 if (SHOT) shotStart();
 else {
   Queue.refreshBadge();

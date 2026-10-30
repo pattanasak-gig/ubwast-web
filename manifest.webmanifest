@@ -1,0 +1,16 @@
+{
+  "name": "ระบบข้อมูลจุดวางถังขยะ",
+  "short_name": "จุดถังขยะ",
+  "description": "บันทึกจุดวางถังขยะ เส้นทางรถ และเรื่องแจ้งจากประชาชนของเทศบาล",
+  "lang": "th",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#1b6e3a",
+  "icons": [
+    { "src": "pwa/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "pwa/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
