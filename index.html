@@ -132,6 +132,13 @@ const CONFIG = {
   .subtabs { display:flex; gap:6px; margin: 0 0 12px; flex-wrap:wrap; }
   .subtabs a { text-decoration:none; padding: 0 16px; min-height:44px; display:inline-flex; align-items:center; border-radius: 999px; border:1px solid var(--line); background:#fff; color:#374151; font-size:14px; }
   .subtabs a.active { background:#1F3A5F; color:#fff; border-color:#1F3A5F; font-weight:600; }
+  .nbadge { display:inline-block; min-width:20px; padding:0 6px; margin-left:4px; border-radius:999px; color:#fff; font-size:12px; font-weight:700; line-height:20px; text-align:center; vertical-align:middle; }
+  .ckbar { height:10px; border-radius:999px; background:#e5e7eb; overflow:hidden; margin:6px 0 10px; }
+  .ckbar > i { display:block; height:100%; }
+  .ckrow { border-top:1px solid var(--line); padding:10px 0; }
+  .ckrow:first-of-type { border-top:0; }
+  .ckrow ul { margin:6px 0 0; padding-left:20px; max-height:320px; overflow:auto; }
+  .ckrow li { margin:4px 0; }
   .finding { background:#1F3A5F; color:#fff; border-radius:12px; padding:14px 16px; display:flex; gap:14px; align-items:center; margin-bottom:12px; }
   .finding .fv { font-size:34px; font-weight:700; color:#E9D5FF; min-width:120px; line-height:1.1; }
   .finding b { color:#E9D5FF; }
@@ -643,6 +650,17 @@ function renderTabs() {
   $('#tabs').innerHTML = S.me ? TABS().map(([h, l]) => `<a href="${h}" class="${location.hash.startsWith(h) ? 'active' : ''}">${l}</a>`).join('') : '';
 }
 window.addEventListener('hashchange', render);
+// DEC-129 B2 ตัวเลขเรื่องแจ้งที่ยังไม่ปิดบนเมนู "เรื่องแจ้ง" · แดง = มีเรื่องใหม่ที่ยังไม่รับเรื่อง · จำไว้ 60 วินาที (ล้างเมื่อเปลี่ยนสถานะเรื่อง)
+async function refreshRepBadge() {
+  if (!S.me || isDriver()) return; const key = S.scopeMuni || 'all';
+  if (!S._repCnt || S._repCnt.key !== key || Date.now() - S._repCnt.t > 60000) {
+    try { const rows = (await api.list('citizen_report', { eq: scopeEq() })).filter(r => !RCLOSED.includes(r.status)); S._repCnt = { key, t: Date.now(), n: rows.length, nNew: rows.filter(r => r.status === 'new').length }; } catch (_) { return; }
+  }
+  const a = document.querySelector('#tabs a[href="#complaints"]'); if (!a) return; const old = a.querySelector('.nbadge'); if (old) old.remove();
+  const { n: cnt, nNew } = S._repCnt; if (!cnt) return;
+  const tip = `เรื่องค้าง ${fmt(cnt)} เรื่อง${nNew ? ` · ใหม่ยังไม่รับเรื่อง ${fmt(nNew)} เรื่อง` : ''}`;
+  a.insertAdjacentHTML('beforeend', `<span class="nbadge" style="background:${nNew ? REPORT_RED : '#6b7280'}" title="${tip}" aria-label="${tip}">${fmt(cnt)}</span>`);
+}
 async function render() {
   S.charts.forEach(c => c.destroy()); S.charts = [];
   if (!location.hash.startsWith('#routes')) S._adj = null;   // ออกจากหน้าเส้นทาง = เลิกโหมดปรับ
@@ -660,7 +678,7 @@ async function render() {
     await loadMasters();
     $('#who').textContent = `${S.me.display_name} · ${roleLabel(S.me.role)}${S.me.municipality_id ? ' · ' + (muniOf(S.me.municipality_id).code || '') : ''}`;
     Queue.refreshBadge();
-    const h = location.hash || '#map'; renderTabs();
+    const h = location.hash || '#map'; renderTabs(); refreshRepBadge();
     if (h.startsWith('#trips')) return canLogTrip() ? pageTrips(view) : pageMap(view);   // DEC-117
     if (isDriver() && !/^#(trips|help|me|about|guide)/.test(h)) return pageTrips(view);   // คนขับเห็นเฉพาะเที่ยววิ่ง
     if (h.startsWith('#map')) return pageMap(view);
@@ -1623,6 +1641,7 @@ async function pageComplaints(view) {
   S._crList = reps;
 }
 async function repSet(id, st) {
+  S._repCnt = null;   // DEC-129 ให้ตัวเลขบนเมนูนับใหม่
   if (st !== 'done') { try { await api.rpc('set_report_status', { p_report: id, p_status: st }); toast('อัปเดตสถานะ: ' + rsName(st)); render(); } catch (e) { fail(e, 'อัปเดตสถานะไม่สำเร็จ'); } return; }
   const r = (S._crList || []).find(x => x.id === id) || {};
   openModal(`<h3 style="margin-top:0">ดำเนินการเสร็จแล้ว: ${esc(r.code || '')}</h3><div class="muted">แนบรูปหลังแก้ไขได้ 1 รูป (ไม่บังคับ) ผู้แจ้งจะเห็นรูปนี้ในหน้าติดตามเรื่อง</div>${PDPA_PHOTO_WARN}
@@ -2048,7 +2067,7 @@ async function pageAdmin(view) {
     beforeSave: p => { if (p.round_no != null && !(Number.isInteger(p.round_no) && p.round_no >= 1 && p.round_no <= 9)) return 'รอบที่ ต้องเป็นเลข 1–9'; for (const k of ['valid_from', 'valid_to']) if (p[k] && !/^\d{4}-\d{2}-\d{2}$/.test(p[k])) return 'รูปแบบวันที่ต้องเป็น ปี-เดือน-วัน เช่น 2026-12-30'; if (p.valid_from && p.valid_to && p.valid_to < p.valid_from) return 'วันสิ้นสุดต้องไม่ก่อนวันเริ่ม'; },
     rowBtns: r => ` <button class="small secondary" onclick="routeRoads('${r.id}')">ถนนในเส้นทาง</button> <button class="small secondary" onclick="routeStops('${r.id}')">ลำดับจุด / เส้นถนน</button>` };
   SPECS.app_user = { table: 'app_user', title: 'บัญชีผู้ใช้', help: 'admin-users', intro: 'ผู้บันทึก = เพิ่ม/แก้จุดและถัง · คนขับรถ = กรอกเที่ยววิ่งของรถที่ผูก · หัวหน้าพนักงาน = กรอกเที่ยวแทนทุกคัน + สิทธิ์ผู้บันทึก · admin ยกเลิกข้อมูลได้และจัดการถนน รถ เส้นทาง · ลืมรหัสผ่าน → "รีเซ็ตรหัส"', eq: { municipality_id: mid }, noAdd: true, cols: [{ key: 'display_name', label: 'ชื่อแสดง', required: true }, { key: 'username', label: 'ชื่อล็อกอิน', readonly: true }, { key: 'role', label: 'บทบาท', type: 'select', readonly: true, options: () => [{ value: 'admin', label: 'admin เทศบาล' }, { value: 'recorder', label: 'ผู้บันทึก' }, { value: 'driver', label: 'คนขับรถ' }, { value: 'supervisor', label: 'หัวหน้าพนักงาน' }] }, { key: 'truck_id', label: 'รถที่ผูก (คนขับ)', short: 'รถ (คนขับ)', type: 'select', nullable: true, nullLabel: '— ยังไม่ผูกรถ —', showIf: r => r.role === 'driver', options: () => trucks.map(t => ({ value: t.id, label: t.code + (t.plate_no ? ' · ' + t.plate_no : '') })) }, { key: 'status', label: 'สถานะ', type: 'status' }], extraBtn: `<button class="small" onclick="userForm('${mid}')">＋ เพิ่มบัญชี</button>`, rowBtns: r => r.id !== S.me.id ? ` <button class="small secondary" onclick="resetPw('${r.id}','${esc(r.username)}','${r.role}')">รีเซ็ตรหัส</button>${r.role !== 'super_admin' && (isSuper() || ['recorder', 'driver', 'supervisor'].includes(r.role)) ? ` <button class="small danger" onclick="delUserAsk('${r.id}','${esc(r.username)}')">ลบ</button>` : ''}` : '' };
-  const tabs = [['start', 'เริ่มต้นใช้งาน'], ['roads', 'ถนนและซอย'], ['fleet', 'รถและเส้นทาง'], ['fuel', 'น้ำมันรถ'], ['users', 'บัญชีผู้ใช้'], ['settings', 'ตั้งค่าเทศบาล']];
+  const tabs = [['start', 'เริ่มต้นใช้งาน'], ['check', 'ตรวจความครบ'], ['roads', 'ถนนและซอย'], ['fleet', 'รถและเส้นทาง'], ['fuel', 'น้ำมันรถ'], ['users', 'บัญชีผู้ใช้'], ['settings', 'ตั้งค่าเทศบาล']];
   const nav = `<nav class="subtabs">${tabs.map(([k, l]) => `<a href="#admin/${k}" class="${tab === k ? 'active' : ''}">${l}</a>`).join('')}</nav>`;
   let body = '';
   if (tab === 'roads') body = `<div class="card"><div class="row" style="justify-content:space-between"><div><b>ยังไม่มีถนนที่ต้องการ?</b> <span class="muted">ดึงชื่อถนนและซอยในเขตเทศบาลจากแผนที่ OpenStreetMap ได้ทุกเมื่อ (ไม่เพิ่มซ้ำ) หรือกด "เพิ่ม" ในตารางเพื่อพิมพ์เอง</span></div><button class="small secondary" onclick="adminImportRoads()">ดึงถนน/ซอยจาก OpenStreetMap</button></div></div>` + (await crudSection(SPECS.road)) + (await crudSection(SPECS.soi));
@@ -2062,8 +2081,68 @@ async function pageAdmin(view) {
   else if (tab === 'fuel') body = hasFuel ? await adminFuel(mid, trucks) : '<div class="card"><b>ยังเปิดใช้บันทึกน้ำมันไม่ได้</b><div class="muted">เจ้าของโครงการต้องรันไฟล์ sql/015_fuel.sql ใน Supabase ก่อน</div></div>';
   else if (tab === 'users') body = await crudSection(SPECS.app_user);
   else if (tab === 'settings') body = adminSettings(muni);
+  else if (tab === 'check') body = await adminCheck(mid);
   else body = adminStart(muni);
   view.innerHTML = scopeSelector() + `<div class="banner info">เทศบาล ${esc(muni.code)} · ${esc(muni.name)} · เพดานผู้บันทึก ${muni.max_recorders} บัญชี</div>` + nav + body;
+  if (S._fixOpen) { const f = S._fixOpen; S._fixOpen = null; const sp = SPECS[f.table]; if (sp && sp._rows && sp._rows.some(x => x.id === f.id)) crudForm(f.table, f.id); }   // DEC-129 กด "แก้" จากหน้าตรวจความครบ → เปิดฟอร์มของรายการนั้นทันที
+}
+// DEC-129 A1 ตรวจความครบของข้อมูล: รวมทุกรายการที่ยังขาดในหน้าเดียว · ตรวจเฉพาะรายการที่ใช้งานอยู่ · กด "แก้" ไปหน้าแก้ของรายการนั้น
+const fixOpen = (table, id, hash) => { S._fixOpen = { table, id }; if (location.hash === hash) render(); else go(hash); };
+const placesMiss = miss => { S._pf = { q: '', road: '', st: 'active', tier: '', type: '', miss, rep: '', size: (S._pf && S._pf.size) || 20, page: 0 }; go('#places'); };
+const CK_SEV = { must: ['ต้องแก้', '#fee2e2', '#7f1d1d'], should: ['ควรแก้', '#fef3c7', '#78350f'], info: ['ข้อมูลประกอบ', '#e0f2fe', '#075985'] };
+async function adminCheck(mid) {
+  const ym = ymOf(new Date()), today = new Date().toISOString().slice(0, 10);
+  const [trucks, routes0, sites, users, places] = await Promise.all([api.list('truck', { eq: { municipality_id: mid, status: 'active' }, order: ['code'] }), api.list('v_route_summary', { eq: { municipality_id: mid, status: 'active' }, order: ['route_name'] }),
+    siteList(mid), api.list('app_user', { eq: { municipality_id: mid, status: 'active' }, order: ['username'] }), api.list('v_place', { eq: { municipality_id: mid, status: 'active' }, order: ['place_code'] })]);
+  let rr = []; try { rr = await api.list('route_road', {}); } catch (_) {}
+  let trips = null; try { trips = (await api.list('v_trip', { eq: { municipality_id: mid, status: 'active' } })).filter(t => String(t.trip_date).startsWith(ym)); } catch (_) {}
+  const routes = routes0.filter(r => r.route_kind !== 'temporary' || !((r.valid_to && r.valid_to < today) || (r.valid_from && r.valid_from > today)));   // งานชั่วคราวที่หมดอายุ/ยังไม่เริ่ม ไม่ต้องตรวจ
+  const tt = id => (S.cache.truck_type || []).find(x => x.id === id) || {}, used = new Set(routes.map(r => r.truck_id));
+  const rid = new Set(routes.map(r => r.route_id)), roadsInRoute = new Set(rr.filter(x => rid.has(x.route_id)).map(x => x.road_id));
+  const disp = sites.filter(x => x.status === 'active' && x.site_type === 'disposal');
+  const btn = (on, l = 'แก้') => `<button class="small secondary" type="button" onclick="${on}">${l}</button>`, lnk = (h, l = 'แก้') => `<a class="btn small secondary" style="text-decoration:none" href="${h}">${l}</a>`;
+  const T = t => ({ t: `${esc(t.code)}${t.plate_no ? ' · ' + esc(t.plate_no) : ''}`, a: btn(`fixOpen('truck','${t.id}','#admin/fleet')`) });
+  const R = r => ({ t: `${esc(r.route_name)} <span class="muted">· ${esc(r.truck_code || 'ยังไม่ผูกรถ')}</span>`, a: lnk('#route-edit/' + r.route_id) });
+  const St = x => ({ t: esc(x.name), a: btn(`fixOpen('site','${x.id}','#admin/fleet')`) });
+  const U = u => ({ t: `${esc(u.username)} <span class="muted">· ${esc(u.display_name || '')}</span>`, a: btn(`fixOpen('app_user','${u.id}','#admin/users')`) });
+  const Pl = (p, h) => ({ t: `${esc(p.place_code)} <span class="muted">· ${esc(p.name || '')}</span>`, a: lnk(h + p.id) });
+  const G = [
+    { title: 'รถเก็บขยะ', n: trucks.length, checks: [
+      { sev: 'must', l: 'ระบุชนิดเชื้อเพลิง', why: 'ไม่ระบุ = คำนวณ kgCO2e ของรถไม่ได้', of: trucks, bad: trucks.filter(t => !t.fuel_type).map(T) },
+      { sev: 'must', l: 'มีอัตราสิ้นเปลือง (ของรถเอง หรือค่ากลางของประเภทรถ)', why: 'ไม่มีทั้งสองค่า = ประมาณเชื้อเพลิงไม่ได้', of: trucks, bad: trucks.filter(t => !+t.fuel_economy && !+tt(t.truck_type_id).default_fuel_economy).map(T) },
+      { sev: 'should', l: 'กรอกอัตราสิ้นเปลืองของรถเอง', why: 'ตอนนี้ใช้ค่ากลางของประเภทรถแทน ตัวเลขจะใกล้จริงขึ้นถ้ากรอกจากการเติมน้ำมันจริง (ในฟอร์มรถมีตัวช่วยคำนวณ)', of: trucks, bad: trucks.filter(t => !+t.fuel_economy && +tt(t.truck_type_id).default_fuel_economy).map(t => ({ ...T(t), t: T(t).t + ` <span class="muted">· ใช้ค่ากลาง ${fmt2(+tt(t.truck_type_id).default_fuel_economy)} กม./หน่วย</span>` })) },
+      { sev: 'info', l: 'อยู่ในเส้นทางอย่างน้อย 1 เส้น', why: 'รถที่ไม่มีเส้นทางจะไม่ถูกนับระยะทางและการปล่อย (ถ้าเป็นรถสำรอง ไม่ต้องแก้)', of: trucks, bad: trucks.filter(t => !used.has(t.id)).map(t => ({ ...T(t), a: lnk('#route-edit/new', 'สร้างเส้นทาง') })) }] },
+    { title: 'เส้นทางเดินรถ', n: routes.length, empty: !routes.length && trucks.length ? 'ยังไม่มีเส้นทาง ระบบจึงคำนวณระยะทางและการปล่อยของรถไม่ได้' : '', emptyA: lnk('#route-edit/new', '＋ เพิ่มเส้นทาง'), checks: [
+      { sev: 'must', l: 'เลือกถนนในเส้นทาง', why: 'ไม่มีถนน = ไม่มีจุดเก็บขยะในเส้นทาง', of: routes, bad: routes.filter(r => !+r.roads).map(R) },
+      { sev: 'must', l: 'ติ๊กวันที่วิ่ง', why: 'ไม่ติ๊ก = นับ 0 รอบ การปล่อยของเส้นทางเป็น 0', of: routes, bad: routes.filter(r => !+r.days_per_week).map(R) },
+      { sev: 'must', l: 'มีระยะทาง (ลากเส้นตามถนนแล้ว)', why: 'ไม่มีระยะทาง = คำนวณเชื้อเพลิงและ kgCO2e ของเส้นทางไม่ได้ · แก้ที่ขั้นที่ 3 "บันทึกและลากเส้นตามถนน"', of: routes, bad: routes.filter(r => !+r.path_distance_m).map(R) },
+      { sev: 'should', l: 'ระบุที่ทิ้งขยะ', why: 'ไม่ระบุ = ระยะทางนับเฉพาะช่วงเก็บขยะ ไม่รวมขาไปทิ้ง', of: routes, bad: routes.filter(r => !r.dump_site_id).map(R) }] },
+    ...(S._hasSite ? [{ title: 'ที่ทิ้งขยะ', n: disp.length, empty: !disp.length ? 'ยังไม่มีที่ทิ้งขยะ ระบบใช้ค่าฝังกลบตั้งต้นกับทุกเที่ยว' : '', emptyA: lnk('#admin/fleet', 'ไปเพิ่ม'), checks: [
+      { sev: 'should', l: 'ระบุประเภทบ่อ', why: 'ไม่ระบุ = ใช้ค่าฝังกลบถูกหลักสุขาภิบาล (ค่าตั้งต้น) ซึ่งอาจต่ำหรือสูงกว่าจริง', of: disp, bad: disp.filter(x => !x.pit_type || x.pit_type === 'unknown').map(St) },
+      { sev: 'should', l: 'ระบุเจ้าของบ่อ', why: 'ใช้ติดป้าย Scope 1 / Scope 3 ในรายงาน (ไม่เปลี่ยนตัวเลข)', of: disp.filter(x => x.pit_type !== 'transfer'), bad: disp.filter(x => x.pit_type !== 'transfer' && !x.pit_owner).map(St) }] }] : []),
+    { title: 'จุดวางถัง', n: places.length, checks: [
+      { sev: 'must', l: 'มีพิกัด', why: 'ไม่มีพิกัด = ไม่แสดงบนแผนที่ และไม่อยู่ในลำดับจุดของเส้นทาง', of: places, bad: places.filter(p => p.lat == null).map(p => Pl(p, '#place-edit/')), more: "placesMiss('gps')" },
+      { sev: 'must', l: 'มีถังอย่างน้อย 1 แถว', why: 'ไม่มีถัง = ความจุเป็น 0 ไม่นับในยอดรวม', of: places, bad: places.filter(p => !+p.total_bins).map(p => Pl(p, '#place/')), more: "placesMiss('bins')" },
+      { sev: 'should', l: 'มีรูปถ่าย', why: 'ประชาชนและเจ้าหน้าที่ใช้รูปยืนยันว่าเป็นจุดเดียวกัน', of: places, bad: places.filter(p => !+p.photo_count).map(p => Pl(p, '#place-edit/')), more: "placesMiss('photo')" },
+      ...(rr.length || !routes.length ? [{ sev: 'should', l: 'ถนนของจุดอยู่ในเส้นทางเดินรถ', why: 'ถนนที่ไม่อยู่ในเส้นทางใด = ไม่มีรถรับผิดชอบจุดนั้น', of: places, bad: places.filter(p => !roadsInRoute.has(p.road_id)).map(p => ({ t: `${esc(p.place_code)} <span class="muted">· ถนน ${esc(p.road_name || '-')}</span>`, a: lnk('#admin/fleet', 'ไปเส้นทาง') })) }] : [])] },
+    { title: 'บัญชีคนขับรถ', n: users.filter(u => u.role === 'driver').length, checks: [
+      { sev: 'should', l: 'ผูกรถแล้ว', why: 'คนขับที่ยังไม่ผูกรถ กรอกเที่ยววิ่งไม่ได้ (ถ้ายังไม่มีคนใช้บัญชีนี้ ไม่ต้องแก้)', of: users.filter(u => u.role === 'driver'), bad: users.filter(u => u.role === 'driver' && !u.truck_id).map(U) }] },
+    ...(trips ? [{ title: `เที่ยววิ่งเดือนนี้ (${esc(monthTh(ym))})`, n: routes.length, checks: [
+      { sev: 'info', l: 'เส้นทางที่มีบันทึกเที่ยววิ่ง (น้ำหนักจากใบชั่ง)', why: 'ไม่มีบันทึก = ไม่มีตัวเลขการฝังกลบและตันขยะของเส้นทางนั้น · คนขับหรือหัวหน้าพนักงานกรอกที่เมนู "เที่ยววิ่ง"', of: routes, bad: routes.filter(r => !trips.some(x => x.route_id === r.route_id)).map(r => ({ ...R(r), a: lnk('#trips', 'ไปกรอก') })) }] }] : [])
+  ];
+  const scored = G.flatMap(g => g.checks).filter(c => c.sev !== 'info' && c.of.length), tot = scored.reduce((a, c) => a + c.of.length, 0), ok = scored.reduce((a, c) => a + c.of.length - c.bad.length, 0);
+  const pct = tot ? Math.round(ok / tot * 100) : 100, nMust = G.flatMap(g => g.checks).filter(c => c.sev === 'must').reduce((a, c) => a + c.bad.length, 0), nShould = G.flatMap(g => g.checks).filter(c => c.sev === 'should').reduce((a, c) => a + c.bad.length, 0);
+  const col = pct >= 90 ? '#16a34a' : pct >= 60 ? '#d97706' : 'var(--danger)', pill = sev => `<span class="pill" style="background:${CK_SEV[sev][1]};color:${CK_SEV[sev][2]}">${CK_SEV[sev][0]}</span>`;
+  const row = c => { const done = !c.bad.length, SHOW = 30;
+    return `<div class="ckrow"><div class="row" style="justify-content:space-between;align-items:flex-start;gap:6px"><div style="flex:1;min-width:200px">${done ? '<span class="pill" style="background:#dcfce7;color:#14532d">ครบ</span>' : pill(c.sev)} <b>${c.l}</b><div class="muted">${c.why}</div></div><div style="white-space:nowrap">${c.of.length ? `ครบ <b>${fmt(c.of.length - c.bad.length)}</b> จาก ${fmt(c.of.length)}` : '<span class="muted">ไม่มีรายการ</span>'}</div></div>
+      ${done ? '' : `<details${c.sev === 'must' || c.bad.length <= 10 ? ' open' : ''}><summary style="cursor:pointer">ยังขาด ${fmt(c.bad.length)} รายการ <span class="muted">(กดเพื่อเปิด/ปิดรายการ)</span></summary><ul>${c.bad.slice(0, SHOW).map(x => `<li><span class="row" style="justify-content:space-between;gap:6px"><span>${x.t}</span>${x.a}</span></li>`).join('')}</ul>${c.bad.length > SHOW ? `<div class="muted" style="margin-top:4px">แสดง ${SHOW} รายการแรก · ${c.more ? `<button class="small" type="button" onclick="${c.more}">ดูทั้งหมด ${fmt(c.bad.length)} จุดในหน้าจุด</button>` : `อีก ${fmt(c.bad.length - SHOW)} รายการ`}</div>` : c.more ? `<div style="margin-top:4px"><button class="small secondary" type="button" onclick="${c.more}">เปิดในหน้าจุด (กรองแล้ว)</button></div>` : ''}</details>`}</div>`; };
+  return `<div class="card"><h4 style="margin-top:0">ความครบของข้อมูล</h4>
+    <div class="muted">ตรวจเฉพาะรายการที่ใช้งานอยู่ ณ ${esc(new Date().toLocaleDateString('th-TH', { dateStyle: 'medium' }))} · ตัวเลขการปล่อยก๊าซ ระยะทาง และรายงานผู้บริหาร ขึ้นกับข้อมูลเหล่านี้ · กด "แก้" เพื่อเปิดหน้าแก้ของรายการนั้น แล้วกลับมาที่แท็บนี้เพื่อดูผล</div>
+    <div class="row" style="align-items:baseline;gap:10px;margin-top:10px"><b style="font-size:32px;color:${col}">${pct}%</b><span class="muted">ครบ ${fmt(ok)} จาก ${fmt(tot)} รายการตรวจ (ไม่นับ "ข้อมูลประกอบ")</span></div>
+    <div class="ckbar" role="img" aria-label="ความครบ ${pct}%"><i style="width:${pct}%;background:${col}"></i></div>
+    <div class="row" style="gap:6px">${pill('must')} ${fmt(nMust)} รายการ · ${pill('should')} ${fmt(nShould)} รายการ</div>
+    <div class="muted" style="margin-top:6px"><b>ต้องแก้</b> = ทำให้ตัวเลขหายหรือผิด · <b>ควรแก้</b> = ตัวเลขยังออกได้แต่ใช้ค่าตั้งต้นหรือไม่ครบ · <b>ข้อมูลประกอบ</b> = แจ้งให้ทราบ อาจไม่ต้องแก้</div></div>
+    ${G.map(g => `<div class="card"><h4 style="margin:0 0 4px">${g.title} <span class="muted" style="font-weight:400">(${fmt(g.n)})</span></h4>${g.empty ? `<div class="banner warn" style="margin:6px 0">${g.empty} ${g.emptyA || ''}</div>` : ''}${g.checks.map(row).join('')}</div>`).join('')}`;
 }
 // DEC-109 แท็บ "น้ำมันรถ": กรอกเดือนละครั้งจากใบเบิกน้ำมัน/สมุดคุมรถ · ไม่บังคับ · 1 แถว = รถ 1 คัน
 async function adminFuel(mid, trucks) {
@@ -2117,6 +2196,7 @@ function adminStart(muni) {
     ['ดูแดชบอร์ดและพิมพ์รายงาน', 'เมนู "แดชบอร์ด" และ "รายงาน"', 'รายงานผู้บริหาร 1 หน้า พิมพ์เป็น PDF ได้', '#reports']
   ];
   return `<div class="card"><h4 style="margin-top:0">เริ่มต้นใช้งานสำหรับ admin เทศบาล ${helpBtn('admin-start')}</h4><div class="muted">ทำตามลำดับ 1 → 8 · แต่ละข้อบอก ทำอะไร · ที่ไหน · ค่าที่ต้องได้ · กด "ไป" เพื่อเปิดหน้านั้น</div>
+    <div class="banner info" style="margin-top:10px">ทำครบแล้วหรือยัง? แท็บ <b>"ตรวจความครบ"</b> บอกทุกรายการที่ยังขาดพร้อมปุ่มแก้ <a class="btn small" style="text-decoration:none;margin-left:6px" href="#admin/check">ตรวจความครบ</a></div>
     <ol style="padding-left:22px;margin:10px 0 0">${steps.map(([what, where, expect, href]) => `<li style="margin:10px 0"><b>${what}</b><div class="muted">ที่ไหน: ${where}</div><div class="muted">ค่าที่ต้องได้: ${expect}</div><a class="btn secondary small" href="${href}" style="display:inline-block;margin-top:4px;text-decoration:none">ไป</a></li>`).join('')}</ol>
     <div class="banner info" style="margin-top:12px">ติดปัญหา: กดไอคอน (?) ที่มีอยู่ทุกหน้า หรือเมนู "ช่วยเหลือ" · ถ้ายังแก้ไม่ได้ ติดต่อเจ้าของโครงการ</div></div>`;
 }
