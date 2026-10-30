@@ -471,6 +471,14 @@ const DemoBackend = () => {
     async logout() { me = null; },
     async me() { return me ? { ...me } : null; },
     async rpc(fn, args) {   // เลียนแบบ public_dashboard() ของ sql/018/022 และ delete_impact() ของ sql/022
+      if (fn === 'system_health') {   // เลียนแบบ sql/030 (ตัวเลขสมมติ 90 วัน)
+        if (!me || me.role !== 'super_admin') throw new Error('เฉพาะเจ้าของโครงการ (super admin)');
+        const rc = { place: D.place.length, bin: D.bin.length, place_photo: D.place_photo.length, route: D.route.length, trip_log: (D.trip_log || []).length, citizen_report: D.citizen_report.length, app_user: D.app_user.length, municipality: D.municipality.length };
+        const history = Array.from({ length: 90 }, (_, i) => { const d = new Date(Date.now() - (89 - i) * 864e5); return { day: d.toISOString().slice(0, 10), db_bytes: Math.round((14 + i * 0.05) * 1048576), drive_used: Math.round((3.1 + i * 0.004) * 1073741824), drive_limit: 15 * 1073741824, photo_bytes: Math.round((40 + i * 0.6) * 1048576), photo_files: 200 + i * 3, engine_version: '0.6.0', backup_at: d.getDay() === 0 ? d.toISOString() : null, row_counts: rc }; });
+        const last = history[89];
+        return { db_bytes: last.db_bytes, row_counts: rc, table_bytes: { place: 3.1 * 1048576, bin: 1.2 * 1048576, route_stop: 0.9 * 1048576, trip_log: 0.4 * 1048576, place_photo: 0.5 * 1048576, citizen_report: 0.1 * 1048576 }, history, last_backup: history.filter(h => h.backup_at).pop().backup_at,
+          photos_by_muni: D.municipality.map(m => ({ code: m.code, own_drive: !!m.photo_endpoint_url, photos: D.place_photo.filter(ph => (byId('place', ph.place_id) || {}).municipality_id === m.id).length })) };
+      }
       if (fn === 'submit_citizen_report') {   // เลียนแบบ sql/028
         const { p_place, p_issues, p_phone, p_consent, p_want_photo } = args, phone = String(p_phone || '').replace(/\D/g, ''), iss = [...new Set(p_issues || [])];
         if (!p_consent) throw new Error('กรุณาติ๊กยินยอมให้ใช้เบอร์โทรศัพท์ก่อนส่ง'); if (!/^0\d{9}$/.test(phone)) throw new Error('เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก ขึ้นต้นด้วย 0'); if (iss.length < 1 || iss.length > 3) throw new Error('เลือกประเภทเหตุ 1–3 ประเภท');
@@ -2682,7 +2690,7 @@ async function pageSuper(view) {
   SPECS.truck_type = { table: 'truck_type', title: 'ประเภทรถ', order: ['sort_order'], intro: 'ทุกประเภทต้องอยู่ในหมวดรถตายตัว (ใช้แยกรายงานและอัตราสิ้นเปลืองตั้งต้น) · admin เทศบาลเลือกได้เฉพาะรายการนี้ เพิ่มเองไม่ได้', cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'category', label: 'หมวดรถ', type: 'select', options: () => TRUCK_CATS.map(([v, l]) => ({ value: v, label: l })), def: () => 'compactor' }, { key: 'capacity_liters', label: 'ความจุ (ลิตร)', type: 'number', nullable: true }, { key: 'default_fuel_economy', label: 'อัตราสิ้นเปลืองตั้งต้น (กม./หน่วย)', short: 'กม./หน่วย', type: 'number', nullable: true, hint: 'ใช้เมื่อรถคันนั้นไม่ได้กรอกอัตราของตัวเอง' }, { key: 'detail', label: 'รายละเอียด', nullable: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
   SPECS.place_type = { table: 'place_type', title: 'ประเภทจุด', order: ['sort_order'], cols: [{ key: 'name', label: 'ชื่อ', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }, { key: 'status', label: 'สถานะ', type: 'status' }] };
   SPECS.capacity_tier = { table: 'capacity_tier', title: 'เกณฑ์สีหมุด', intro: 'ระดับความจุของจุด 5 ระดับ ใช้สีเดียวกันทั้งระบบ · แก้แล้วมีผลทันทีทุกหน้า', order: ['sort_order'], cols: [{ key: 'label', label: 'ป้าย', required: true }, { key: 'min_liters', label: 'ตั้งแต่ (ลิตร)', type: 'number', required: true }, { key: 'max_liters', label: 'ถึง (ลิตร, ว่าง = ไม่จำกัด)', type: 'number', nullable: true }, { key: 'color', label: 'รหัสสี', type: 'color', required: true }, { key: 'sort_order', label: 'ลำดับ', type: 'number' }] };
-  const tabs = [['munis', 'เทศบาล'], ['masters', 'ตารางแม่'], ['settings', 'ค่าตั้งค่า'], ['guide', 'คู่มือเจ้าของโครงการ']];
+  const tabs = [['munis', 'เทศบาล'], ['masters', 'ตารางแม่'], ['settings', 'ค่าตั้งค่า'], ['health', 'สุขภาพระบบ'], ['guide', 'คู่มือเจ้าของโครงการ']];
   const nav = `<nav class="subtabs">${tabs.map(([k, l]) => `<a href="#super/${k}" class="${tab === k ? 'active' : ''}">${l}</a>`).join('')}</nav>`;
   let body = '';
   SPECS.emission_factor = { table: 'emission_factor', title: 'ค่าการปล่อยก๊าซเรือนกระจก (kgCO2e ต่อหน่วยเชื้อเพลิง)', order: ['sort_order'], intro: 'ใช้คำนวณการปล่อยของงานเก็บขนทุกเทศบาล · 1 ค่าตั้งต้นต่อชนิดเชื้อเพลิง · เมื่อ อบก. ออกฉบับใหม่ ให้เพิ่มแถวใหม่พร้อมฉบับ/หน้า แล้วย้ายค่าตั้งต้น · หน่วยต้องตรงกับช่องน้ำมันรายเดือน (ลิตร / กก. / kWh)',
@@ -2693,6 +2701,7 @@ async function pageSuper(view) {
   if (tab === 'masters') { body = (await crudSection(SPECS.bin_type)) + (await crudSection(SPECS.truck_type)) + (await crudSection(SPECS.place_type)) + (await crudSection(SPECS.capacity_tier)); try { body += await crudSection(SPECS.emission_factor); } catch (_) { body += '<div class="card muted">ตารางค่าการปล่อยจะแสดงหลังรัน sql/019_emission.sql</div>'; } }
   else if (tab === 'settings') body = superSettings();
   else if (tab === 'guide') body = superGuide();
+  else if (tab === 'health') body = await superHealth();
   else body = await crudSection(SPECS.municipality);
   view.innerHTML = `${S._esriBanner || ''}<div class="banner info">ส่วนกลาง: ค่าที่นี่ใช้เหมือนกันทุกเทศบาล (DEC-079)</div>${(setting('asset_prices_status') || 'ประมาณการ') !== 'ยืนยันแล้ว' ? `<div class="banner warn">ราคามาตรฐานต่อใบและอายุใช้งานของประเภทถังเป็น <b>ค่าประมาณการตั้งต้น</b> (DEC-089) · ตรวจแล้วแก้ที่แท็บ "ตารางแม่ → ประเภทถัง" จากนั้นที่แท็บ "ค่าตั้งค่า" เลือก "ยืนยันแล้ว" เพื่อปิดป้ายเตือนบนแดชบอร์ด</div>` : ''}` + nav + body;
 }
@@ -2745,6 +2754,60 @@ ${location.origin}${location.pathname}#guide/photo
 ไม่ต้องส่งรหัสผ่านใด ๆ และไม่ต้องตั้งค่าอื่นเพิ่ม
 
 ขอบคุณครับ/ค่ะ`;
+// DEC-130 E2 สุขภาพระบบ: ระบบใช้บริการฟรีทั้งหมด → แสดงการใช้เทียบเพดาน · อัตราเติบโต · วันที่คาดว่าจะเต็ม · วิธีป้องกัน/ขยาย
+// เพดานตรวจจากหน้าเว็บทางการ 30 ต.ค. 2569 (supabase.com/pricing · developers.google.com/apps-script/guides/services/quotas · docs.github.com GitHub Pages limits)
+const MB = 1048576, GB = 1073741824, LIMITS_CHECKED = '30 ต.ค. 2569';
+const fmtSize = b => b == null ? '-' : b >= GB ? fmt2(b / GB) + ' GB' : b >= MB ? fmt2(b / MB) + ' MB' : fmt(Math.round(b / 1024)) + ' KB';
+const TABLE_TH = { place: 'จุดวางถัง', bin: 'ถัง', place_photo: 'รูปจุด (ลิงก์)', route: 'เส้นทาง', route_stop: 'ลำดับจุดในเส้นทาง', trip_log: 'เที่ยววิ่ง', fuel_log: 'บันทึกน้ำมัน', citizen_report: 'เรื่องแจ้ง', app_user: 'บัญชีผู้ใช้', municipality: 'เทศบาล' };
+// อัตราเติบโตต่อ 30 วัน จากค่าแรกและค่าล่าสุดในช่วง 90 วันหลัง (ต้องมีข้อมูลอย่างน้อย 7 วัน)
+function growth(hist, key) {
+  const h = hist.filter(x => x[key] != null).slice(-90); if (h.length < 2) return null;
+  const a = h[0], b = h[h.length - 1], days = (new Date(b.day) - new Date(a.day)) / 864e5; if (days < 7) return null;
+  return (b[key] - a[key]) / days * 30;
+}
+function untilFull(now, limit, per30) { if (!limit || !(per30 > 0)) return null; const d = (limit - now) / per30 * 30; return d <= 0 ? 0 : d; }
+async function superHealth() {
+  let h; try { h = await api.rpc('system_health', {}); } catch (e) { return `<div class="card"><b>ยังเปิดหน้าสุขภาพระบบไม่ได้</b><div class="muted">เจ้าของโครงการต้องรันไฟล์ sql/030_system_health.sql ใน Supabase ก่อน · ${esc(e.message || e)}</div></div>`; }
+  const hist = h.history || [], last = hist[hist.length - 1] || {}, dbL = 500 * MB, dbNow = +h.db_bytes;
+  const bar = (used, limit) => { const p = limit ? Math.min(100, used / limit * 100) : 0, col = p >= 80 ? 'var(--danger)' : p >= 60 ? '#d97706' : '#16a34a'; return `<div class="ckbar" role="img" aria-label="ใช้ไป ${fmt2(p)}%"><i style="width:${p}%;background:${col}"></i></div>`; };
+  const fc = (per30, left) => per30 == null ? '<span class="muted">ต้องมีข้อมูลอย่างน้อย 7 วันจึงคำนวณแนวโน้มได้ (ห้องเครื่องบันทึกวันละครั้ง)</span>' : per30 <= 0 ? `เพิ่มขึ้นเฉลี่ย ${fmtSize(Math.max(0, per30))} ต่อ 30 วัน · ไม่มีแนวโน้มเต็ม` : `เพิ่มขึ้นเฉลี่ย <b>${fmtSize(per30)}</b> ต่อ 30 วัน · ${left == null ? '' : left > 3650 ? 'อีกมากกว่า 10 ปีจึงจะเต็ม' : `คาดว่าจะเต็มในอีก <b>${fmt(Math.round(left))} วัน</b> (ราว ${esc(new Date(Date.now() + left * 864e5).toLocaleDateString('th-TH', { dateStyle: 'medium' }))})`}`;
+  const dbG = growth(hist, 'db_bytes'), dbLeft = untilFull(dbNow, dbL, dbG);
+  const dvU = last.drive_used, dvL = +last.drive_limit || null, dvG = growth(hist, 'drive_used'), phG = growth(hist, 'photo_bytes'), dvLeft = untilFull(dvU, dvL, dvG);
+  const tb = Object.entries(h.table_bytes || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const pingAge = last.day ? Math.floor((Date.now() - new Date(last.day + 'T00:00:00+07:00')) / 864e5) : null, bkAge = h.last_backup ? Math.floor((Date.now() - new Date(h.last_backup)) / 864e5) : null;
+  const dl = esriKeyDaysLeft(), stat = (ok, warn) => ok ? '<span class="pill" style="background:#dcfce7;color:#14532d">ปกติ</span>' : `<span class="pill" style="background:#fee2e2;color:#7f1d1d">${warn}</span>`;
+  setTimeout(() => { const el = $('#hDbChart'); if (!el || hist.length < 2) return; mkChart(el, { type: 'line', data: { labels: hist.map(x => x.day), datasets: [{ label: 'ฐานข้อมูล (MB)', data: hist.map(x => +(x.db_bytes / MB).toFixed(2)), borderColor: '#1D91C0', pointRadius: 0, tension: .2 }, ...(hist.some(x => x.photo_bytes != null) ? [{ label: 'โฟลเดอร์รูปกลาง (MB)', data: hist.map(x => x.photo_bytes != null ? +(x.photo_bytes / MB).toFixed(2) : null), borderColor: '#253494', pointRadius: 0, tension: .2, spanGaps: true }] : [])] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { x: { ticks: { maxTicksLimit: 6 } }, y: { beginAtZero: true, title: { display: true, text: 'MB' } } } } }); }, 0);
+  return `<div class="card"><h4 style="margin-top:0">สถานะงานอัตโนมัติ</h4><table><tbody>
+      <tr><td>ห้องเครื่องบันทึกสถิติล่าสุด (dailyPing)</td><td>${last.day ? esc(new Date(last.day + 'T00:00:00+07:00').toLocaleDateString('th-TH', { dateStyle: 'medium' })) : '-'}</td><td>${stat(pingAge != null && pingAge <= 2, pingAge == null ? 'ยังไม่มีข้อมูล' : 'ขาดหาย ' + fmt(pingAge) + ' วัน')}</td></tr>
+      <tr><td>สำรองข้อมูลล่าสุด (weeklyBackup)</td><td>${h.last_backup ? esc(thDate(h.last_backup)) : '-'}</td><td>${stat(bkAge != null && bkAge <= 8, bkAge == null ? 'ยังไม่มีข้อมูล' : 'เกิน ' + fmt(bkAge) + ' วัน')}</td></tr>
+      <tr><td>รุ่นห้องเครื่องที่บันทึก</td><td>${esc(last.engine_version || '-')}</td><td></td></tr>
+      <tr><td>คีย์แผนที่ Esri หมดอายุ</td><td>${esc(CONFIG.ESRI_KEY_EXPIRES || '-')}</td><td>${stat(dl > 30, dl < 0 ? 'หมดอายุแล้ว' : 'อีก ' + fmt(dl) + ' วัน')}</td></tr></tbody></table>
+    <div class="muted" style="margin-top:6px">Supabase แผนฟรีจะหยุดโครงการเมื่อไม่มีการใช้งาน 1 สัปดาห์ · dailyPing กันไว้ ถ้าขาดหายเกิน 2 วัน ให้ตรวจทริกเกอร์ในห้องเครื่อง (Apps Script → Triggers)</div></div>
+    <div class="card"><h4 style="margin-top:0">ฐานข้อมูล Supabase</h4>
+      <div class="row" style="align-items:baseline;gap:10px"><b style="font-size:26px">${fmtSize(dbNow)}</b><span class="muted">จากเพดานแผนฟรี 500 MB (${fmt2(dbNow / dbL * 100)}%)</span></div>${bar(dbNow, dbL)}
+      <div>${fc(dbG, dbLeft)}</div>
+      <div style="height:220px;margin-top:10px"><canvas id="hDbChart"></canvas></div>
+      <details style="margin-top:8px"><summary style="cursor:pointer">ตารางที่ใช้พื้นที่มากที่สุด และจำนวนแถว</summary><div class="grid2" style="gap:12px;margin-top:6px"><table><thead><tr><th>ตาราง</th><th class="r" style="text-align:right">ขนาด</th></tr></thead><tbody>${tb.map(([k, v]) => `<tr><td>${esc(TABLE_TH[k] || k)}</td><td style="text-align:right">${fmtSize(v)}</td></tr>`).join('')}</tbody></table>
+        <table><thead><tr><th>ข้อมูล</th><th style="text-align:right">จำนวน</th></tr></thead><tbody>${Object.entries(h.row_counts || {}).map(([k, v]) => `<tr><td>${esc(TABLE_TH[k] || k)}</td><td style="text-align:right">${fmt(v)}</td></tr>`).join('')}</tbody></table></div></details></div>
+    <div class="card"><h4 style="margin-top:0">รูปถ่าย (Google Drive)</h4>
+      <div class="muted">รูปไม่ได้เก็บใน Supabase · เทศบาลที่ใช้ที่เก็บกลาง รูปอยู่ใน Drive ของเจ้าของโครงการ · เทศบาลที่ใช้ Drive ของตนเอง ไม่กินพื้นที่ของเจ้าของโครงการ</div>
+      <table style="margin-top:6px"><thead><tr><th>เทศบาล</th><th>ที่เก็บรูป</th><th style="text-align:right">จำนวนรูปจุด</th></tr></thead><tbody>${(h.photos_by_muni || []).map(m => `<tr><td>${esc(m.code)}</td><td>${m.own_drive ? 'Drive ของเทศบาล' : 'ที่เก็บกลาง'}</td><td style="text-align:right">${fmt(m.photos)}</td></tr>`).join('')}</tbody></table>
+      <div style="margin-top:8px">โฟลเดอร์รูปกลาง: <b>${last.photo_bytes != null ? fmtSize(+last.photo_bytes) + ' · ' + fmt(last.photo_files) + ' ไฟล์' : 'รอห้องเครื่อง 0.6.0 บันทึก'}</b>${phG != null ? ` · เพิ่มเฉลี่ย ${fmtSize(Math.max(0, phG))} ต่อ 30 วัน` : ''}</div>
+      ${dvU != null ? `<div style="margin-top:8px">Drive ของเจ้าของโครงการ (ทั้งบัญชี รวมไฟล์อื่น): <b>${fmtSize(+dvU)}</b>${dvL ? ` จาก ${fmtSize(dvL)} (${fmt2(dvU / dvL * 100)}%)` : ' · บัญชีนี้ไม่แจ้งเพดาน'}</div>${dvL ? bar(+dvU, dvL) : ''}<div>${fc(dvG, dvLeft)}</div>` : '<div class="muted" style="margin-top:8px">พื้นที่ Drive จะแสดงหลังห้องเครื่อง 0.6.0 ทำงานครั้งแรก</div>'}</div>
+    <div class="card"><h4 style="margin-top:0">เพดานอื่นของบริการฟรี (ระบบนี้วัดเองไม่ได้)</h4><div style="overflow:auto"><table><thead><tr><th>บริการ</th><th>เพดาน</th><th>ดูการใช้จริงที่</th></tr></thead><tbody>
+      <tr><td>Supabase · ผู้ใช้ที่ล็อกอินต่อเดือน</td><td>50,000 คน</td><td rowspan="2"><a href="https://supabase.com/dashboard/project/cbmaqzocmgvbjubdvfsz/usage" target="_blank" rel="noopener">Supabase → Usage</a></td></tr>
+      <tr><td>Supabase · ปริมาณข้อมูลส่งออก</td><td>5 GB ต่อเดือน</td></tr>
+      <tr><td>Apps Script (บัญชี Google Workspace) · เรียกเว็บภายนอก</td><td>100,000 ครั้งต่อวัน</td><td rowspan="2"><a href="https://script.google.com/home/executions" target="_blank" rel="noopener">Apps Script → Executions</a></td></tr>
+      <tr><td>Apps Script · เวลาทำงานต่อครั้ง / ทริกเกอร์รวมต่อวัน</td><td>6 นาที / 6 ชั่วโมง</td></tr>
+      <tr><td>GitHub Pages · ขนาดเว็บ / ปริมาณรับส่ง</td><td>1 GB / 100 GB ต่อเดือน (เพดานแบบยืดหยุ่น)</td><td>หน้าเว็บนี้ไฟล์เดียว ราว 0.8 MB</td></tr>
+      <tr><td>Esri · ภาพแผนที่</td><td>2,000,000 ภาพต่อเดือน</td><td><a href="https://location.arcgis.com/" target="_blank" rel="noopener">ArcGIS Location Platform</a></td></tr></tbody></table></div>
+      <div class="muted" style="margin-top:6px">ตรวจเพดานจากหน้าเว็บทางการเมื่อ ${LIMITS_CHECKED} · ผู้ให้บริการเปลี่ยนได้ ให้ตรวจซ้ำปีละครั้ง</div></div>
+    <div class="card"><h4 style="margin-top:0">ถ้าใกล้เต็ม ทำอะไรได้บ้าง</h4><table><thead><tr><th>บริการ</th><th>ป้องกัน (ฟรี)</th><th>ขยาย (มีค่าใช้จ่าย)</th></tr></thead><tbody>
+      <tr><td>ฐานข้อมูล 500 MB</td><td>ลบเที่ยววิ่ง/เรื่องแจ้งที่เก่ามากหลังสำรองเป็น CSV แล้ว · ไม่ต้องเก็บรูปในฐานข้อมูล (ระบบเก็บแค่ลิงก์อยู่แล้ว)</td><td>Supabase Pro (ดูราคาปัจจุบันที่ supabase.com/pricing)</td></tr>
+      <tr><td>Drive ที่เก็บรูปกลาง</td><td>ให้เทศบาลที่มีรูปมากเปลี่ยนไปใช้ Drive ของเทศบาลเอง (จัดการเทศบาล → ตั้งค่าเทศบาล → ที่เก็บรูป) · รูปเดิมยังเปิดได้</td><td>เพิ่มพื้นที่ Google</td></tr>
+      <tr><td>ผู้ใช้ / ปริมาณส่งออก</td><td>ห่างเพดานมากในระดับเทศบาลไม่กี่แห่ง</td><td>Supabase Pro</td></tr>
+      <tr><td>Esri</td><td>ต่ออายุคีย์ก่อนหมดอายุ · ถ้าเกินโควตา แผนที่ถนนหลัก (OpenStreetMap) ยังใช้ได้ หยุดเฉพาะภาพดาวเทียม</td><td>แผนแบบจ่ายตามใช้ของ Esri</td></tr></tbody></table></div>`;
+}
 function superGuide() {
   const items = [
     ['สร้างเทศบาลใหม่', 'แท็บ "เทศบาล" → "สร้างเทศบาล" → รหัสย่อ a–z (เช่น npm) + ชื่อ', 'ได้บัญชี admin 1 + ผู้บันทึก 3 แสดงรหัสผ่านครั้งเดียว → กด "พิมพ์ใบส่งมอบ" เก็บไว้ส่งเทศบาล'],
