@@ -482,6 +482,21 @@ const DemoBackend = () => {
         return { db_bytes: last.db_bytes, row_counts: rc, table_bytes: { place: 3.1 * 1048576, bin: 1.2 * 1048576, route_stop: 0.9 * 1048576, trip_log: 0.4 * 1048576, place_photo: 0.5 * 1048576, citizen_report: 0.1 * 1048576 }, history, last_backup: history.filter(h => h.backup_at).pop().backup_at,
           photos_by_muni: D.municipality.map(m => ({ code: m.code, own_drive: !!m.photo_endpoint_url, photos: D.place_photo.filter(ph => (byId('place', ph.place_id) || {}).municipality_id === m.id).length })) };
       }
+      if (fn === 'submit_citizen_report_at') {   // เลียนแบบ sql/031
+        const { p_muni, p_lat, p_lng, p_issues, p_phone, p_consent } = args, phone = String(p_phone || '').replace(/\D/g, ''), iss = [...new Set(p_issues || [])], dm = (a, b, c, d) => 111320 * Math.hypot(a - c, (b - d) * Math.cos((a + c) / 2 * Math.PI / 180));
+        if (!p_consent) throw new Error('กรุณาติ๊กยินยอมให้ใช้เบอร์โทรศัพท์ก่อนส่ง'); if (!/^0\d{9}$/.test(phone)) throw new Error('เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก ขึ้นต้นด้วย 0');
+        if (!iss.length || iss.length > 3 || iss.some(x => !['litter', 'need_more', 'hazard', 'animals', 'obstruct'].includes(x))) throw new Error('ประเภทเหตุไม่ถูกต้อง'); if (p_lat == null || p_lng == null) throw new Error('ยังไม่มีตำแหน่ง');
+        const m = byId('municipality', p_muni); if (!m || m.report_enabled === false) throw new Error('เทศบาลนี้ยังไม่เปิดรับแจ้งเหตุผ่านระบบ');
+        if (!D.place.some(p => p.municipality_id === p_muni && p.status === 'active' && p.lat != null && dm(+p.lat, +p.lng, p_lat, p_lng) <= 20000)) throw new Error('ตำแหน่งนี้อยู่ไกลจากพื้นที่ของเทศบาลที่เลือก ตรวจหมุดหรือเลือกเทศบาลอื่น');
+        const today = new Date().toISOString().slice(0, 10); if (D.citizen_report_phone.filter(x => x.phone === phone && String(x.created_at).slice(0, 10) === today).length >= 5) throw new Error('เบอร์นี้แจ้งครบ 5 เรื่องของวันนี้แล้ว แจ้งเพิ่มได้พรุ่งนี้');
+        const dup = D.citizen_report.filter(r => !r.place_id && r.municipality_id === p_muni && !['done', 'not_found', 'out_of_scope', 'duplicate'].includes(r.status) && r.issues.some(x => iss.includes(x)) && Date.now() - new Date(r.created_at) < 3 * 864e5 && dm(+r.lat, +r.lng, p_lat, p_lng) <= 30).pop();
+        if (dup) { if (D.citizen_report_phone.some(x => x.report_id === dup.id && x.phone === phone)) return { ok: true, code: dup.code, merged: true, already: true }; dup.reporters++; dup.issues = [...new Set([...dup.issues, ...iss])]; dup.updated_at = now(); add('citizen_report_phone', { report_id: dup.id, phone, municipality_id: dup.municipality_id, created_at: now() }); add('citizen_report_event', { report_id: dup.id, status: 'merged', municipality_id: dup.municipality_id, created_at: now() }); return { ok: true, code: dup.code, merged: true }; }
+        const code = 'R' + today.slice(2).replace(/-/g, '') + '-' + String(Math.floor(Math.random() * 1e4)).padStart(4, '0'), tok = (m.report_max_photos ?? 1) > 0 ? uid() : null;
+        const r = add('citizen_report', { code, municipality_id: p_muni, place_id: null, lat: +(+p_lat).toFixed(6), lng: +(+p_lng).toFixed(6), issues: iss, status: 'new', reporters: 1, photos: [], upload_token: tok, created_at: now(), updated_at: now(), closed_at: null });
+        add('citizen_report_phone', { report_id: r.id, phone, municipality_id: r.municipality_id, created_at: now() }); add('citizen_report_event', { report_id: r.id, status: 'new', municipality_id: r.municipality_id, created_at: now() });
+        return { ok: true, code, merged: false, report_id: r.id, upload_token: tok, max_photos: m.report_max_photos ?? 1, endpoint: m.photo_endpoint_url || null, municipality_code: m.code };
+      }
+      if (fn === 'public_open_pins') return D.citizen_report.filter(r => !r.place_id && !['done', 'not_found', 'out_of_scope', 'duplicate'].includes(r.status)).reverse().map(r => ({ id: r.id, municipality_id: r.municipality_id, code: r.code, lat: r.lat, lng: r.lng, issues: r.issues, status: r.status, reporters: r.reporters, created_at: r.created_at }));
       if (fn === 'submit_citizen_report') {   // เลียนแบบ sql/028
         const { p_place, p_issues, p_phone, p_consent, p_want_photo } = args, phone = String(p_phone || '').replace(/\D/g, ''), iss = [...new Set(p_issues || [])];
         if (!p_consent) throw new Error('กรุณาติ๊กยินยอมให้ใช้เบอร์โทรศัพท์ก่อนส่ง'); if (!/^0\d{9}$/.test(phone)) throw new Error('เบอร์โทรศัพท์ต้องเป็นตัวเลข 10 หลัก ขึ้นต้นด้วย 0'); if (iss.length < 1 || iss.length > 3) throw new Error('เลือกประเภทเหตุ 1–3 ประเภท');
@@ -496,7 +511,7 @@ const DemoBackend = () => {
       }
       if (fn === 'attach_report_photo') { const r = byId('citizen_report', args.p_report); if (!r || r.upload_token !== args.p_token) throw new Error('สิทธิ์ส่งรูปหมดอายุหรือไม่ถูกต้อง'); r.photos = [...r.photos, { file_id: args.p_file_id, url: args.p_url }]; if (r.photos.length >= (byId('municipality', r.municipality_id).report_max_photos ?? 1)) r.upload_token = null; return { ok: true, photos: r.photos.length }; }
       if (fn === 'track_citizen_reports') { const phone = String(args.p_phone || '').replace(/\D/g, ''); const ids = D.citizen_report_phone.filter(x => x.phone === phone).map(x => x.report_id);
-        return D.citizen_report.filter(r => ids.includes(r.id)).reverse().map(r => { const p = byId('place', r.place_id); return { code: r.code, place_code: p.place_code, place_name: p.name, road_name: (byId('road', p.road_id) || {}).name, municipality: byId('municipality', r.municipality_id).name, issues: r.issues, status: r.status, reporters: r.reporters, created_at: r.created_at, photos: r.photos, events: D.citizen_report_event.filter(e => e.report_id === r.id).map(e => ({ status: e.status, at: e.created_at, photo_url: e.photo_url || null })) }; }); }
+        return D.citizen_report.filter(r => ids.includes(r.id)).reverse().map(r => { const p = byId('place', r.place_id) || {}; return { code: r.code, lat: r.lat ?? null, lng: r.lng ?? null, place_code: p.place_code, place_name: p.name, road_name: (byId('road', p.road_id) || {}).name, municipality: byId('municipality', r.municipality_id).name, issues: r.issues, status: r.status, reporters: r.reporters, created_at: r.created_at, photos: r.photos, events: D.citizen_report_event.filter(e => e.report_id === r.id).map(e => ({ status: e.status, at: e.created_at, photo_url: e.photo_url || null })) }; }); }
       if (fn === 'set_report_status') { const r = byId('citizen_report', args.p_report); if (!me || !(me.role === 'super_admin' || (['admin', 'supervisor'].includes(me.role) && me.municipality_id === r.municipality_id))) throw new Error('ตอบเรื่องแจ้งได้เฉพาะ admin และหัวหน้าพนักงานของเทศบาลนี้');
         r.status = args.p_status; r.updated_at = now(); r.closed_at = ['done', 'not_found', 'out_of_scope', 'duplicate'].includes(args.p_status) ? now() : null; add('citizen_report_event', { report_id: r.id, status: args.p_status, photo_url: args.p_photo_url || null, municipality_id: r.municipality_id, created_by: me.id, created_at: now() }); return { ok: true }; }
       if (fn === 'delete_impact') {
@@ -812,6 +827,7 @@ async function pageMap(view) {
       .bindPopup(placePopup({ ...p, road_name: (p.road_name || '') + (p.soi_name ? ' ' + p.soi_name : '') }, rp), POPUP_OPT)
       .addTo(group);
   }
+  addPins(group, await openPins());   // DEC-133
   fitMuni(map, group);
   if (!places.length) toast('ยังไม่มีจุดที่มีพิกัดในขอบเขตนี้');
 }
@@ -942,6 +958,7 @@ async function pagePlaceEdit(view, id) {
     <div class="row" style="margin-top:16px"><button id="btnSave" onclick="savePlace('${isNew ? '' : p.id}')">บันทึก</button><button class="secondary" onclick="history.back()">ยกเลิก</button></div>
     ${!navigator.onLine ? '<div class="banner warn" style="margin-top:10px">ไม่มีสัญญาณ: จะเก็บไว้ในเครื่องและส่งเมื่อมีสัญญาณ</div>' : ''}</div>`;
   S._sois = sois; S._p = p; S._newPhotos = []; fillSoi(); if (isNew) addBinRow(S._lastBin);
+  if (isNew && S._prefill) { $('#f_lat').value = S._prefill.lat; $('#f_lng').value = S._prefill.lng; $('#f_note').value = S._prefill.note; S._prefill = null; toast('เติมพิกัดจากเรื่องแจ้งแล้ว กรอกชื่อ ถนน และถัง แล้วบันทึก'); }   // DEC-133
 }
 function fillSoi() { const rid = $('#f_road').value; const list = S._sois.filter(s => s.road_id === rid); $('#f_soi').innerHTML = `<option value="">—</option>` + list.map(s => `<option value="${s.id}" ${s.id === S._p.soi_id ? 'selected' : ''}>${esc(s.name)}</option>`).join(''); }
 // รูปที่เลือกไว้ก่อนบันทึกจุด (MIS-015: แยกปุ่มถ่าย/เลือก เพราะ input ที่มี multiple+capture พร้อมกัน iPhone จะเปิดเฉพาะคลังรูป)
@@ -1322,7 +1339,7 @@ const scopeName = () => !S.me ? (S.pubMuni ? (muniOf(S.pubMuni).name || '') : '�
 // DEC-114 หน้าแรกสาธารณะ: ภาพรวมจากฟังก์ชัน public_dashboard() (sql/018) ซึ่งคืนเฉพาะข้อมูลสรุป ไม่มีรูป ชื่อผู้บันทึก รถ น้ำมัน ค่าใช้จ่าย
 async function loadPublic(force) {
   if (S.pub && !force && Date.now() - S.pub._at < 300000) return S.pub;   // จำไว้ 5 นาที
-  const d = await api.rpc('public_dashboard'); d._at = Date.now(); S.pub = d;
+  const d = await api.rpc('public_dashboard'); d._at = Date.now(); S.pub = d; S._pins = null;
   S.cache.capacity_tier = d.tiers || []; S.cache.app_setting = d.settings || [];
   const sn = (d.settings || []).find(x => x.key === 'system_name'); if (sn && sn.value) { $('#title').textContent = sn.value; document.title = sn.value; }
   if ((d.munis || []).length === 1) S.pubMuni = d.munis[0].id;
@@ -1589,13 +1606,82 @@ const maskPhone = p => String(p || '').replace(/^(\d{3})\d{3}(\d{4})$/, '$1-xxx-
 const rsPill = st => `<span class="pill" style="${RCLOSED.includes(st) ? 'background:#dcfce7;color:#14532d' : st === 'new' ? `background:${REPORT_RED};color:#fff` : 'background:#fef3c7;color:#78350f'}">${esc(rsName(st))}</span>`;
 const PDPA_PHOTO_WARN = '<div class="banner warn" style="margin:6px 0"><b>ระวังข้อมูลส่วนบุคคล (PDPA):</b> ถ่ายเฉพาะถังและจุดวางถัง · หลีกเลี่ยงใบหน้าคน ทะเบียนรถ บ้านเลขที่ และป้ายชื่อร้านค้า/บริษัท ถ้าติดมาให้ถ่ายใหม่ · รูปจุดแสดงบนหน้าสาธารณะ</div>';
 // เรื่องที่ยังเปิดรายจุด (สาธารณะจาก public_dashboard · เจ้าหน้าที่จากตาราง) · DEC-128 เก็บทุกเรื่องของจุด (ใหม่สุดก่อน)
-const groupOpen = rows => { const m = new Map(); for (const r of rows.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))) { if (!m.has(r.place_id)) m.set(r.place_id, []); m.get(r.place_id).push(r); } return m; };
+const groupOpen = rows => { const m = new Map(); for (const r of rows.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))) { if (!r.place_id) continue; if (!m.has(r.place_id)) m.set(r.place_id, []); m.get(r.place_id).push(r); } return m; };
 async function openReports() {
   if (!S.me) return groupOpen((S.pub && S.pub.open_reports) || []);
   try { return groupOpen((await api.list('citizen_report', { eq: scopeEq() })).filter(r => !RCLOSED.includes(r.status))); } catch (_) { return new Map(); }
 }
 const POPUP_OPT = { maxWidth: 230, autoPanPaddingTopLeft: [8, 100], autoPanPaddingBottomRight: [8, 16] };   // กันปุ่มซูม/ชั้นแผนที่บังป๊อปอัปบนมือถือ
-const repLegend = '<span><i class="dot" style="background:#fff;border:3px solid ' + REPORT_RED + '"></i>มีเรื่องแจ้งจากประชาชน</span>';
+const PIN_SVG = `<svg width="26" height="24" viewBox="0 0 26 24" aria-hidden="true"><path d="M13 2 L24 22 H2 Z" fill="${REPORT_RED}" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><text x="13" y="19.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">!</text></svg>`;
+const repLegend = '<span><i class="dot" style="background:#fff;border:3px solid ' + REPORT_RED + '"></i>มีเรื่องแจ้งจากประชาชน</span><span style="display:inline-flex;align-items:center;gap:4px">' + PIN_SVG.replace('width="26" height="24"', 'width="16" height="15"') + 'เรื่องแจ้งตำแหน่งที่ไม่มีถัง</span>';
+// DEC-133 B5 เรื่องแจ้งตามพิกัด (ตำแหน่งที่ไม่มีจุดวางถัง): แจ้งได้ 5 เรื่อง · หมุดสามเหลี่ยมแดง · ไม่แสดงรูปและเบอร์ของผู้แจ้งต่อสาธารณะ
+const ISSUES_AT = [['litter', 'ทิ้งขยะ / กองขยะ (ไม่มีถัง)'], ['need_more', 'ควรมีถังขยะที่นี่'], ['hazard', 'ขยะอันตราย / ขยะชิ้นใหญ่'], ['animals', 'สัตว์คุ้ยเขี่ยขยะ'], ['obstruct', 'ขยะกีดขวางทาง']];
+const issueNameOf = r => k => (r && !r.place_id && (ISSUES_AT.find(x => x[0] === k) || [])[1]) || issueName(k);
+async function openPins() {
+  if (!S.me) { if (!S._pins) { try { S._pins = await api.rpc('public_open_pins', {}); } catch (_) { S._pins = []; } } return S._pins.filter(p => !S.pubMuni || p.municipality_id === S.pubMuni); }
+  try { return (await api.list('citizen_report', { eq: scopeEq() })).filter(r => !r.place_id && r.lat != null && !RCLOSED.includes(r.status)); } catch (_) { return []; }
+}
+function pinPopup(r) {
+  return `<b style="color:${REPORT_RED}">เรื่องแจ้ง ${esc(r.code)}</b><br><span class="muted">ตำแหน่งที่ไม่มีจุดวางถัง</span><br>${(r.issues || []).map(issueNameOf(r)).map(esc).join(' · ')}<br>สถานะ: ${esc(rsName(r.status))}${r.reporters > 1 ? ` · ผู้แจ้ง ${fmt(r.reporters)} คน` : ''}<br><span class="muted">${thDate(r.created_at)}</span>
+    ${S.me ? `<br><a href="#complaints">ดูเรื่องแจ้ง</a>${canRecord() ? ` · <a href="javascript:void(0)" onclick="placeFromReport(${+r.lat},${+r.lng},'${esc(r.code)}')">สร้างเป็นจุดวางถัง</a>` : ''}` : ''}`;
+}
+function addPins(group, pins) { for (const r of pins) L.marker([+r.lat, +r.lng], { icon: L.divIcon({ className: '', html: PIN_SVG, iconSize: [26, 24], iconAnchor: [13, 22], popupAnchor: [0, -18] }), title: 'เรื่องแจ้ง ' + r.code, keyboard: true }).bindPopup(pinPopup(r), POPUP_OPT).addTo(group); }
+function placeFromReport(lat, lng, code) { S._prefill = { lat, lng, note: 'สร้างจากเรื่องแจ้ง ' + code }; closeModal(); go('#place-edit/new'); }
+const pubReportMunis = () => ((S.pub && S.pub.munis) || []).filter(m => m.report_enabled);
+// ฟอร์มแจ้งเหตุตามพิกัด (ประชาชน): GPS ก่อน แล้วลากหมุดแก้ได้ · ระบบเลือกเทศบาลที่มีจุดวางถังใกล้ที่สุด เปลี่ยนได้ · บังคับรูป 1 รูป (ถ้าเทศบาลรับรูป)
+function reportFormAt() {
+  const ms = pubReportMunis(); if (!ms.length) return toastErr('ยังไม่มีเทศบาลที่เปิดรับแจ้งเหตุ', 'ลองใหม่ภายหลัง');
+  S._rep = { at: true, photos: [], maxP: 1, lat: null, lng: null, mid: S.pubMuni && ms.some(m => m.id === S.pubMuni) ? S.pubMuni : ms[0].id, userMuni: false };
+  openModal(`<h3 style="margin-top:0">แจ้งเหตุตำแหน่งที่ไม่มีถังขยะ</h3><div class="muted">เช่น ทิ้งขยะริมทาง กองขยะ ควรมีถังที่นี่ · ถ้าเป็นที่ถังขยะ ให้กดหมุดของถังนั้นแล้วกด "แจ้งเหตุที่จุดนี้" แทน</div>
+    <label>ตำแหน่งที่เกิดเหตุ *</label><div class="row" style="gap:8px"><button class="small" type="button" onclick="repGps()">ใช้ตำแหน่งปัจจุบัน</button><span id="repLoc" class="muted">กำลังหาตำแหน่ง… ลากหมุดสีแดงไปยังที่เกิดเหตุได้</span></div>
+    <div id="repMap" style="height:240px;border-radius:8px;margin-top:6px"></div>
+    <label for="repMuni">เทศบาลที่รับเรื่อง *</label><select id="repMuni" onchange="S._rep.mid=this.value;S._rep.userMuni=true;repMuniInfo()">${ms.map(m => `<option value="${m.id}" ${m.id === S._rep.mid ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select><div id="repMuniInfo" class="muted"></div>
+    <label>เกิดอะไรขึ้น (เลือกได้ไม่เกิน 3 ข้อ) *</label><div class="chips sm" id="repIssues">${ISSUES_AT.map(([k, l]) => `<button type="button" class="chip" data-v="${k}" onclick="repToggle(this)">${l}</button>`).join('')}</div>
+    <div id="repPhotoBox"></div>
+    <label for="repPhone">เบอร์โทรศัพท์ของผู้แจ้ง *${fh('report.phone')}</label><input id="repPhone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="12" placeholder="08x-xxx-xxxx">
+    <label class="pick-opt" style="align-items:flex-start;margin-top:8px"><input type="checkbox" id="repConsent"> <span>ยินยอมให้เทศบาลใช้เบอร์นี้เพื่อติดต่อและให้ผู้แจ้งติดตามเรื่องนี้เท่านั้น · เบอร์เห็นเฉพาะเจ้าหน้าที่ผู้รับผิดชอบ ไม่แสดงต่อสาธารณะ · ลบเมื่อปิดเรื่องครบ 1 ปี</span></label>
+    <div class="muted">ไม่ต้องพิมพ์รายละเอียด เจ้าหน้าที่ตรวจจากตำแหน่ง ประเภทเหตุ และรูป · วันเวลาที่แจ้งบันทึกอัตโนมัติ</div>
+    <div class="row" style="margin-top:12px"><button id="repGo" onclick="repSubmitAt()">ส่งเรื่องแจ้ง</button><button class="secondary" onclick="closeModal()">ยกเลิก</button></div>`);
+  const ctr = S.map && S.map.getCenter ? S.map.getCenter() : L.latLng(CONFIG.MAP_FALLBACK.lat, CONFIG.MAP_FALLBACK.lng);
+  const map = L.map('repMap', { zoomControl: true }).setView(ctr, S.map && S.map.getZoom ? Math.max(15, S.map.getZoom()) : 15); addBaseLayer(map);
+  S._repMk = L.marker(ctr, { draggable: true, icon: L.divIcon({ className: '', html: PIN_SVG, iconSize: [26, 24], iconAnchor: [13, 22] }), title: 'ลากไปยังที่เกิดเหตุ' }).addTo(map);
+  S._repMk.on('dragend', e => { const p = e.target.getLatLng(); repSetLoc(p.lat, p.lng, false); });
+  map.on('click', e => repSetLoc(e.latlng.lat, e.latlng.lng, false)); S._repMapObj = map; setTimeout(() => map.invalidateSize(), 150);
+  repMuniInfo(); repGps();
+}
+function repGps() {
+  if (!navigator.geolocation) return ($('#repLoc').textContent = 'มือถือนี้ไม่มี GPS ลากหมุดไปยังที่เกิดเหตุ');
+  $('#repLoc').textContent = 'กำลังหาตำแหน่ง…';
+  navigator.geolocation.getCurrentPosition(p => repSetLoc(p.coords.latitude, p.coords.longitude, true, p.coords.accuracy), () => { const el = $('#repLoc'); if (el) el.textContent = 'หาตำแหน่งไม่ได้ (อาจไม่ได้อนุญาต) ลากหมุดหรือแตะแผนที่ที่จุดเกิดเหตุ'; }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+}
+function repSetLoc(lat, lng, move, acc) {
+  if (!S._rep || !$('#repLoc')) return; S._rep.lat = +(+lat).toFixed(6); S._rep.lng = +(+lng).toFixed(6);
+  S._repMk.setLatLng([lat, lng]); if (move) S._repMapObj.setView([lat, lng], 17);
+  $('#repLoc').textContent = `ตำแหน่ง ${S._rep.lat}, ${S._rep.lng}${acc ? ` (คลาดเคลื่อนราว ${fmt(Math.round(acc))} ม.)` : ''} · ลากหมุดเพื่อแก้ได้`;
+  if (!S._rep.userMuni) { const ms = pubReportMunis(), dm = (p) => 111320 * Math.hypot(+p.lat - lat, (+p.lng - lng) * Math.cos(lat * Math.PI / 180));   // 2ค เลือกเทศบาลที่มีจุดวางถังใกล้ที่สุด
+    let best = null; for (const p of (S.pub.places || [])) { if (p.lat == null || !ms.some(m => m.id === p.municipality_id)) continue; const d = dm(p); if (!best || d < best.d) best = { d, mid: p.municipality_id }; }
+    if (best) { S._rep.mid = best.mid; $('#repMuni').value = best.mid; } }
+  repMuniInfo();
+}
+function repMuniInfo() {
+  const m = pubReportMunis().find(x => x.id === S._rep.mid) || {}, maxP = m.report_max_photos ?? 1; S._rep.maxP = maxP; S._rep.photos = S._rep.photos.slice(0, maxP);
+  let near = null; if (S._rep.lat != null) for (const p of (S.pub.places || [])) { if (p.municipality_id !== m.id || p.lat == null) continue; const d = 111320 * Math.hypot(+p.lat - S._rep.lat, (+p.lng - S._rep.lng) * Math.cos(S._rep.lat * Math.PI / 180)); if (near == null || d < near) near = d; }
+  const info = $('#repMuniInfo'); if (info) info.textContent = near == null ? 'ระบบเลือกให้ตามจุดวางถังที่ใกล้ที่สุด เปลี่ยนได้ถ้าไม่ถูก' : `จุดวางถังของเทศบาลนี้ที่ใกล้ที่สุดห่าง ${near < 1000 ? fmt(Math.round(near)) + ' ม.' : fmt2(near / 1000) + ' กม.'} · เปลี่ยนได้ถ้าไม่ถูก`;
+  const box = $('#repPhotoBox'); if (!box) return;
+  box.innerHTML = maxP > 0 ? `<label>รูปที่เกิดเหตุ * (บังคับ 1 รูป${maxP > 1 ? ` · สูงสุด ${maxP} รูป` : ''})${fh('report.photo')}</label><div class="row"><label class="btn small secondary" style="margin:0">📷 ถ่ายรูป<input type="file" accept="image/*" capture="environment" class="hidden" onchange="repPick(this.files);this.value=''"></label><label class="btn small secondary" style="margin:0">เลือกจากคลังรูป<input type="file" accept="image/*" class="hidden" onchange="repPick(this.files);this.value=''"></label></div><div id="repPhotos" class="photos" style="margin-top:6px"></div><div class="muted">ถ่ายเฉพาะขยะและที่เกิดเหตุ ไม่ถ่ายหน้าคน ทะเบียนรถ บ้านเลขที่ หรือป้ายร้านค้า</div>` : '<div class="muted" style="margin-top:8px">เทศบาลนี้ไม่รับรูป</div>';
+  repPick([]);
+}
+async function repSubmitAt() {
+  if (S._rep.lat == null) return needField('#repLoc', 'กด "ใช้ตำแหน่งปัจจุบัน" หรือลากหมุด/แตะแผนที่ที่จุดเกิดเหตุ', 'ยังส่งไม่ได้');
+  const issues = [...document.querySelectorAll('#repIssues .chip.on')].map(b => b.dataset.v); if (!issues.length) return needField('#repIssues', 'เลือกประเภทเหตุอย่างน้อย 1 ข้อ', 'ยังส่งไม่ได้');
+  if (S._rep.maxP > 0 && !S._rep.photos.length) return needField('#repPhotoBox', 'แนบรูปที่เกิดเหตุ 1 รูป เพื่อให้เจ้าหน้าที่หาที่เกิดเหตุได้', 'ยังส่งไม่ได้');
+  const phone = $('#repPhone').value.replace(/\D/g, ''); if (!/^0\d{9}$/.test(phone)) return needField('#repPhone', 'กรอกเบอร์โทรศัพท์ 10 หลัก ขึ้นต้นด้วย 0 เช่น 0812345678', 'ยังส่งไม่ได้');
+  if (!$('#repConsent').checked) return needField('#repConsent', 'ติ๊กยินยอมการใช้เบอร์โทรศัพท์ก่อนส่ง', 'ยังส่งไม่ได้');
+  const b = $('#repGo'); b.disabled = true; b.textContent = 'กำลังส่ง…';
+  let r; try { r = await api.rpc('submit_citizen_report_at', { p_muni: S._rep.mid, p_lat: S._rep.lat, p_lng: S._rep.lng, p_issues: issues, p_phone: phone, p_consent: true }); }
+  catch (e) { b.disabled = false; b.textContent = 'ส่งเรื่องแจ้ง'; if (/submit_citizen_report_at/.test(String(e && e.message))) return toastErr('ยังรับแจ้งเหตุแบบนี้ไม่ได้', 'ระบบยังไม่เปิดใช้ ลองใหม่ภายหลัง'); return fail(e, 'ส่งเรื่องแจ้งไม่สำเร็จ'); }
+  return repDone(r, phone, b);
+}
 function placePopup(p, rep) {
   const pubM = !S.me && S.pub ? (S.pub.munis || []).find(m => m.id === p.municipality_id) : null;
   return `${p.photo_url ? `<img src="${esc(p.photo_url)}" alt="รูปจุด ${esc(p.place_code)}" loading="lazy" style="width:220px;max-width:100%;height:150px;object-fit:cover;border-radius:6px;display:block;margin-bottom:6px">` : ''}<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${esc(p.road_name || '')}<br>${fmt(p.total_bins)} ใบ · <b>${fmt(p.total_liters)} ลิตร</b>${p.tier_label ? ' · ' + esc(p.tier_label) : ''}
@@ -1628,10 +1714,13 @@ async function repSubmit() {
   const b = $('#repGo'); b.disabled = true; b.textContent = 'กำลังส่ง…';
   let r; try { r = await api.rpc('submit_citizen_report', { p_place: S._rep.placeId, p_issues: issues, p_phone: phone, p_consent: true, p_want_photo: S._rep.photos.length > 0 }); }
   catch (e) { b.disabled = false; b.textContent = 'ส่งเรื่องแจ้ง'; if (/submit_citizen_report/.test(String(e && e.message))) return toastErr('ยังรับแจ้งเหตุไม่ได้', 'ระบบยังไม่เปิดใช้การแจ้งเหตุ ลองใหม่ภายหลัง'); return fail(e, 'ส่งเรื่องแจ้งไม่สำเร็จ'); }
+  return repDone(r, phone, b);
+}
+async function repDone(r, phone, b) {
   let sent = 0, photoErr = '';
   if (r.upload_token) for (const ph of S._rep.photos.slice(0, r.max_photos || 1)) { b.textContent = `กำลังส่งรูป ${sent + 1}…`;
     try { const up = await api.reportPhoto(r.endpoint, { report_id: r.report_id, upload_token: r.upload_token, mime: ph.mime, data: ph.data }); await api.rpc('attach_report_photo', { p_report: r.report_id, p_token: r.upload_token, p_file_id: up.file_id, p_url: up.url }); sent++; } catch (e) { photoErr = friendlyError(e).title; } }
-  S._trackPhone = phone; S.pub = null;
+  S._trackPhone = phone; S.pub = null; S._pins = null;
   openModal(`<h3 style="margin-top:0">${r.merged ? 'รับเรื่องแล้ว (รวมกับเรื่องเดิม)' : 'ส่งเรื่องแจ้งแล้ว'}</h3><div style="font-size:20px;font-weight:700">รหัสเรื่อง ${esc(r.code)}</div>
     <div class="muted" style="margin:6px 0">${r.already ? 'เบอร์นี้แจ้งเรื่องนี้ไว้แล้ว ไม่นับซ้ำ' : r.merged ? 'มีผู้แจ้งปัญหาเดียวกันที่จุดนี้ไว้แล้ว ระบบรวมเป็นเรื่องเดียวกันและนับท่านเป็นผู้แจ้งเพิ่ม' : 'เทศบาลจะตรวจและอัปเดตสถานะ'}${S._rep.photos.length ? ` · รูป ${sent}/${Math.min(S._rep.photos.length, r.max_photos || 1)} ${photoErr ? `(ส่งรูปไม่สำเร็จ: ${esc(photoErr)} — เรื่องแจ้งบันทึกแล้ว)` : ''}` : ''}</div>
     <div class="banner info">ติดตามเรื่อง: แท็บ <b>"ติดตามเรื่องแจ้ง"</b> ใส่เบอร์ ${esc(maskPhone(phone))}</div>
@@ -1647,7 +1736,7 @@ async function trackGo() {
   const phone = $('#trPhone').value.replace(/\D/g, ''); if (!/^0\d{9}$/.test(phone)) return needField('#trPhone', 'กรอกเบอร์โทรศัพท์ 10 หลัก ขึ้นต้นด้วย 0', 'ยังค้นหาไม่ได้');
   S._trackPhone = phone; let rows; try { rows = await api.rpc('track_citizen_reports', { p_phone: phone }); } catch (e) { return fail(e, 'ค้นหาไม่สำเร็จ'); }
   $('#trList').innerHTML = rows.length ? rows.map(r => `<div class="card"><div class="row" style="justify-content:space-between"><b>${esc(r.code)}</b>${rsPill(r.status)}</div>
-    <div>${esc(r.place_code)} · ${esc(r.place_name)} · ${esc(r.road_name || '')} <span class="muted">(${esc(r.municipality)})</span></div><div class="muted">${(r.issues || []).map(issueName).map(esc).join(' · ')}${r.reporters > 1 ? ` · ผู้แจ้ง ${fmt(r.reporters)} คน` : ''}</div>
+    <div>${r.place_code ? `${esc(r.place_code)} · ${esc(r.place_name)} · ${esc(r.road_name || '')}` : `ตำแหน่งที่แจ้ง <a href="https://www.google.com/maps?q=${+r.lat},${+r.lng}" target="_blank" rel="noopener">${+r.lat}, ${+r.lng}</a>`} <span class="muted">(${esc(r.municipality)})</span></div><div class="muted">${(r.issues || []).map(issueNameOf({ place_id: r.place_code })).map(esc).join(' · ')}${r.reporters > 1 ? ` · ผู้แจ้ง ${fmt(r.reporters)} คน` : ''}</div>
     <ol style="margin:6px 0 0;padding-left:20px">${(r.events || []).map(e => `<li>${esc(rsName(e.status))} <span class="muted">${thDate(e.at)}</span>${e.photo_url ? `<br><img src="${esc(e.photo_url)}" alt="รูปหลังแก้ไข" loading="lazy" style="width:160px;border-radius:6px;margin-top:4px">` : ''}</li>`).join('')}</ol>
     ${(r.photos || []).length ? `<div class="photos" style="margin-top:6px">${r.photos.map(ph => `<img src="${esc(ph.url)}" alt="รูปที่แจ้ง" loading="lazy">`).join('')}</div>` : ''}</div>`).join('') : '<div class="card muted">ไม่พบเรื่องที่แจ้งด้วยเบอร์นี้</div>';
 }
@@ -1665,12 +1754,13 @@ async function pageComplaints(view) {
   const byIssue = ISSUES.map(([k, l]) => [l, reps.filter(r => (r.issues || []).includes(k)).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
   const next = st => RSTATUS.filter(([k]) => !['new', 'merged', st].includes(k));
   const openAt = pid => reps.filter(x => x.place_id === pid && !RCLOSED.includes(x.status)).length;
-  const card = r => { const p = pl(r.place_id), e = ev(r.id), phs = ph(r.id), same = openAt(r.place_id);
-    return `<div class="card" id="cr_${r.id}" style="${!RCLOSED.includes(r.status) ? `border-left:6px solid ${REPORT_RED}` : ''}"><div class="row" style="justify-content:space-between"><div><b>${esc(r.code)}</b> · <a href="#place/${r.place_id}">${esc(p.place_code || '')}</a> ${esc(p.name || '')} <span class="muted">${esc(p.road_name || '')}</span></div>${rsPill(r.status)}</div>
-      <div style="margin-top:4px">${(r.issues || []).map(k => `<span class="pill">${esc(issueName(k))}</span>`).join(' ')}${r.reporters > 1 ? ` <span class="pill" style="background:#fee2e2">ผู้แจ้ง ${fmt(r.reporters)} คน</span>` : ''}${same > 1 ? ` <span class="pill" style="background:#fde68a">จุดนี้มีเรื่องค้าง ${fmt(same)} เรื่อง</span>` : ''}${p.status && p.status !== 'active' ? ' <span class="pill" style="background:#fee2e2;color:#7f1d1d">จุดถูกยกเลิกแล้ว</span>' : ''}</div>
+  const card = r => { const p = pl(r.place_id), e = ev(r.id), phs = ph(r.id), same = r.place_id ? openAt(r.place_id) : 0;
+    return `<div class="card" id="cr_${r.id}" style="${!RCLOSED.includes(r.status) ? `border-left:6px solid ${REPORT_RED}` : ''}"><div class="row" style="justify-content:space-between"><div><b>${esc(r.code)}</b> · ${r.place_id ? `<a href="#place/${r.place_id}">${esc(p.place_code || '')}</a> ${esc(p.name || '')} <span class="muted">${esc(p.road_name || '')}</span>` : `<span class="pill" style="background:#fee2e2;color:#7f1d1d">ตำแหน่งที่ไม่มีจุดวางถัง</span> <a href="https://www.google.com/maps?q=${+r.lat},${+r.lng}" target="_blank" rel="noopener">ดูตำแหน่ง ${+r.lat}, ${+r.lng}</a>`}</div>${rsPill(r.status)}</div>
+      <div style="margin-top:4px">${(r.issues || []).map(k => `<span class="pill">${esc(issueNameOf(r)(k))}</span>`).join(' ')}${r.reporters > 1 ? ` <span class="pill" style="background:#fee2e2">ผู้แจ้ง ${fmt(r.reporters)} คน</span>` : ''}${same > 1 ? ` <span class="pill" style="background:#fde68a">จุดนี้มีเรื่องค้าง ${fmt(same)} เรื่อง</span>` : ''}${p.status && p.status !== 'active' ? ' <span class="pill" style="background:#fee2e2;color:#7f1d1d">จุดถูกยกเลิกแล้ว</span>' : ''}</div>
       <div class="muted" style="margin-top:4px">แจ้งเมื่อ ${thDate(r.created_at)}${canAnswer() ? ` · โทร: ${phs.map(x => `<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>`).join(', ') || '<span class="muted">ลบแล้ว (ครบ 1 ปี)</span>'}` : ' · เบอร์ผู้แจ้งเห็นเฉพาะ admin และหัวหน้าพนักงาน'}</div>
       ${(r.photos || []).length ? `<div class="photos" style="margin-top:6px">${r.photos.map(x => `<a href="${esc(x.url)}" target="_blank" rel="noopener"><img src="${esc(x.url)}" alt="รูปจากผู้แจ้ง" loading="lazy"></a>`).join('')}</div>` : ''}
       <details style="margin-top:6px"><summary>ขั้นตอน (${e.length})</summary><ol style="margin:4px 0;padding-left:20px">${e.map(x => `<li>${esc(rsName(x.status))} <span class="muted">${thDate(x.created_at)}</span>${x.photo_url ? `<br><img src="${esc(x.photo_url)}" alt="รูปหลังแก้ไข" loading="lazy" style="width:140px;border-radius:6px">` : ''}</li>`).join('')}</ol></details>
+      ${!r.place_id && canRecord() ? `<div style="margin-top:8px"><button class="small secondary" type="button" onclick="placeFromReport(${+r.lat},${+r.lng},'${esc(r.code)}')">＋ สร้างเป็นจุดวางถังใหม่ (เติมพิกัดให้)</button></div>` : ''}
       ${canAnswer() && !RCLOSED.includes(r.status) ? `<div class="chips sm" style="margin-top:8px">${next(r.status).map(([k, l]) => `<button type="button" class="chip" onclick="repSet('${r.id}','${k}')">${esc(l)}</button>`).join('')}</div>` : ''}</div>`; };
   view.innerHTML = `${scopeSelector()}<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">เรื่องแจ้งจากประชาชน ${helpBtn('complaints')}</h3>${isAdmin() ? `<button class="small secondary" onclick="printReport('complaints')">${ICON.print} รายงานสรุป</button>` : ''}</div>
     <div class="kpis" style="margin-top:10px">${kpi(fmt(reps.filter(r => !RCLOSED.includes(r.status)).length), 'เรื่องค้าง', 'ยังไม่ปิด')}${kpi(fmt(reps.filter(r => r.status === 'new').length), 'แจ้งใหม่ รอรับเรื่อง')}${kpi(fmt(reps.filter(r => RCLOSED.includes(r.status)).length), 'ปิดแล้ว')}${kpi(avg(ackT) != null ? fmt1(avg(ackT)) : '-', 'ชั่วโมง เฉลี่ยถึงรับเรื่อง')}${kpi(avg(closeT) != null ? fmt1(avg(closeT)) : '-', 'วัน เฉลี่ยถึงปิดเรื่อง')}</div>
@@ -1700,7 +1790,7 @@ async function printComplaints() {
     <div class="kpis"><div class="kpi"><b>${fmt(list.length)}</b>เรื่องทั้งหมด</div><div class="kpi"><b>${fmt(list.filter(r => !RCLOSED.includes(r.status)).length)}</b>ค้าง</div><div class="kpi"><b>${fmt(list.filter(r => RCLOSED.includes(r.status)).length)}</b>ปิดแล้ว</div><div class="kpi"><b>${fmt(sum(list, 'reporters'))}</b>ผู้แจ้ง (รวมแจ้งซ้ำ)</div></div>
     <h3>แยกตามประเภทเหตุ</h3><table><thead><tr><th>ประเภทเหตุ</th><th class="r">เรื่อง</th></tr></thead><tbody>${ISSUES.map(([k, l]) => `<tr><td>${esc(l)}</td><td class="r">${fmt(list.filter(r => (r.issues || []).includes(k)).length)}</td></tr>`).join('')}</tbody></table>
     <h3>แยกตามสถานะ</h3><table><thead><tr><th>สถานะ</th><th class="r">เรื่อง</th></tr></thead><tbody>${RSTATUS.filter(([k]) => k !== 'merged').map(([k, l]) => `<tr><td>${esc(l)}</td><td class="r">${fmt(list.filter(r => r.status === k).length)}</td></tr>`).join('')}</tbody></table>
-    <h3>รายการเรื่อง</h3><table><thead><tr><th>รหัส</th><th>วันที่แจ้ง</th><th>จุด</th><th>ประเภทเหตุ</th><th class="r">ผู้แจ้ง</th><th>สถานะ</th><th>ปิดเมื่อ</th></tr></thead><tbody>${list.slice().reverse().map(r => `<tr><td>${esc(r.code)}</td><td>${thDate(r.created_at)}</td><td>${esc(pl(r.place_id).place_code || '')} ${esc(pl(r.place_id).name || '')}</td><td>${(r.issues || []).map(issueName).map(esc).join(', ')}</td><td class="r">${fmt(r.reporters)}</td><td>${esc(rsName(r.status))}</td><td>${r.closed_at ? thDate(r.closed_at) : '-'}</td></tr>`).join('')}</tbody></table>
+    <h3>รายการเรื่อง</h3><table><thead><tr><th>รหัส</th><th>วันที่แจ้ง</th><th>จุด</th><th>ประเภทเหตุ</th><th class="r">ผู้แจ้ง</th><th>สถานะ</th><th>ปิดเมื่อ</th></tr></thead><tbody>${list.slice().reverse().map(r => `<tr><td>${esc(r.code)}</td><td>${thDate(r.created_at)}</td><td>${r.place_id ? `${esc(pl(r.place_id).place_code || '')} ${esc(pl(r.place_id).name || '')}` : `ตำแหน่งที่ไม่มีถัง ${+r.lat}, ${+r.lng}`}</td><td>${(r.issues || []).map(issueName).map(esc).join(', ')}</td><td class="r">${fmt(r.reporters)}</td><td>${esc(rsName(r.status))}</td><td>${r.closed_at ? thDate(r.closed_at) : '-'}</td></tr>`).join('')}</tbody></table>
     <div class="note">ไม่แสดงเบอร์โทรศัพท์ของผู้แจ้งในรายงาน (PDPA) · วันเวลาเป็นเวลาที่ระบบรับเรื่อง</div>${rptSig()}`);
 }
 // การตั้งค่าการรับแจ้งเหตุ (admin เทศบาล)
@@ -1743,7 +1833,7 @@ async function pageDashOverview(view) {
     <div class="grid2" style="margin-top:12px">
       <div class="finding"><div class="fv">${fmt1(pct(top.liters, totL))}%</div><div>ของความจุทั้งหมดอยู่ในจุดระดับสูงสุด "${esc(top.t.label || '')}" ซึ่งมีเพียง <b>${fmt(top.n)} จุด</b> (${fmt1(pct(top.n, places.length))}% ของจุด)</div></div>
       <div class="finding"><div class="fv">${topType ? fmt1(pct(topType.liters, totL)) : '0.0'}%</div><div>ของความจุทั้งหมดมาจากถังประเภท "${esc(topType ? topType.name : '-')}" (${fmt(topType ? topType.bins : 0)} ใบ = ${fmt1(pct(topType ? topType.bins : 0, totB))}% ของใบ)</div></div></div>
-    <div class="card">${cardTitle('แผนที่: วงใหญ่ = ความจุมาก · สี = ระดับความจุ · แดง = มีเรื่องแจ้ง', 'map')}<div class="legend" style="margin-bottom:6px">${tiers.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}${repLegend}</div>${S.me ? '' : '<div class="muted" style="margin-bottom:6px">กดหมุดเพื่อดูรูปและ <b>แจ้งเหตุ</b> (ถังเต็ม สกปรก หาย ชำรุด ฯลฯ)</div>'}<div id="map" style="height:min(80vh,680px);min-height:500px"></div></div>
+    <div class="card">${cardTitle('แผนที่: วงใหญ่ = ความจุมาก · สี = ระดับความจุ · แดง = มีเรื่องแจ้ง', 'map')}<div class="legend" style="margin-bottom:6px">${tiers.map(t => `<span><i class="dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join('')}${repLegend}</div>${S.me ? '' : `<div class="row" style="justify-content:space-between;gap:8px;margin-bottom:6px"><span class="muted">กดหมุดเพื่อดูรูปและ <b>แจ้งเหตุ</b> (ถังเต็ม สกปรก หาย ชำรุด ฯลฯ)</span>${pubReportMunis().length ? '<button class="small" type="button" onclick="reportFormAt()">แจ้งเหตุตำแหน่งที่ไม่มีถัง</button>' : ''}</div>`}<div id="map" style="height:min(80vh,680px);min-height:500px"></div></div>
     <div class="card">${cardTitle('จำนวนจุด เทียบ ความจุ แบ่งตามระดับ', 'stack')}<div class="muted">แถวบน = % ของจำนวนจุด · แถวล่าง = % ของความจุ (ลิตร) · ชิ้นสีเดียวกันคือระดับเดียวกัน</div><div class="chartbox" style="height:170px"><canvas id="cStack"></canvas></div></div>
     <div class="grid2">
       <div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">10 ถนนความจุสูงสุด ${infoBtn('roads')}</h4>${S.me ? '<span class="muted">กดชื่อถนนเพื่อเจาะดู</span>' : ''}</div><div style="margin-top:8px">${roadsWith.slice(0, 10).map(r => hbar(esc(r.road_name) + ((S.me ? S.scopeMuni : S.pubMuni) ? '' : ` <span class="muted">(${esc(r.municipality_code)})</span>`), +r.total_liters, +roadsWith[0].total_liters, DASH.navy, `${fmt(r.total_liters)} ล. · <span class="muted">${fmt(r.places)} จุด</span>`, S.me ? `#dashboard/research?road=${r.road_id}` : '')).join('') || '<div class="muted">ยังไม่มีข้อมูล</div>'}</div>
@@ -1756,6 +1846,7 @@ async function pageDashOverview(view) {
   const g = L.featureGroup().addTo(map); const maxL = Math.max(1, ...places.map(p => +p.total_liters)), OR = await openReports();
   for (const p of places.filter(p => p.lat != null && p.lng != null)) { const rp = OR.get(p.id); L.circleMarker([p.lat, p.lng], { radius: 5 + 13 * Math.sqrt((+p.total_liters) / maxL), color: rp ? REPORT_RED : '#fff', weight: rp ? 4 : 1, fillColor: rp ? REPORT_RED : (p.tier_color || tiers[0].color), fillOpacity: .9 })
     .bindPopup(placePopup(p, rp), POPUP_OPT).addTo(g); }
+  addPins(g, await openPins());   // DEC-133
   fitMuni(map, g, S.me ? null : S.pubMuni);
   // แท่ง 100% ซ้อน 2 แถว
   mkChart($('#cStack'), { type: 'bar', data: { labels: ['จำนวนจุด', 'ความจุ'], datasets: byTier.map(x => ({ label: x.t.label, data: [pct(x.n, places.length), pct(x.liters, totL)], rawVals: [x.n, x.liters], backgroundColor: x.t.color, borderWidth: 0 })) },
