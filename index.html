@@ -841,15 +841,17 @@ async function pagePlaces(view) {   // DEC-128 ตัวกรอง (คำค�
   const roads = [...new Map(rows.map(r => [r.road_id, r.road_name])).entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'th'));
   const types = [...new Set(rows.map(r => r.place_type_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'));
   const opt = (v, l, cur) => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
+  const nF = [f.road, f.st !== 'active', f.tier, f.type, f.miss, f.rep].filter(Boolean).length;   // DEC-134 พับตัวกรองไว้ (มือถือไม่ต้องเลื่อนไกล) เปิดเองเมื่อมีตัวกรองที่เลือก
   view.innerHTML = `${scopeSelector()}<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">จุดวางถัง ${helpBtn('places')}</h3><button class="secondary small" onclick="exportCsv(S._places,'places')">ส่งออก CSV (ตามตัวกรอง)</button></div>
     <div class="row" style="margin-top:8px"><input id="pq" type="search" aria-label="ค้นหา รหัส ชื่อ ถนน ซอย" placeholder="ค้นหา รหัส / ชื่อ / ถนน / ซอย" value="${esc(f.q)}" style="flex:1;min-width:200px"></div>
-    <div class="grid2" style="gap:8px;margin-top:8px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <details id="pFilt" style="margin-top:8px" ${nF ? 'open' : ''}><summary style="cursor:pointer;min-height:44px;display:flex;align-items:center;gap:6px"><b style="white-space:nowrap">▸ ตัวกรอง</b><span class="muted">${nF ? `(เลือกอยู่ ${nF} ข้อ)` : '(ถนน สถานะ ระดับ ประเภท ข้อมูลที่ขาด เรื่องแจ้ง)'}</span></summary>
+    <div class="grid2" style="gap:8px;margin-top:4px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
       <div><label class="mini" for="pRoad">ถนน</label><select id="pRoad">${opt('', 'ทุกถนน', f.road)}${roads.map(([id, nm]) => opt(id, nm, f.road)).join('')}</select></div>
       <div><label class="mini" for="pSt">สถานะ</label><select id="pSt">${opt('active', 'ใช้งาน', f.st)}${opt('inactive', 'ยกเลิกแล้ว', f.st)}${opt('', 'ทั้งหมด', f.st)}</select></div>
       <div><label class="mini" for="pTier">ระดับความจุ</label><select id="pTier">${opt('', 'ทุกระดับ', f.tier)}${S.cache.capacity_tier.map(t => opt(t.label, t.label, f.tier)).join('')}</select></div>
       <div><label class="mini" for="pType">ประเภทจุด</label><select id="pType">${opt('', 'ทุกประเภท', f.type)}${types.map(t => opt(t, t, f.type)).join('')}</select></div>
       <div><label class="mini" for="pMiss">ข้อมูลที่ยังขาด</label><select id="pMiss">${opt('', '—', f.miss)}${opt('gps', 'ไม่มีพิกัด', f.miss)}${opt('photo', 'ไม่มีรูป', f.miss)}${opt('bins', 'ไม่มีถัง', f.miss)}</select></div>
-      <div><label class="mini" for="pRep">เรื่องแจ้งจากประชาชน</label><select id="pRep">${opt('', '—', f.rep)}${opt('open', 'มีเรื่องค้าง', f.rep)}</select></div></div>
+      <div><label class="mini" for="pRep">เรื่องแจ้งจากประชาชน</label><select id="pRep">${opt('', '—', f.rep)}${opt('open', 'มีเรื่องค้าง', f.rep)}</select></div></div></details>
     <div class="row" style="justify-content:space-between;margin:8px 0"><span id="pCount" class="muted"></span><span class="row" style="gap:6px"><button class="small secondary" type="button" onclick="S._pf={q:'',road:'',st:'active',tier:'',type:'',miss:'',rep:'',size:S._pf.size,page:0};render()">ล้างตัวกรอง</button><label class="muted row" style="margin:0;gap:4px">หน้าละ <select id="pSize" style="width:auto">${[20, 50, 100].map(x => opt(x, x, f.size)).join('')}</select></label></span></div>
     <div id="list"></div><div id="pPager" class="row" style="justify-content:center;margin-top:8px"></div></div>
     ${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
@@ -1751,7 +1753,7 @@ async function pageComplaints(view) {
   const inGrp = r => f.grp === 'all' || (f.grp === 'open' ? !RCLOSED.includes(r.status) : RCLOSED.includes(r.status)), list = reps.filter(r => ids.has(r.id) && inGrp(r) && (!f.issue || (r.issues || []).includes(f.issue)) && (!f.ym || String(r.created_at).slice(0, 7) === f.ym)).reverse();
   const hrs = (a, b) => (new Date(b) - new Date(a)) / 3600000, ackT = reps.map(r => { const e = ev(r.id).find(x => !['new', 'merged'].includes(x.status)); return e ? hrs(r.created_at, e.created_at) : null; }).filter(x => x != null), closeT = reps.filter(r => r.closed_at).map(r => hrs(r.created_at, r.closed_at) / 24);
   const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null, kpi = (v, l, sub) => `<div class="kpi"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}${sub ? `<br><span>${sub}</span>` : ''}</div></div>`;
-  const byIssue = ISSUES.map(([k, l]) => [l, reps.filter(r => (r.issues || []).includes(k)).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
+  const byIssue = Object.entries(reps.reduce((a, r) => { for (const k of r.issues || []) { const l = issueNameOf(r)(k); a[l] = (a[l] || 0) + 1; } return a; }, {})).sort((a, b) => b[1] - a[1]);   // DEC-134 เรื่องตามพิกัดใช้ชื่อเหตุของตัวเอง
   const next = st => RSTATUS.filter(([k]) => !['new', 'merged', st].includes(k));
   const openAt = pid => reps.filter(x => x.place_id === pid && !RCLOSED.includes(x.status)).length;
   const card = r => { const p = pl(r.place_id), e = ev(r.id), phs = ph(r.id), same = r.place_id ? openAt(r.place_id) : 0;
@@ -3282,11 +3284,11 @@ function withCredit(doc) {
 // =====================================================================
 const GN = k => `<span class="gn">${k}</span>`;   // เลขวงกลมสีแดงแบบเดียวกับในภาพ
 const GUIDE_REC = [
-  { id: 'g1', title: 'ก่อนเริ่มใช้งาน', intro: 'ระบบนี้ใช้ผ่านเว็บบนมือถือ ไม่ต้องติดตั้งแอป ใช้มือถือ Android หรือ iPhone ที่ต่ออินเทอร์เน็ตได้',
+  { id: 'g1', title: 'ก่อนเริ่มใช้งาน', intro: 'ระบบนี้ใช้ผ่านเว็บบนมือถือ และติดตั้งเป็นแอปบนหน้าจอได้ (ไม่ต้องโหลดจาก Play Store / App Store) ใช้มือถือ Android หรือ iPhone ที่ต่ออินเทอร์เน็ตได้',
     parts: [{ steps: [
       'ขอ <b>ชื่อล็อกอิน</b> และ <b>รหัสผ่านเริ่มต้น</b> จาก admin ของเทศบาล (ระบบไม่สมัครเอง ไม่ใช้อีเมล)',
       'เปิดเบราว์เซอร์ในมือถือ (Android ใช้ Chrome · iPhone ใช้ Safari) พิมพ์ที่อยู่ <b class="mono">' + esc(CREDIT.url.replace('https://', '')) + '</b>',
-      'ทำไอคอนไว้ที่หน้าจอมือถือ จะได้ไม่ต้องพิมพ์ที่อยู่ทุกครั้ง: <br>• <b>Android (Chrome)</b> กดปุ่ม <b>⋮</b> มุมขวาบน → <b>"เพิ่มลงในหน้าจอหลัก"</b> (Add to Home screen) → <b>"เพิ่ม"</b><br>• <b>iPhone (Safari)</b> กดปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรชี้ขึ้น) ด้านล่าง → <b>"เพิ่มไปยังหน้าจอโฮม"</b> (Add to Home Screen) → <b>"เพิ่ม"</b><br><span class="muted">ชื่อเมนูอาจต่างเล็กน้อยตามรุ่นของมือถือ</span>',
+      'ติดตั้งเป็นแอป จะได้ไม่ต้องพิมพ์ที่อยู่ทุกครั้ง: หลังเข้าสู่ระบบบนมือถือ จะเห็นแถบสีฟ้า <b>"ติดตั้งเป็นแอปบนหน้าจอมือถือ"</b> กด <b>"ติดตั้ง"</b> แล้วจะมีไอคอน <b>"จุดถังขยะ"</b> บนหน้าจอ · ไม่เห็นแถบ ทำเองได้: <br>• <b>Android (Chrome)</b> กดปุ่ม <b>⋮</b> มุมขวาบน → <b>"เพิ่มลงในหน้าจอหลัก"</b> (Add to Home screen) → <b>"เพิ่ม"</b><br>• <b>iPhone (Safari)</b> กดปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรชี้ขึ้น) ด้านล่าง → <b>"เพิ่มไปยังหน้าจอโฮม"</b> (Add to Home Screen) → <b>"เพิ่ม"</b><br><span class="muted">ชื่อเมนูอาจต่างเล็กน้อยตามรุ่นของมือถือ</span>',
       'ครั้งแรกที่กดปุ่ม <b>"ใช้ GPS"</b> มือถือจะถามว่าอนุญาตให้เว็บรู้ตำแหน่งไหม ให้กด <b>"อนุญาต"</b> (Allow) · ครั้งแรกที่กด <b>"ถ่ายรูป"</b> จะถามเรื่องกล้อง ให้กด <b>"อนุญาต"</b> เช่นกัน'],
     done: 'เปิดที่อยู่แล้วเห็นหน้า <b>ภาพรวม</b> (ข้อมูลสาธารณะ) กดปุ่ม <b>"เข้าสู่ระบบ"</b> มุมขวาบน จะเห็นหน้าตามภาพในหัวข้อถัดไป' }] },
   { id: 'g2', title: 'เข้าสู่ระบบ และเปลี่ยนรหัสผ่าน', intro: 'เข้าครั้งแรกด้วยรหัสผ่านที่ admin ให้ แล้วเปลี่ยนเป็นรหัสของท่านเอง เพื่อไม่ให้คนอื่นใช้ชื่อของท่านบันทึกข้อมูล',
@@ -3303,15 +3305,15 @@ const GUIDE_REC = [
       done: 'ขึ้นข้อความ <b>"เปลี่ยนรหัสผ่านแล้ว"</b> · ครั้งต่อไปใช้รหัสใหม่ · ลืมรหัสผ่าน ให้แจ้ง admin ของเทศบาลตั้งให้ใหม่' }] },
   { id: 'g3', title: 'รู้จักหน้าจอแผนที่', intro: 'หน้าแรกหลังเข้าสู่ระบบ แสดงจุดวางถังทุกจุดของเทศบาล',
     parts: [{ img: 'r02', steps: [
-      `${GN(1)} <b>เมนูหลัก</b> แผนที่ · จุด (รายการ) · เส้นทางรถ · ช่วยเหลือ`,
-      `${GN(2)} <b>คำอธิบายสีหมุด</b> สีบอกความจุรวมของถังในจุดนั้น (เขียว = น้อย ไล่ไปถึงม่วง = มาก)`,
+      `${GN(1)} <b>เมนูหลัก</b> แผนที่ · จุด (รายการ) · เรื่องแจ้ง · เส้นทางรถ · ช่วยเหลือ (ตัวเลขบนเมนู "เรื่องแจ้ง" = เรื่องที่ยังไม่ปิด)`,
+      `${GN(2)} <b>คำอธิบายสีหมุด</b> สีบอกความจุรวมของถังในจุดนั้น (ฟ้าอ่อน = น้อย ไล่ไปถึงน้ำเงินเข้ม = มาก) · <b>วงแดง</b> = จุดที่มีเรื่องแจ้งจากประชาชน · <b>สามเหลี่ยมแดง</b> = เรื่องแจ้งตำแหน่งที่ไม่มีถัง`,
       `${GN(3)} สลับ <b>"แผนที่"</b> กับ <b>"ดาวเทียม"</b> ภาพดาวเทียมช่วยดูตำแหน่งจริง เช่น หน้าบ้านหรือหัวมุม`,
       `${GN(4)} ปุ่ม <b>"＋ เพิ่มจุด"</b> ใช้บ่อยที่สุด (หัวข้อ 4)`,
       `${GN(5)} ปุ่ม <b>"บัญชี"</b> เปลี่ยนรหัสผ่าน / ออกจากระบบ`],
       done: 'ใช้สองนิ้วถ่างเพื่อซูมเข้า บีบเพื่อซูมออก ลากนิ้วเดียวเพื่อเลื่อนแผนที่' },
     { img: 'r03', lead: 'ดูข้อมูลของจุดบนแผนที่', steps: [
       `${GN(1)} แตะที่ <b>หมุด</b> จะเห็นรหัสจุด ชื่อ ถนน จำนวนใบ และลิตร`,
-      `${GN(2)} แตะ <b>"เปิดรายละเอียด"</b> เพื่อดูถังและรูปของจุดนั้น หรือแก้ไข (หัวข้อ 5)`] }] },
+      `${GN(2)} แตะ <b>"รายละเอียด/รูป"</b> เพื่อดูถังและรูปของจุดนั้น หรือแก้ไข (หัวข้อ 5)`] }] },
   { id: 'g4', title: 'เพิ่มจุดใหม่ (ทำที่จุดจริง)', intro: 'ให้ยืนอยู่ที่จุดวางถังจริงก่อนเริ่ม เพราะระบบใช้ตำแหน่งของมือถือเป็นพิกัดของจุด กรอกจากบนลงล่างทีละช่อง ใช้เวลาประมาณ 1–2 นาทีต่อจุด',
     parts: [{ img: 'r05', lead: 'กดปุ่ม <b>"＋ เพิ่มจุด"</b> มุมขวาล่าง', steps: [
       `${GN(1)} <b>ชื่ออ้างอิง</b> (ต้องกรอก) ชื่อที่คนในพื้นที่เข้าใจ เช่น หน้าวัดใต้ · ปากซอย 3 · หน้าตลาดสด`,
@@ -3331,16 +3333,23 @@ const GUIDE_REC = [
       `${GN(6)} มีถังต่างประเภทหรือต่างสภาพในจุดเดียวกัน กด <b>"＋ เพิ่มแถวถัง"</b> แล้วกรอกแถวใหม่ · กรอกเกิน กด "ลบแถว"`],
       done: '"เลขครุภัณฑ์" และ "ราคา/ใบ" ไม่ต้องกรอกถ้าไม่ทราบ (เว้นราคาว่าง = ระบบใช้ราคามาตรฐานของประเภทถังนั้น)' },
     { img: 'r07', lead: 'ถ่ายรูปแล้วบันทึก (รูปไม่บังคับ แต่ช่วยให้คนอื่นหาจุดเจอ)', steps: [
-      `${GN(1)} <b>"ถ่ายรูป"</b> เปิดกล้องหลัง ถ่ายทีละรูป ถ้าต้องการหลายรูปให้กดซ้ำ · ถ่ายให้เห็นถังและสิ่งที่จำได้ เช่น ป้ายร้าน รั้ววัด`,
+      `${GN(1)} <b>"ถ่ายรูป"</b> เปิดกล้องหลัง ถ่ายทีละรูป ถ้าต้องการหลายรูปให้กดซ้ำ · ถ่ายให้เห็นถังและสิ่งที่จำได้ เช่น รั้ววัด เสาไฟ หัวมุมถนน · <b>หลีกเลี่ยงใบหน้าคน ทะเบียนรถ บ้านเลขที่ และป้ายชื่อร้านค้า/บริษัท</b> (ข้อมูลส่วนบุคคล PDPA เพราะรูปจุดแสดงบนหน้าสาธารณะ)`,
       `${GN(2)} <b>"เลือกจากคลังรูป"</b> ใช้รูปที่ถ่ายไว้แล้วในมือถือ เลือกได้หลายรูป`,
       `${GN(3)} รูปย่อแสดงใต้ปุ่ม ถ่ายผิดกด <b>"ลบ"</b> ใต้รูปนั้น (จำนวนรูปสูงสุดแสดงที่หัวข้อ "รูป" ปกติจุดละ 3 รูป)`,
       `${GN(4)} ตรวจข้อมูลอีกครั้ง แล้วกด <b>"บันทึก"</b>`],
-      done: 'ขึ้นข้อความว่าบันทึกแล้ว และเปิดหน้าของจุดที่เพิ่งเพิ่ม (ภาพในหัวข้อ 5) · หมุดใหม่จะเห็นบนแผนที่ทันที' }] },
+      done: 'ขึ้นข้อความว่าบันทึกแล้ว และเปิดหน้าของจุดที่เพิ่งเพิ่ม (ภาพในหัวข้อ 5) · หมุดใหม่จะเห็นบนแผนที่ทันที' },
+    { img: 'r15', lead: 'จุดถัดไป: หน้าจุดที่เพิ่งบันทึกมีปุ่ม <b>"＋ เพิ่มจุดถัดไป"</b> กดได้ทันที', steps: [
+      `${GN(1)} แถบสีฟ้าบอกว่า <b>ถนน ซอย ประเภทจุด และถังแถวแรก</b> ใช้ค่าจากจุดที่แล้ว (เดินเก็บทีละถนน ไม่ต้องเลือกซ้ำ)`,
+      `${GN(2)} <b>ถนน</b> เลือกไว้ให้แล้ว · เปลี่ยนเมื่อเลี้ยวเข้าถนนใหม่`,
+      `${GN(3)} <b>ถัง</b> ประเภท จำนวน และสี ตั้งไว้ตามจุดที่แล้ว · ไม่ตรงให้แก้`],
+      done: 'กรอกเพิ่มเฉพาะ <b>ชื่ออ้างอิง</b> · กด <b>"ใช้ GPS"</b> · ถ่ายรูป แล้วบันทึก · ค่าที่จำไว้อยู่ในมือถือเครื่องนั้น แยกตามบัญชี' }] },
   { id: 'g5', title: 'ค้นหา ดู และแก้ไขจุด', intro: 'ใช้เมื่อกลับไปตรวจจุดเดิม เช่น ถังเพิ่ม ถังหาย หรือถ่ายรูปเพิ่ม',
     parts: [{ img: 'r09', lead: 'กดเมนู <b>"จุด"</b>', steps: [
-      `${GN(1)} พิมพ์ <b>รหัส ชื่อ หรือชื่อถนน</b> บางส่วนเพื่อค้นหา รายการจะสั้นลงทันที`,
-      `${GN(2)} แตะ <b>รหัสจุด</b> (ตัวสีเขียวขีดเส้นใต้) เพื่อเปิดจุดนั้น · แตะหัวตารางเพื่อเรียงลำดับ`,
-      `${GN(3)} ปุ่ม <b>"＋ เพิ่มจุด"</b> มีในหน้านี้ด้วย`] },
+      `${GN(1)} พิมพ์ <b>รหัส ชื่อ ถนน หรือซอย</b> บางส่วนเพื่อค้นหา รายการจะสั้นลงทันที`,
+      `${GN(2)} กด <b>"ตัวกรอง"</b> เพื่อเปิด: ถนน · สถานะ (ค่าเริ่มต้น = ใช้งาน) · ระดับความจุ · ประเภทจุด · <b>ข้อมูลที่ยังขาด</b> (ไม่มีพิกัด/รูป/ถัง) · มีเรื่องแจ้งค้าง · "ล้างตัวกรอง" กลับค่าเริ่มต้น`,
+      `${GN(3)} แตะ <b>รหัสจุด</b> (ตัวสีเขียวขีดเส้นใต้) เพื่อเปิดจุดนั้น`,
+      `${GN(4)} <b>หน้าละ</b> 20 / 50 / 100 จุด · ปุ่มเปลี่ยนหน้าอยู่ใต้ตาราง`,
+      `${GN(5)} ปุ่ม <b>"＋ เพิ่มจุด"</b> มีในหน้านี้ด้วย`] },
     { img: 'r08', lead: 'หน้ารายละเอียดของจุด', steps: [
       `${GN(1)} <b>"แก้ไขจุด"</b> แก้ชื่อ ถนน ซอย พิกัด หรือหมายเหตุ (ย้ายพิกัด: ไปยืนที่จุดแล้วกด "ใช้ GPS" ใหม่)`,
       `${GN(2)} <b>"＋ เพิ่มถัง"</b> เพิ่มถังชุดใหม่ · ปุ่ม <b>"แก้"</b> ท้ายแถว แก้จำนวนหรือสภาพของถังชุดนั้น (เช่น ถังชำรุดเปลี่ยนสภาพเป็น "ชำรุด")`,
@@ -3365,6 +3374,12 @@ const GUIDE_REC = [
     { img: 'r12b', lead: 'เลื่อนลงมาจะเห็นแผนที่เส้นทาง', steps: [
       `${GN(1)} ติ๊ก <b>"แสดงทุกเส้นทางของเทศบาล"</b> เพื่อดูเส้นทางอื่นพร้อมกัน (สีบอกความจุรวมของแต่ละเส้นทาง) · ไม่ติ๊ก = ดูเฉพาะเส้นทางที่เลือก`,
       `${GN(2)} แผนที่แสดงเส้นทางและหมุดของจุดในเส้นทาง แตะเส้นเพื่อดูชื่อเส้นทาง แตะหมุดเพื่อดูจุด`] }] },
+  { id: 'g10', title: 'เรื่องแจ้งจากประชาชน', intro: 'ประชาชนแจ้งเหตุได้ 2 แบบ: ที่จุดวางถัง (ถังเต็ม สกปรก หาย ชำรุด ฯลฯ) และที่ตำแหน่งที่ไม่มีถัง (ทิ้งขยะริมทาง ควรมีถังที่นี่ ฯลฯ) · admin และหัวหน้าพนักงานเป็นผู้ตอบสถานะ ผู้ปฏิบัติงานดูได้',
+    parts: [{ img: 'r16', lead: 'กดเมนู <b>"เรื่องแจ้ง"</b>', steps: [
+      `${GN(1)} <b>ตัวเลขบนเมนู</b> = เรื่องที่ยังไม่ปิด · สีแดง = มีเรื่องใหม่ที่ยังไม่รับเรื่อง`,
+      `${GN(2)} การ์ดเรื่องที่แจ้งที่ <b>ตำแหน่งที่ไม่มีจุดวางถัง</b> มีป้ายสีแดง และลิงก์ "ดูตำแหน่ง" เปิด Google Maps`,
+      `${GN(3)} <b>"＋ สร้างเป็นจุดวางถังใหม่"</b> ใช้เมื่อไปดูแล้วมีถังจริงหรือควรตั้งถังที่นั่น ระบบเติมพิกัดและหมายเหตุให้ กรอกชื่อ ถนน และถัง แล้วบันทึก`],
+      done: 'บนแผนที่ แตะสามเหลี่ยมแดงก็มีลิงก์ "สร้างเป็นจุดวางถัง" เช่นกัน · เบอร์โทรของผู้แจ้งเห็นเฉพาะ admin และหัวหน้าพนักงาน' }] },
   { id: 'g8', title: 'เมื่อเห็นกล่องแจ้งเตือนสีแดง', intro: 'กล่องสีแดงบอกเสมอว่า "เกิดอะไร" และ "ต้องทำอย่างไร" ไม่ต้องตกใจ อ่านบรรทัดที่สองแล้วทำตาม',
     parts: [{ img: 'r13', steps: [
       `${GN(1)} ช่องที่ยังไม่ได้กรอกจะมี <b>กรอบสีแดง</b> และหน้าจอเลื่อนไปที่ช่องนั้นให้เอง`,
@@ -3380,10 +3395,16 @@ const GUIDE_REC = [
 const GUIDE_ADM = [
   { id: 'a1', title: 'หน้าที่ของ admin และลำดับงานครั้งแรก', intro: 'admin ของเทศบาลดูแลข้อมูลหลักของเทศบาล: ถนน รถ เส้นทาง น้ำมันรถ บัญชีผู้ปฏิบัติงาน และพิมพ์รายงานให้ผู้บริหาร · แนะนำให้ทำบนคอมพิวเตอร์ · เข้าสู่ระบบและเปลี่ยนรหัสผ่านเหมือนผู้ปฏิบัติงาน (ดูคู่มือผู้ปฏิบัติงานหัวข้อ 2)',
     parts: [{ img: 'a01', lead: 'กดเมนู <b>"จัดการเทศบาล"</b>', steps: [
-      `${GN(1)} แท็บย่อย 6 แท็บ: เริ่มต้นใช้งาน · ถนนและซอย · รถและเส้นทาง · น้ำมันรถ · บัญชีผู้ใช้ · ตั้งค่าเทศบาล`,
+      `${GN(1)} แท็บย่อย 7 แท็บ: เริ่มต้นใช้งาน · ตรวจความครบ · ถนนและซอย · รถและเส้นทาง · น้ำมันรถ · บัญชีผู้ใช้ · ตั้งค่าเทศบาล`,
       `${GN(2)} แท็บ <b>"เริ่มต้นใช้งาน"</b> เป็นรายการตรวจ 8 ข้อ ทำตามลำดับ แต่ละข้อบอก ทำอะไร · ที่ไหน · ค่าที่ต้องได้`,
       `${GN(3)} ปุ่ม <b>"ไป"</b> เปิดหน้าที่ต้องทำของข้อนั้นทันที`],
-      done: 'ครั้งแรกใช้เวลาประมาณ 1–2 ชั่วโมง (ขึ้นกับจำนวนเส้นทาง) · หลังจากนั้นงานประจำคือ กรอกน้ำมันเดือนละครั้ง และดูแดชบอร์ด/พิมพ์รายงาน' }] },
+      done: 'ครั้งแรกใช้เวลาประมาณ 1–2 ชั่วโมง (ขึ้นกับจำนวนเส้นทาง) · หลังจากนั้นงานประจำคือ ตอบเรื่องแจ้งจากประชาชน · กรอกน้ำมันเดือนละครั้ง · ดูแท็บ "ตรวจความครบ" และแดชบอร์ด/พิมพ์รายงาน' },
+    { img: 'a20', lead: 'แท็บ <b>"ตรวจความครบ"</b>: รวมทุกรายการที่ยังขาดไว้ในหน้าเดียว', steps: [
+      `${GN(1)} เปิดจาก จัดการเทศบาล → <b>"ตรวจความครบ"</b>`,
+      `${GN(2)} <b>ร้อยละความครบ</b> ของข้อมูลเทศบาล · ต้องแก้ = ทำให้ตัวเลขหายหรือผิด · ควรแก้ = ตัวเลขยังออกแต่ใช้ค่าตั้งต้น`,
+      `${GN(3)} แต่ละหัวข้อบอก <b>ครบกี่รายการจากทั้งหมด</b> และรายการที่ยังขาด (รถ เส้นทาง ที่ทิ้งขยะ จุดวางถัง คนขับ เที่ยววิ่งเดือนนี้)`,
+      `${GN(4)} ปุ่ม <b>"แก้"</b> เปิดฟอร์มของรายการนั้นทันที แก้แล้วกลับมาที่แท็บนี้เพื่อดูผล`],
+      done: 'ตัวเลขการปล่อยก๊าซ ระยะทาง และรายงานผู้บริหาร ขึ้นกับข้อมูลในแท็บนี้ · ทำ "ต้องแก้" ให้หมดก่อน' }] },
   { id: 'a2', title: 'ถนนและซอย', intro: 'ถนนเป็นแกนของระบบ ทุกจุดวางถังต้องอยู่บนถนน 1 สาย และชื่อถนนใช้ตั้งรหัสจุด (เช่น แจ้งสนิท-2)',
     parts: [{ img: 'a02', lead: 'จัดการเทศบาล → แท็บ <b>"ถนนและซอย"</b>', steps: [
       `${GN(1)} <b>"ดึงถนน/ซอยจาก OpenStreetMap"</b> ดึงชื่อถนนและซอยทั้งเขตเทศบาลมาให้ในครั้งเดียว กดซ้ำได้ ระบบไม่เพิ่มชื่อซ้ำ`,
@@ -3462,15 +3483,17 @@ const GUIDE_ADM = [
       done: 'แก้ตัวเลขแล้วกดบันทึกซ้ำได้ · ลบบันทึกของคันใด ให้ลบตัวเลขทุกช่องของแถวนั้นแล้วกดบันทึก · เลขไมล์สิ้นเดือนน้อยกว่าต้นเดือนระบบไม่ยอมบันทึก' }] },
   { id: 'a9', title: 'บัญชีผู้ใช้และที่เก็บรูป', intro: 'admin เพิ่มบัญชีผู้ปฏิบัติงานได้ตามเพดานที่เจ้าของโครงการกำหนด (แสดงที่แถบสีฟ้าด้านบน)',
     parts: [{ img: 'a14', lead: 'จัดการเทศบาล → แท็บ <b>"บัญชีผู้ใช้"</b>', steps: [
-      `${GN(1)} <b>"＋ เพิ่มผู้บันทึก"</b> ตั้งชื่อล็อกอิน (a-z 0-9 เช่น ubn-rec4) ชื่อแสดง และรหัสผ่าน (เว้นว่าง = ระบบสุ่มแบบจำง่าย) → ได้ใบส่งมอบบัญชีพิมพ์แจกได้`,
-      `${GN(2)} <b>"รีเซ็ตรหัส"</b> เมื่อผู้ปฏิบัติงานลืมรหัสผ่าน · รหัสใหม่แสดงครั้งเดียว ให้พิมพ์หรือจดส่งต่อทันที`],
-      done: 'ผู้ปฏิบัติงานที่ลาออก กด "แก้" แล้วเปลี่ยนสถานะเป็นปิดใช้งาน · ส่งรหัสผ่านให้เจ้าตัวโดยตรง อย่าส่งในกลุ่มไลน์' },
+      `${GN(1)} <b>"＋ เพิ่มบัญชี"</b> เลือกบทบาท (ผู้บันทึก · คนขับรถ · หัวหน้าพนักงาน) ตั้งชื่อล็อกอิน (a-z 0-9 เช่น ubn-rec4) ชื่อแสดง และรหัสผ่าน (เว้นว่าง = ระบบสุ่มแบบจำง่าย) · คนขับต้องเลือกรถที่ผูก → ได้ใบส่งมอบบัญชีพิมพ์แจกได้`,
+      `${GN(2)} <b>"รีเซ็ตรหัส"</b> เมื่อผู้ปฏิบัติงานลืมรหัสผ่าน · รหัสใหม่แสดงครั้งเดียว ให้พิมพ์หรือจดส่งต่อทันที`,
+      `${GN(3)} <b>"ลบ"</b> ลบบัญชีถาวร ล็อกอินชื่อนี้ไม่ได้อีก (ข้อมูลที่เคยบันทึกยังอยู่)`],
+      done: 'ผู้ปฏิบัติงานที่ลาออก กด "แก้" แล้วเปลี่ยนสถานะเป็นปิดใช้งาน (ลบถาวรได้ด้วยปุ่ม "ลบ" ข้อมูลที่เคยบันทึกยังอยู่) · คนขับต้องผูกรถจึงกรอกเที่ยววิ่งได้ · ส่งรหัสผ่านให้เจ้าตัวโดยตรง อย่าส่งในกลุ่มไลน์' },
     { img: 'a15', lead: 'จัดการเทศบาล → แท็บ <b>"ตั้งค่าเทศบาล"</b>', steps: [
       `${GN(1)} <b>ที่เก็บรูป</b> ค่าเริ่มต้นใช้ที่เก็บกลางของโครงการ ไม่ต้องตั้งอะไร · ถ้าต้องการเก็บใน Google Drive ของเทศบาลเอง เลือกแบบที่ 2 แล้วกด "ดูวิธีทำทีละขั้น (มีภาพ)" ให้ผู้ดูแลบัญชี Google ของเทศบาลทำ (คู่มือนี้เปิดได้โดยไม่ต้องเข้าสู่ระบบ ส่งลิงก์ให้ได้)`,
-      `${GN(2)} <b>"บันทึกการตั้งค่า"</b>`] }] },
+      `${GN(2)} <b>"บันทึกการตั้งค่า"</b>`],
+      done: 'เลื่อนลงมีอีก 2 การ์ด: <b>การรับแจ้งเหตุจากประชาชน</b> (เปิด/ปิด และจำนวนรูปที่ผู้แจ้งแนบได้) · <b>องค์ประกอบขยะ</b> (ใช้เฉพาะภาคผนวกงานวิจัย ไม่ทราบให้คงค่าที่ระบบเลือกไว้)' }] },
   { id: 'a10', title: 'แดชบอร์ด', intro: 'ตัวเลขทุกตัวคำนวณสดจากข้อมูล ณ เวลาที่เปิด ไม่ต้องสั่งปรับปรุง',
     parts: [{ img: 'a16', lead: 'เมนู <b>"แดชบอร์ด"</b>', steps: [
-      `${GN(1)} 4 หน้า: <b>ภาพรวม</b> (ผู้บริหาร) · <b>วิเคราะห์เชิงลึก</b> (กรองตามถนน/ระดับ) · <b>ทรัพย์สินถัง</b> (ชำรุด/หาย มูลค่าประมาณการ) · <b>รถและเส้นทาง</b>`,
+      `${GN(1)} 5 หน้า: <b>ภาพรวม</b> (ผู้บริหาร) · <b>วิเคราะห์เชิงลึก</b> (กรองตามถนน/ระดับ) · <b>ทรัพย์สินถัง</b> (ชำรุด/หาย มูลค่าประมาณการ) · <b>รถและเส้นทาง</b> · <b>การปล่อยก๊าซ</b> (รถเก็บขน + ฝังกลบ รายเดือน/ปีงบประมาณ และแนวโน้ม 12 เดือน)`,
       `${GN(2)} ตัวเลขหลัก แตะไอคอน (?) ที่หัวการ์ดเพื่ออ่านความหมายของตัวเลข`] },
     { img: 'a17', lead: 'หน้า <b>"รถและเส้นทาง"</b>', steps: [
       `${GN(1)} <b>เลือกเดือน</b>`,
@@ -3478,18 +3501,26 @@ const GUIDE_ADM = [
       `${GN(3)} <b>ข้อมูลที่ยังไม่ครบ</b> บอกว่ารอบหรือรถคันไหนขาดอะไร (ตัวเลขอาจต่ำกว่าจริงจนกว่าจะเติมครบ)`,
       `${GN(4)} <b>รายงานพิมพ์</b> และ <b>CSV รายคัน / รายรอบ</b> สำหรับนำไปคำนวณต่อ เช่น การปล่อยก๊าซเรือนกระจก`],
       done: 'เลื่อนลงจะเห็นกราฟ กม. ตามแผนเทียบจริง ตารางรายคัน ตารางรายรอบ (ขาไป/ขากลับ) และแผนที่รวมทุกเส้นทาง' }] },
-  { id: 'a11', title: 'รายงานสำหรับผู้บริหาร', intro: 'รายงาน 6 ฉบับ เปิดหน้าต่างใหม่ แล้วกด "พิมพ์ / บันทึก PDF" · มีช่องลงนาม 3 ช่องท้ายรายงาน',
+  { id: 'a11', title: 'รายงานสำหรับผู้บริหาร', intro: 'รายงาน 8 ฉบับ เปิดหน้าต่างใหม่ แล้วกด "พิมพ์ / บันทึก PDF" · มีช่องลงนาม 3 ช่องท้ายรายงาน',
     parts: [{ img: 'a18', lead: 'เมนู <b>"รายงาน"</b>', steps: [
-      `${GN(1)} สรุปภาพรวมเมือง 1 หน้า · ทะเบียนจุดวางถัง รายถนน · แผนเส้นทางเก็บขน · ทรัพย์สินถัง · รถ เส้นทาง และเชื้อเพลิง (รายเดือน) · จุดที่ยังขาดข้อมูล`,
+      `${GN(1)} สรุปภาพรวมเมือง 1 หน้า · ทะเบียนจุดวางถัง รายถนน · แผนเส้นทางเก็บขน · ทรัพย์สินถัง · เรื่องแจ้งจากประชาชน · การปล่อยก๊าซเรือนกระจก · รถ เส้นทาง และเชื้อเพลิง (รายเดือน) · จุดที่ยังขาดข้อมูล`,
       `${GN(2)} <b>"เปิดรายงาน"</b> ของฉบับที่ต้องการ · รายงานรถและเชื้อเพลิงใช้เดือนที่เลือกในแดชบอร์ด "รถและเส้นทาง"`],
       done: 'เบราว์เซอร์กันหน้าต่างใหม่ (ป๊อปอัป) ให้กดอนุญาตที่แถบที่อยู่ แล้วกดเปิดรายงานอีกครั้ง · รายงานแจ้งคนขับรายเส้นทางอยู่ที่หน้าเส้นทางรถ' }] },
   { id: 'a12', title: 'ดูแลข้อมูลจุด และเมื่อติดปัญหา', intro: 'ผู้ปฏิบัติงานแก้ไขจุดได้แต่ยกเลิกไม่ได้ · admin เป็นผู้ยกเลิกจุดหรือถังที่บันทึกผิดหรือซ้ำ',
     parts: [{ img: 'a19', lead: 'เปิดหน้าจุด (จากแผนที่หรือเมนู "จุด")', steps: [
-      `${GN(1)} <b>"ยกเลิกจุดนี้"</b> จุดซ้ำหรือจุดที่ไม่มีแล้ว · ข้อมูลยังเก็บไว้ แต่ไม่นับในยอดรวมและแผนที่`,
+      `${GN(1)} <b>"ยกเลิกจุดนี้"</b> จุดซ้ำหรือจุดที่ไม่มีแล้ว · ข้อมูลยังเก็บไว้ แต่ไม่นับในยอดรวมและแผนที่ · ยกเลิกผิด กด <b>"นำกลับมาใช้งาน"</b> ที่หน้าจุดเดิม (หาได้จากเมนู "จุด" ตัวกรองสถานะ "ยกเลิกแล้ว")`,
       `${GN(2)} <b>"ยกเลิก"</b> ท้ายแถวถัง ใช้กับแถวถังที่บันทึกผิด · ถังชำรุดหรือหายให้ "แก้" แล้วเปลี่ยนสภาพแทน (ยังเป็นทะเบียน แต่ไม่นับความจุ)`],
-      done: 'ติดปัญหา: อ่านกล่องสีแดงก่อน (บอกเสมอว่าเกิดอะไรและต้องทำอย่างไร) · ทุกหน้ามีปุ่ม (?) · เมนู "ช่วยเหลือ" มีตารางข้อความทั้งหมด · ถ้ายังแก้ไม่ได้ ติดต่อเจ้าของโครงการ ผศ.พัฒนศักดิ์ ปทุมวัน pattanasak.p@ubru.ac.th พร้อมภาพหน้าจอ (อย่าให้เห็นรหัสผ่าน)' }] }
+      done: 'ลบถาวร (ถนน รถ เส้นทาง สถานที่ เที่ยววิ่ง) มีปุ่ม "ลบ" ระบบแสดงข้อมูลที่จะถูกลบตามก่อนยืนยัน กู้คืนไม่ได้ ถ้าแค่เลิกใช้ ให้เปลี่ยนสถานะเป็นปิดใช้งานแทน · ติดปัญหา: อ่านกล่องสีแดงก่อน (บอกเสมอว่าเกิดอะไรและต้องทำอย่างไร) · ทุกหน้ามีปุ่ม (?) · เมนู "ช่วยเหลือ" มีตารางข้อความทั้งหมด · ถ้ายังแก้ไม่ได้ ติดต่อเจ้าของโครงการ ผศ.พัฒนศักดิ์ ปทุมวัน pattanasak.p@ubru.ac.th พร้อมภาพหน้าจอ (อย่าให้เห็นรหัสผ่าน)' }] },
+  { id: 'a13', title: 'ตอบเรื่องแจ้งจากประชาชน', intro: 'admin และหัวหน้าพนักงานตอบสถานะได้ · ผู้แจ้งติดตามสถานะด้วยเบอร์โทรที่หน้าสาธารณะ "ติดตามเรื่องแจ้ง" · เปิด/ปิดการรับแจ้งที่ ตั้งค่าเทศบาล',
+    parts: [{ img: 'a21', lead: 'เมนู <b>"เรื่องแจ้ง"</b>', steps: [
+      `${GN(1)} <b>ตัวเลขบนเมนู</b> = เรื่องที่ยังไม่ปิด · สีแดง = มีเรื่องใหม่ที่ยังไม่รับเรื่อง`,
+      `${GN(2)} ตัวเลขสรุป: เรื่องค้าง · รอรับเรื่อง · ปิดแล้ว · เวลาเฉลี่ยถึงรับเรื่องและถึงปิดเรื่อง`,
+      `${GN(3)} <b>เบอร์โทรของผู้แจ้ง</b> กดเพื่อโทรได้ (เห็นเฉพาะ admin และหัวหน้าพนักงาน)`,
+      `${GN(4)} <b>ปุ่มสถานะ</b> รับทราบแล้ว → แจ้งผู้รับผิดชอบแล้ว → กำลังดำเนินการ → ดำเนินการเสร็จแล้ว (แนบรูปหลังแก้ได้ 1 รูป) · หรือ ตรวจแล้วไม่พบปัญหา / นอกความรับผิดชอบ / เรื่องซ้ำ`,
+      `${GN(5)} เรื่องที่แจ้งที่ <b>ตำแหน่งที่ไม่มีจุดวางถัง</b>: ลิงก์ "ดูตำแหน่ง" และปุ่ม <b>"สร้างเป็นจุดวางถังใหม่"</b> (เติมพิกัดให้)`],
+      done: 'ผู้แจ้งหลายคนเรื่องเดียวกันที่จุดเดียวกันภายใน 3 วัน ระบบรวมเป็นเรื่องเดียวและนับจำนวนผู้แจ้ง · เบอร์โทรลบอัตโนมัติเมื่อปิดเรื่องครบ 1 ปี · ปุ่ม "รายงานสรุป" พิมพ์ได้ (ไม่มีเบอร์โทร)' }] }
 ];
-const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=4" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=4" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
+const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=5" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=5" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
 const GUIDE_CSS = `<style>.gn{display:inline-block;min-width:26px;height:26px;line-height:26px;border-radius:50%;background:#E11D48;color:#fff;font-weight:700;text-align:center;font-size:15px;margin-right:4px}
   .gpart{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:18px;align-items:start;margin-top:14px}.gpart.wide{grid-template-columns:1fr;gap:8px}.gpart.wide .gimg{max-width:860px}.gpart ol{margin:6px 0;padding-left:0;list-style:none}.gpart li{margin:8px 0;line-height:1.7}
   .gimg{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;display:block}.gdone{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.7}
@@ -3698,7 +3729,11 @@ const SHOTS = {
     const cam = [...document.querySelectorAll('label.btn')].find(x => x.textContent.includes('ถ่ายรูป')), lib = [...document.querySelectorAll('label.btn')].find(x => x.textContent.includes('คลังรูป'));
     window.scrollTo(0, document.body.scrollHeight); await shotWait(200); return [[cam, 1], [lib, 2], ['#f_photoList', 3], ['#btnSave', 4]]; } },
   place: { run: async () => { const b = [...document.querySelectorAll('button')]; return [[b.find(x => x.textContent === 'แก้ไขจุด'), 1], [b.find(x => x.textContent.includes('เพิ่มถัง')), 2], [[...document.querySelectorAll('label.btn')].find(x => x.textContent.includes('ถ่ายรูป')), 3]]; } },
-  places: { run: async () => [['#q', 1], ['#list a', 2], ['.fab', 3]] },
+  places: { run: async () => [['#pq', 1], ['#pFilt summary', 2], ['#list a', 3], ['#pSize', 4], ['.fab', 5]] },
+  addnext: { run: async () => { const roads = await api.list('road', { eq: { municipality_id: S.me.municipality_id, status: 'active' }, order: ['name'] }), bt = S.cache.bin_type.filter(t => t.status === 'active');
+    localStorage.setItem(lastKey(), JSON.stringify({ road: roads[1].id, soi: null, type: S.cache.place_type[1].id, bin: { type: bt[1].id, amt: 2, color: '' } })); await render(); await shotWait(500);
+    return [['#view .banner.info', 1], ['#f_road', 2], ['.b_type', 3]]; } },
+  compl: { wait: 1500, run: async () => { await shotReports(); return [['#tabs a[href="#complaints"]', 1], [$('#view .card[id^="cr_"]').querySelector('.pill'), 2], [shotText('สร้างเป็นจุดวางถังใหม่', 'button'), 3]]; } },
   offline: { pre: () => Object.defineProperty(navigator, 'onLine', { get: () => false }),
     run: async () => { shotFill('#f_name', 'หน้าตลาดสดเทศบาล'); window.dispatchEvent(new Event('offline')); window.scrollTo(0, document.body.scrollHeight); await shotWait(300);
       return [[$('#view .banner.warn'), 1], ['#btnSave', 2], ['.toast.err', 3]]; } },
@@ -3710,6 +3745,9 @@ const SHOTS = {
   help: { run: async () => [[[...document.querySelectorAll('#tabs a')].find(a => a.textContent === 'ช่วยเหลือ'), 1], ['#view a[href="#guide"]', 2]] },
   // ---- คู่มือ admin เทศบาล (DEC-112) · จอคอมพิวเตอร์ ----
   astart: { run: async () => [['nav.subtabs', 1], ['#view ol li', 2], ['#view ol li a.btn', 3]] },
+  acheck: { run: async () => [['nav.subtabs a.active', 1], ['.ckbar', 2], ['.ckrow details summary', 3], ['.ckrow li .btn, .ckrow li button', 4]] },
+  acompl: { wait: 1500, run: async () => { await shotReports(); const c = $('#view .card[id^="cr_"]');
+    return [['#tabs a[href="#complaints"]', 1], ['#view .kpis', 2], [c.querySelector('a[href^="tel:"]'), 3], [c.querySelector('.chips'), 4], [shotText('สร้างเป็นจุดวางถังใหม่', 'button'), 5]]; } },
   aroads: { run: async () => [[shotText('ดึงถนน/ซอยจาก OpenStreetMap'), 1], [$('#sec_road button[onclick^="crudForm(\'road\')"]'), 2], ['#sec_road tbody button', 3], ['#sec_soi h4', 4]] },
   atrucks: { run: async () => [['#sec_truck tbody tr button', 1], [$('#sec_truck button[onclick^="crudForm(\'truck\')"]'), 2], [[...document.querySelectorAll('#sec_truck th')].find(t => t.textContent.includes('เชื้อเพลิง')), 3]] },
   atruckform: { run: async () => { crudForm('truck', SPECS.truck._rows[0].id); await shotWait(300); return [['#c_fuel_type', 1], ['#c_fuel_economy', 2], ['#c_model_year', 3], ['#c_save', 4]]; } },
@@ -3724,7 +3762,7 @@ const SHOTS = {
     const c = S._adj.map.getCenter(); S._adj.via.push([+(c.lat - 0.004).toFixed(6), +(c.lng - 0.006).toFixed(6)]); S._adj.viaBack.push([+(c.lat + 0.004).toFixed(6), +(c.lng + 0.006).toFixed(6)]); viaDraw(); shotTop('#viaBar', 130); await shotWait(300);
     return [[$('#viaBar input[name=vleg]').closest('.row'), 1], ['.viapin.back', 2], ['#btnVia', 3], [shotText('เลิกปรับ', 'button'), 4]]; } },
   afuel: { run: async () => [['#fuelMonth', 1], ['#fuelTable .fq', 2], ['#fuelTable .o2', 3], ['#fuelTable .calc', 4], ['#btnFuel', 5]] },
-  ausers: { run: async () => [[shotText('＋ เพิ่มผู้บันทึก', 'button'), 1], [shotText('รีเซ็ตรหัส', 'button'), 2]] },
+  ausers: { run: async () => [[shotText('เพิ่มบัญชี', 'button'), 1], [shotText('รีเซ็ตรหัส', 'button'), 2], [[...document.querySelectorAll('#view tbody button.danger')][0], 3]] },
   asettings: { run: async () => [[$('input[name=photoMode]').closest('label'), 1], [shotText('บันทึกการตั้งค่า', 'button'), 2]] },
   adash: { wait: 2500, run: async () => [['nav.subtabs', 1], ['#view .kpis', 2]] },
   afleet: { wait: 1500, run: async () => { await shotSnap('สาย 1 (ก+ข)'); await shotSnap('สาย 2 (ค)'); S._fleetMonth = prevMonth(); location.hash = '#dashboard/fleet'; await shotWait(3500);
@@ -3733,6 +3771,13 @@ const SHOTS = {
   aplace: { run: async () => { const [p] = await api.list('v_place', { eq: { place_code: 'ถนนตัวอย่าง ก-1' } }); location.hash = '#place/' + p.id; await shotWait(1500);
     return [[shotText('ยกเลิกจุด', 'button'), 1], ['#view table button.danger', 2]]; } }
 };
+// ตัวอย่างเรื่องแจ้ง 2 เรื่อง (ที่จุดวางถัง + ตำแหน่งที่ไม่มีถัง) สำหรับภาพคู่มือ
+async function shotReports() {
+  const ps = (await api.list('v_place', { eq: { municipality_id: S.me.municipality_id, status: 'active' }, order: ['place_code'] })).filter(p => p.lat != null);
+  await api.rpc('submit_citizen_report', { p_place: ps[0].id, p_issues: ['full', 'dirty'], p_phone: '0812345678', p_consent: true, p_want_photo: false });
+  await api.rpc('submit_citizen_report_at', { p_muni: S.me.municipality_id, p_lat: +ps[1].lat + 0.0006, p_lng: +ps[1].lng + 0.0004, p_issues: ['litter'], p_phone: '0898765432', p_consent: true });
+  S._repCnt = null; await render(); await shotWait(800);
+}
 // ตัวช่วยถ่ายภาพคู่มือ admin
 const shotText = (t, sel = 'button, a') => [...document.querySelectorAll(sel)].find(x => x.textContent.trim().includes(t));
 const $$step = i => document.querySelectorAll('.step')[i];
@@ -3740,6 +3785,7 @@ async function shotRoute(name) { const [rt] = await api.list('route', { eq: { na
 async function shotSnap(name) { const [rt] = await api.list('route', { eq: { name } }); const st = await reStops(rt.id, true); const res = await snapTrip(rt, st); await api.update('route', rt.id, res.patch); return rt.id; }
 async function shotStart() {
   const sh = SHOTS[SHOT] || {}; document.body.classList.add('shot');
+  try { Object.keys(localStorage).filter(k => k.startsWith('ubw_last_place_')).forEach(k => localStorage.removeItem(k)); } catch (_) {}   // DEC-134 ภาพเพิ่มจุดไม่ให้มีค่าจากจุดที่แล้วค้าง
   Queue.save([]); if (sh.pre) sh.pre();
   if (SHOT_Q.get('as')) S.me = await api.login(SHOT_Q.get('as'), 'demo');
   Queue.refreshBadge(); renderCredit(); await render(); await shotWait(sh.wait || 800); window.scrollTo(0, 0);
