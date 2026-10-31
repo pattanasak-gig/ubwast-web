@@ -2004,6 +2004,7 @@ function routeBands(routes) {
   const legend = ROUTE_RAMP.map((c, i) => ({ color: c, from: Math.round(lo + step * i), to: i === ROUTE_RAMP.length - 1 ? Math.round(hi) : Math.round(lo + step * (i + 1)) }));
   return { colorOf: r => ROUTE_RAMP[bandOf(r.total_liters)], legend, single: step === 0 };
 }
+const BACK_COLOR = '#1e3a8a';   // DEC-139 สีขากลับ (ไม่ซ้ำกับสีแถบความจุ)
 async function pageRoutes(view) {
   if (!S.scopeMuni) return isSuper() ? pageRoutesAll(view) : (view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลก่อน</div>');   // DEC-135 super ทุกเทศบาล = ภาพรวม
   const routes = await api.list('v_route_summary', { eq: { municipality_id: S.scopeMuni }, order: ['route_name'] });
@@ -2028,7 +2029,7 @@ async function pageRoutes(view) {
   const cut = !adj && S._cut && S._cut.routeId === sel && isAdmin() ? S._cut : null; if (S._cut && !cut) S._cut = null;   // DEC-138   // DEC-110 โหมดปรับเส้นทาง
   if (isAdmin() && routeRow && !adj) $('#viaBtn').innerHTML = `<a class="btn secondary small" style="text-decoration:none" href="#route-edit/${sel}">แก้เส้นทาง</a>${'via' in routeRow ? `<button class="secondary small" onclick="viaStart('${sel}')">ปรับเส้นทาง (จุดแวะ)${(routeRow.via || []).length + (routeRow.via_back || []).length ? ` · ${(routeRow.via || []).length + (routeRow.via_back || []).length} จุด` : ''}</button>` : ''}`;
   if (isAdmin() && routeRow && !adj && !cut && 'path_cuts' in routeRow && (routeRow.path_out || routeRow.path)) $('#viaBtn').insertAdjacentHTML('beforeend', `<button class="secondary small" onclick="cutStart('${sel}')">ตัดเส้นตรงนี้${(routeRow.path_cuts || []).length ? ` · ${(routeRow.path_cuts || []).length}` : ''}</button>`);   // DEC-138
-  if (routeRow && routeRow.path_out) $('#routeInfo').insertAdjacentHTML('beforeend', '<div class="muted" style="margin-top:4px">บนแผนที่: เส้นทึบ = ขาไป (เก็บขยะ) · เส้นประ = ขากลับ</div>');
+  if (routeRow && routeRow.path_out) $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center">บนแผนที่: <span><svg width="34" height="10" aria-hidden="true"><line x1="2" y1="5" x2="32" y2="5" stroke="#fff" stroke-width="8"/><line x1="2" y1="5" x2="32" y2="5" stroke="${routeBands(routes.filter(x => x.status === 'active')).colorOf(r)}" stroke-width="5"/></svg> เส้นทึบ = ขาไป (เก็บขยะ)</span><span><svg width="34" height="10" aria-hidden="true"><line x1="2" y1="5" x2="32" y2="5" stroke="#fff" stroke-width="7"/><line x1="2" y1="5" x2="32" y2="5" stroke="${BACK_COLOR}" stroke-width="3.5" stroke-dasharray="7 5"/></svg> เส้นประน้ำเงินเข้ม = ขากลับ</span></div>`);   // DEC-139
   const map = mkMap('map'); addBaseLayer(map);
   const all = (await api.list('v_place', { eq: { status: 'active', municipality_id: S.scopeMuni } })).filter(p => p.lat != null);
   const inRoute = new Set([...stops, ...extra].map(s => s.place_id));
@@ -2043,9 +2044,12 @@ async function pageRoutes(view) {
       L.geoJSON(o.path, { style: { color: bands.colorOf(sum), weight: 4, opacity: .6 } }).bindPopup(`<b>${esc(sum.route_name)}</b><br>${esc(sum.truck_code)} · ${fmt(sum.places)} จุด · <b>${fmt(sum.total_liters)} ลิตร</b>${o.path_distance_m ? ` · ${fmt(Math.round(o.path_distance_m / 100) / 10)} กม.` : ''}<br><a href="#routes/${o.id}">เปิดเส้นทางนี้</a>`).addTo(g); othersDrawn++; }
   }
   const segs = routeRow && routeRow.path_out ? [[routeRow.path_out, false], [routeRow.path_back, true]].filter(x => x[0] && x[0].coordinates) : (path ? [[path, false]] : []);   // DEC-111 เส้นทึบ = ขาไป · เส้นประ = ขากลับ
-  if (adj) for (const [geo, dashed] of segs) L.geoJSON(geo, { style: { color: myColor, weight: 9, opacity: .85, dashArray: dashed ? '14 10' : null } }).on('click', e => { L.DomEvent.stop(e); viaAdd(e.latlng); }).addTo(g);
-  else if (cut) for (const [geo, dashed] of segs) L.geoJSON(geo, { style: { color: myColor, weight: 10, opacity: .9, dashArray: dashed ? '14 10' : null } }).on('click', e => { L.DomEvent.stop(e); cutPick(e.latlng, routeRow.path_out ? (dashed ? 'back' : 'out') : null); }).addTo(g);   // DEC-138
-  else if (routeRow && routeRow.path_out) for (const [geo, dashed] of segs) L.geoJSON(geo, { style: { color: myColor, weight: 7, opacity: .95, dashArray: dashed ? '14 10' : null } }).bindPopup(`<b>${esc(r.route_name)}</b> · ${dashed ? 'ขากลับ' : 'ขาไป (เก็บขยะ)'}<br>${fmt(r.places)} จุด · <b>${fmt(r.total_liters)} ลิตร</b>`).addTo(g);
+  // DEC-139 ขาไป = เส้นทึบสีตามความจุ · ขากลับ = เส้นประสีน้ำเงินเข้ม · มีขอบขาวให้เห็นชัดบนภาพดาวเทียม · วาดขากลับก่อน ให้ขาไปอยู่บนเมื่อซ้อนกัน
+  const legLine = (geo, dashed, w) => { const fg = L.featureGroup(); L.geoJSON(geo, { interactive: false, style: { color: '#fff', weight: w + 4, opacity: .9 } }).addTo(fg); L.geoJSON(geo, { style: { color: dashed ? BACK_COLOR : myColor, weight: dashed ? w - 2 : w, opacity: .95, dashArray: dashed ? '12 9' : null } }).addTo(fg); return fg; };
+  const legOrder = segs.slice().sort((a, b) => (b[1] ? 1 : 0) - (a[1] ? 1 : 0));
+  if (adj) for (const [geo, dashed] of legOrder) legLine(geo, dashed, 9).on('click', e => { L.DomEvent.stop(e); viaAdd(e.latlng); }).addTo(g);
+  else if (cut) for (const [geo, dashed] of legOrder) legLine(geo, dashed, 10).on('click', e => { L.DomEvent.stop(e); cutPick(e.latlng, routeRow.path_out ? (dashed ? 'back' : 'out') : null); }).addTo(g);   // DEC-138
+  else if (routeRow && routeRow.path_out) for (const [geo, dashed] of legOrder) legLine(geo, dashed, 7).bindPopup(`<b>${esc(r.route_name)}</b> · ${dashed ? 'ขากลับ' : 'ขาไป (เก็บขยะ)'}<br>${fmt(r.places)} จุด · <b>${fmt(r.total_liters)} ลิตร</b>`).addTo(g);
   else if (path) L.geoJSON(path, { style: { color: myColor, weight: 7, opacity: .95 } }).bindPopup(`<b>${esc(r.route_name)}</b><br>${fmt(r.places)} จุด · <b>${fmt(r.total_liters)} ลิตร</b>`).addTo(g);   // เส้นบนถนนที่เก็บไว้ (เส้นที่เลือก หนากว่า)
   else { const line = stops.filter(s => s.lat != null).map(s => [s.lat, s.lng]); if (line.length > 1) L.polyline(line, { color: myColor, weight: 3, dashArray: '6 6' }).addTo(g); }
   if (othersDrawn || othersNoPath) $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px">แสดงเส้นทางอื่นอีก ${fmt(othersDrawn)} เส้น${othersNoPath ? ` · อีก ${fmt(othersNoPath)} เส้นยังไม่มีเส้นบนถนน (admin กด "ลากเส้นตามถนน")` : ''} · แตะเส้นเพื่อดูชื่อและความจุ</div>`);
