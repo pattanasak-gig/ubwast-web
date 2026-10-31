@@ -147,12 +147,14 @@ const CONFIG = {
   .chartbox { position:relative; height:300px; }
   .cardhead { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
   .cardhead h4 { margin:0; }
-  .infobtn { width:44px; height:44px; padding:0; border-radius:50%; background:#fff; color:#1F3A5F; border:1px solid #cbd5e1; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; vertical-align:middle; margin-left:6px; }   /* ชื่อ infobtn ไม่ใช่ info เพราะชนกับ .banner.info (MIS-011) */
+  .infobtn { position:relative; width:30px; height:30px; min-height:0; padding:0; border-radius:50%; background:#fff; color:#1F3A5F; border:1px solid #cbd5e1; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; vertical-align:middle; margin-left:6px; }   /* ชื่อ infobtn ไม่ใช่ info เพราะชนกับ .banner.info (MIS-011) */
   .infobtn:hover { background:#eff6ff; }
+  .infobtn::before { content:''; position:absolute; inset:-7px; }   /* DEC-135 ภาพ 30px · พื้นที่กด 44px */
+  .infobtn svg { width:16px; height:16px; }
   /* DEC-118 ปุ่ม (?) รายช่อง · พื้นที่กด 44px · แผ่นคำอธิบายซ้อนบนฟอร์มโดยไม่ปิดฟอร์ม */
-  .fh { position:relative; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; min-height:0; min-width:0; padding:0; margin:0 0 0 6px; border-radius:50%; background:#eff6ff; color:#1e40af; border:1px solid #93c5fd; font:700 13px/1 sans-serif; vertical-align:-4px; }
-  .fh::before { content:''; position:absolute; inset:-11px; }
-  label:has(> .fh), th:has(> .fh), h4:has(> .fh) { line-height:24px; }
+  .fh { position:relative; display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; min-height:0; min-width:0; padding:0; margin:0 0 0 5px; border-radius:50%; background:#eff6ff; color:#1e40af; border:1px solid #93c5fd; font:700 11px/1 sans-serif; vertical-align:-2px; }
+  .fh::before { content:''; position:absolute; inset:-14px; }   /* DEC-135 ภาพเล็กลงให้สมดุลกับข้อความ · พื้นที่กดยัง 44px */
+  label:has(> .fh), th:has(> .fh), h4:has(> .fh) { line-height:22px; }
   label:has(> .fh) { margin-bottom:6px; }
   .fh:hover, .fh:focus-visible { background:#dbeafe; }
   .fhelp-bg { position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:96; display:flex; align-items:flex-end; justify-content:center; }
@@ -649,7 +651,7 @@ async function loadMasters(force) {
   Object.assign(S.cache, { bin_type, truck_type, place_type, capacity_tier, app_setting, loaded: true });
   S.munis = munis;
   const sysName = (app_setting.find(s => s.key === 'system_name') || {}).value; if (sysName) { $('#title').textContent = sysName; document.title = sysName; }
-  if (!S.scopeMuni) S.scopeMuni = S.me.municipality_id || (munis[0] && munis[0].id) || null;
+  if (!S._scopeInit) { S._scopeInit = true; S.scopeMuni = isSuper() ? null : (S.me.municipality_id || null); }   // DEC-135 super admin เริ่มที่ทุกเทศบาล · เลือก "ทุกเทศบาล" แล้วไม่เด้งกลับ
 }
 const scopeEq = () => (S.scopeMuni ? { municipality_id: S.scopeMuni } : {});
 const muniOf = id => S.munis.find(m => m.id === id) || (S.pub && S.pub.munis.find(m => m.id === id)) || {};
@@ -659,7 +661,7 @@ const setting = k => (S.cache.app_setting.find(s => s.key === k) || {}).value ||
 function scopeSelector() {
   if (!isSuper()) return '';
   return `<div class="card row"><label style="margin:0">เทศบาลที่กำลังดู</label><select style="max-width:320px" onchange="S.scopeMuni=this.value||null;render()">
-    <option value="">ทุกเทศบาล (เฉพาะแดชบอร์ด)</option>${S.munis.map(m => `<option value="${m.id}" ${m.id === S.scopeMuni ? 'selected' : ''}>${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></div>`;
+    <option value="">ทุกเทศบาล</option>${S.munis.map(m => `<option value="${m.id}" ${m.id === S.scopeMuni ? 'selected' : ''}>${esc(m.code)} · ${esc(m.name)}</option>`).join('')}</select></div>`;
 }
 
 // =====================================================================
@@ -767,7 +769,7 @@ function pageMe(view) {
     <p class="muted">แอปนี้: ${IS_DEMO ? 'โหมดสาธิต' : 'เชื่อมต่อ ' + esc(CONFIG.SUPABASE_URL)} · ห้องเครื่อง: ${CONFIG.ENGINE_URL ? 'ตั้งค่าแล้ว' : 'ยังไม่ตั้งค่า'}</p></div>`;
 }
 async function changePw() { const a = $('#pw1').value, b = $('#pw2').value; if (a.length < 8) return needField('#pw1', 'รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัว'); if (a !== b) return needField('#pw2', 'ช่อง "พิมพ์ซ้ำ" ไม่ตรงกับรหัสผ่านใหม่ พิมพ์ให้เหมือนกันทั้งสองช่อง'); try { await api.changePassword(a); toast('เปลี่ยนรหัสผ่านแล้ว'); } catch (e) { fail(e); } }
-async function logout() { await api.logout(); S.me = null; S.cache = {}; S.scopeMuni = null; go('#'); render(); }
+async function logout() { await api.logout(); S.me = null; S.cache = {}; S.scopeMuni = null; S._scopeInit = false; go('#'); render(); }
 
 // แผนที่พื้นหลัง: ใช้ CONFIG.TILES ก่อน ถ้าแผ่นแผนที่โหลดไม่ได้ (เช่น ถูกบล็อก 403) สลับไป TILES_FALLBACK อัตโนมัติ
 // หมายเหตุ: OSM ส่งภาพ "Access blocked" มาพร้อมรหัส 403 ซึ่งเบราว์เซอร์ถือว่าโหลดรูปสำเร็จ จึงตรวจด้วย fetch ก่อน ไม่ใช้ tileerror
@@ -938,7 +940,7 @@ function rememberPlace(payload) {
 }
 async function pagePlaceEdit(view, id) {
   const isNew = id === 'new';
-  const muniId = S.me.municipality_id || S.scopeMuni;
+  const muniId = S.me.municipality_id || S.scopeMuni; if (!muniId) return view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลที่จะเพิ่มหรือแก้จุดก่อน</div>';
   const roads = await api.list('road', { eq: { municipality_id: muniId, status: 'active' }, order: ['name'] });
   const sois = await api.list('soi', { eq: { municipality_id: muniId, status: 'active' }, order: ['name'] });
   const L = isNew ? lastPlace() : null, okRoad = L && roads.some(r => r.id === L.road);
@@ -2001,7 +2003,7 @@ function routeBands(routes) {
   return { colorOf: r => ROUTE_RAMP[bandOf(r.total_liters)], legend, single: step === 0 };
 }
 async function pageRoutes(view) {
-  if (!S.scopeMuni) return view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลก่อน</div>';
+  if (!S.scopeMuni) return isSuper() ? pageRoutesAll(view) : (view.innerHTML = scopeSelector() + '<div class="card muted">เลือกเทศบาลก่อน</div>');   // DEC-135 super ทุกเทศบาล = ภาพรวม
   const routes = await api.list('v_route_summary', { eq: { municipality_id: S.scopeMuni }, order: ['route_name'] });
   const sel = (location.hash.split('/')[1]) || (routes[0] && routes[0].route_id);
   const kindLabel = r => r.route_kind === 'temporary' ? `ชั่วคราว${r.valid_from || r.valid_to ? ` ${r.valid_from || '…'} ถึง ${r.valid_to || '…'}` : ''}` : 'ประจำ';
@@ -2017,14 +2019,15 @@ async function pageRoutes(view) {
   // DEC-091: ถ้ามีลำดับจุดที่ admin กำหนด ใช้ลำดับนั้น (เส้นเปิด จุดแรก→จุดสุดท้าย) · ไม่มี = เรียงตามถนน/รหัสแบบเดิม
   const custom = await api.list('v_route_stop', { eq: { route_id: sel }, order: ['seq'] });
   const byRoad = (await api.list('v_route_place', { eq: { route_id: sel } })).filter(x => x.place_id).sort((a, b) => a.road_seq - b.road_seq || String(a.place_code).localeCompare(String(b.place_code), 'th'));
-  const stops = custom.length ? custom.map(c => ({ ...c, custom: true })) : byRoad;
+  const stops = custom.length ? custom.map(c => ({ ...c, custom: true })) : byRoad.map((x, i) => ({ ...x, seq: i + 1 }));
+  const extra = custom.length ? byRoad.filter(x => !custom.some(c => c.place_id === x.place_id)) : [];   // DEC-135 จุดบนถนนของเส้นทางที่ไม่อยู่ในลำดับที่ admin กำหนด
   const [routeRow] = await api.list('route', { eq: { id: sel } }); const path = routeRow && routeRow.path && routeRow.path.coordinates ? routeRow.path : null;
   const adj = S._adj && S._adj.routeId === sel && isAdmin() ? S._adj : null; if (S._adj && !adj) S._adj = null;   // DEC-110 โหมดปรับเส้นทาง
   if (isAdmin() && routeRow && !adj) $('#viaBtn').innerHTML = `<a class="btn secondary small" style="text-decoration:none" href="#route-edit/${sel}">แก้เส้นทาง</a>${'via' in routeRow ? `<button class="secondary small" onclick="viaStart('${sel}')">ปรับเส้นทาง (จุดแวะ)${(routeRow.via || []).length + (routeRow.via_back || []).length ? ` · ${(routeRow.via || []).length + (routeRow.via_back || []).length} จุด` : ''}</button>` : ''}`;
   if (routeRow && routeRow.path_out) $('#routeInfo').insertAdjacentHTML('beforeend', '<div class="muted" style="margin-top:4px">บนแผนที่: เส้นทึบ = ขาไป (เก็บขยะ) · เส้นประ = ขากลับ</div>');
   const map = mkMap('map'); addBaseLayer(map);
   const all = (await api.list('v_place', { eq: { status: 'active', municipality_id: S.scopeMuni } })).filter(p => p.lat != null);
-  const inRoute = new Set(stops.map(s => s.place_id));
+  const inRoute = new Set([...stops, ...extra].map(s => s.place_id));
   const g = L.featureGroup().addTo(map);
   for (const p of all) L.circleMarker([p.lat, p.lng], { radius: inRoute.has(p.id) ? 10 : 5, color: '#fff', weight: 1, fillColor: inRoute.has(p.id) ? (p.tier_color || '#1b6e3a') : '#9ca3af', fillOpacity: inRoute.has(p.id) ? .95 : .5, interactive: !adj }).bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${fmt(p.total_liters)} ลิตร`).addTo(g);
   const activeRoutes = routes.filter(x => x.status === 'active'); const bands = routeBands(activeRoutes); const myColor = bands.colorOf(r);
@@ -2041,7 +2044,8 @@ async function pageRoutes(view) {
   else if (path) L.geoJSON(path, { style: { color: myColor, weight: 7, opacity: .95 } }).bindPopup(`<b>${esc(r.route_name)}</b><br>${fmt(r.places)} จุด · <b>${fmt(r.total_liters)} ลิตร</b>`).addTo(g);   // เส้นบนถนนที่เก็บไว้ (เส้นที่เลือก หนากว่า)
   else { const line = stops.filter(s => s.lat != null).map(s => [s.lat, s.lng]); if (line.length > 1) L.polyline(line, { color: myColor, weight: 3, dashArray: '6 6' }).addTo(g); }
   if (othersDrawn || othersNoPath) $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px">แสดงเส้นทางอื่นอีก ${fmt(othersDrawn)} เส้น${othersNoPath ? ` · อีก ${fmt(othersNoPath)} เส้นยังไม่มีเส้นบนถนน (admin กด "ลากเส้นตามถนน")` : ''} · แตะเส้นเพื่อดูชื่อและความจุ</div>`);
-  if (custom.length) for (const sidx of stops.filter(s => s.lat != null)) L.circleMarker([sidx.lat, sidx.lng], { radius: 11, color: '#fff', weight: 1.5, fillColor: '#1F3A5F', fillOpacity: .95, interactive: !adj }).bindTooltip(String(sidx.seq), { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${sidx.seq}. ${esc(sidx.place_code)}</b><br>${esc(sidx.place_name)}<br>${fmt(sidx.total_liters)} ลิตร`).addTo(g);
+  for (const sidx of stops.filter(s => s.lat != null)) L.circleMarker([sidx.lat, sidx.lng], { radius: 11, color: '#fff', weight: 1.5, fillColor: '#1F3A5F', fillOpacity: .95, interactive: !adj }).bindTooltip(String(sidx.seq), { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${sidx.seq}. ${esc(sidx.place_code)}</b><br>${esc(sidx.place_name)}<br>${fmt(sidx.total_liters)} ลิตร`).addTo(g);   // DEC-135 เลขลำดับทุกจุดเสมอ
+  for (const x of extra.filter(s => s.lat != null)) L.circleMarker([x.lat, x.lng], { radius: 9, color: '#fff', weight: 1.5, fillColor: '#9ca3af', fillOpacity: .95, interactive: !adj }).bindTooltip('–', { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${esc(x.place_code)}</b><br>${esc(x.place_name)}<br>${fmt(x.total_liters)} ลิตร<br><span class="muted">ไม่อยู่ในลำดับที่ admin กำหนด</span>`).addTo(g);
   if (r.start_site_id || r.dump_site_id) {   // DEC-108 หมุดสถานที่ของเที่ยววิ่ง
     const sites = await siteList(S.scopeMuni);
     const pin = (sid, lbl, col) => { const x = sites.find(y => y.id === sid); if (x) L.marker([x.lat, x.lng], { icon: L.divIcon({ className: 'sitepin', html: `<span style="background:${col}">${lbl}</span>`, iconSize: [46, 26], iconAnchor: [23, 13] }) }).bindPopup(`<b>${esc(x.name)}</b><br>${esc(siteTypeLabel(x.site_type))}`).addTo(g); };
@@ -2050,9 +2054,68 @@ async function pageRoutes(view) {
   if (adj) viaMode(map, routeRow, r);
   if (adj && adj.view) map.setView(adj.view[0], adj.view[1]); else fitMuni(map, g);
   S._routeStops = stops; S._route = { ...r, path_distance_m: routeRow && routeRow.path_distance_m, path_at: routeRow && routeRow.path_at, path_source: routeRow && routeRow.path_source, custom_order: custom.length > 0 };
-  $('#routeInfo').insertAdjacentHTML('beforeend', `<details style="margin-top:8px"><summary>ลำดับจุดในเส้นทาง (${stops.length})</summary><table><thead><tr><th>#</th><th>ถนน</th><th>จุด</th><th style="text-align:right">ลิตร</th></tr></thead><tbody>${stops.map((s, i) => `<tr><td>${i + 1}</td><td>${esc(s.road_name)}</td><td><a href="#place/${s.place_id}">${esc(s.place_code)}</a> ${esc(s.place_name)}</td><td style="text-align:right">${fmt(s.total_liters)}</td></tr>`).join('')}</tbody></table></details><div class="muted">${path ? `เส้นทึบ = เส้นทางบนถนน ${fmt(Math.round(routeRow.path_distance_m / 100) / 10)} กม. (${routeRow.path_source === 'osrm' ? 'คำนวณจากแผนที่ OpenStreetMap' : 'กำหนดเอง'} · ${thDate(routeRow.path_at)})` : 'เส้นประเชื่อมจุดตามลำดับถนน ไม่ใช่เส้นทางวิ่งจริงบนถนน'}${custom.length ? ` · ลำดับจุด ${custom.length} จุด กำหนดโดย admin` : ' · ยังไม่กำหนดลำดับจุด (admin กำหนดได้ที่ จัดการเทศบาล → เส้นทาง → ลำดับจุด / เส้นถนน)'}</div>`);
+  view.insertAdjacentHTML('beforeend', rtStopsCard(stops, extra, sel) + (await rtMonthCards(r, routes)));   // DEC-135 ตารางจุดใต้แผนที่ · ขยะ เที่ยวนำไปกำจัด คาร์บอน · ภาพรวมทุกเส้นทาง
+  $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:8px">${path ? `เส้นทึบ = เส้นทางบนถนน ${fmt(Math.round(routeRow.path_distance_m / 100) / 10)} กม. (${routeRow.path_source === 'osrm' ? 'คำนวณจากแผนที่ OpenStreetMap' : 'กำหนดเอง'} · ${thDate(routeRow.path_at)})` : 'เส้นประเชื่อมจุดตามลำดับถนน ไม่ใช่เส้นทางวิ่งจริงบนถนน'}${custom.length ? ` · ลำดับจุด ${custom.length} จุด กำหนดโดย admin` : ' · ยังไม่กำหนดลำดับจุด (admin กำหนดได้ที่ จัดการเทศบาล → เส้นทาง → ลำดับจุด / เส้นถนน)'}</div>`);
 }
 
+// DEC-135 ตารางจุดในเส้นทาง (ใต้แผนที่) · เลขตรงกับหมุดบนแผนที่ · จุดที่ไม่อยู่ในลำดับที่ admin กำหนดแสดงแยก
+const kgOfL = l => { const k = parseFloat(setting('kg_per_liter')); return k > 0 ? l * k : null; };
+function rtStopsCard(stops, extra, rid) {
+  const row = (x, no) => `<tr${no === '–' ? ' style="color:#6b7280"' : ''}><td>${no}</td><td><a href="#place/${x.place_id}">${esc(x.place_code)}</a></td><td>${esc(x.place_name || '')}</td><td>${esc(x.road_name || '')}</td><td style="text-align:right">${fmt(x.total_bins)}</td><td style="text-align:right">${fmt(x.total_liters)}</td><td style="text-align:right">${kgOfL(+x.total_liters || 0) != null ? fmt(Math.round(kgOfL(+x.total_liters || 0))) : '-'}</td></tr>`;
+  const all = [...stops, ...extra], L0 = sum(all, 'total_liters');
+  return `<div class="card" style="margin-top:12px"><h4 style="margin:0 0 6px">จุดในเส้นทาง (${fmt(all.length)} จุด) · เลขตรงกับหมุดบนแผนที่</h4>
+    ${extra.length ? `<div class="banner warn" style="margin:6px 0"><b>${fmt(extra.length)} จุดอยู่บนถนนของเส้นทางนี้ แต่ไม่อยู่ในลำดับที่ admin กำหนด</b> (หมุดสีเทา ขีด –) · เส้นบนแผนที่และระยะทางคิดตามลำดับ ${fmt(stops.length)} จุดเท่านั้น · ถ้ารถเก็บจุดเหล่านี้ด้วย ให้ admin เปิด "ลำดับจุด / เส้นถนน" แล้วเพิ่มเข้าลำดับ จากนั้นกด "ลากเส้นตามถนน"${isAdmin() ? ` <a class="btn small secondary" style="text-decoration:none;margin-left:6px" href="#route-edit/${rid}">แก้เส้นทาง</a>` : ''}</div>` : ''}
+    <div style="overflow:auto"><table><thead><tr><th>#</th><th>รหัสจุด</th><th>ชื่อ</th><th>ถนน</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">≈ กก.</th></tr></thead>
+    <tbody>${stops.map(x => row(x, x.seq)).join('')}${extra.map(x => row(x, '–')).join('')}</tbody>
+    <tfoot><tr><td colspan="4"><b>รวม</b></td><td style="text-align:right"><b>${fmt(sum(all, 'total_bins'))}</b></td><td style="text-align:right"><b>${fmt(L0)}</b></td><td style="text-align:right"><b>${kgOfL(L0) != null ? fmt(Math.round(kgOfL(L0))) : '-'}</b></td></tr></tfoot></table></div>
+    <div class="muted" style="margin-top:4px">≈ กก. = ลิตร × ${esc(setting('kg_per_liter') || '-')} กก./ลิตร (ค่ากลางของระบบ เป็นความจุที่ถังรองรับได้ ไม่ใช่น้ำหนักที่ชั่งจริง)</div></div>`;
+}
+// DEC-135 รายเดือน: ขยะ เที่ยวที่นำไปกำจัด และการปล่อยก๊าซ ของเส้นทางที่เลือก + ภาพรวมทุกเส้นทางของเทศบาล
+const rtYm = () => S._rtYm || ymOf(new Date());
+const rtMonthPick = () => `<input type="month" style="width:auto" value="${rtYm()}" max="${ymOf(new Date())}" aria-label="เลือกเดือน" onchange="if(this.value){S._rtYm=this.value;render()}">`;
+function rtRows(c, sums) {
+  return c.routes.map(x => { const s = sums.find(y => y.route_id === x.route_id) || {}, L0 = +s.total_liters || 0;
+    return { rid: x.route_id, name: x.route_name, truck: (x.t && x.t.code) || s.truck_code || '', round: x.round_no, runs: x.runs, liters: L0, kg: s.est_weight_kg != null ? +s.est_weight_kg : kgOfL(L0), trips: x.trips || 0, wt: x.wkg != null ? x.wkg / 1000 : null, kgT: x.kgTrans, kgL: x.kgLand, miss: x.miss || [] }; });
+}
+const rtSum = (rows, k) => rows.some(r => r[k] != null) ? rows.reduce((a, r) => a + (r[k] || 0), 0) : null;
+const f2 = v => v == null ? '-' : fmt2(v);
+function rtTable(rows, c, link) {
+  const tot = { runs: rtSum(rows, 'runs'), trips: rtSum(rows, 'trips'), wt: rtSum(rows, 'wt'), kgT: rtSum(rows, 'kgT'), kgL: rtSum(rows, 'kgL') };
+  const nr = c.noRoute;
+  return `<div style="overflow:auto"><table><thead><tr><th>เส้นทาง</th><th>รถ</th><th style="text-align:right">รอบในเดือน</th><th style="text-align:right">ความจุต่อรอบ (ลิตร · ≈ กก.)</th><th style="text-align:right">เที่ยวที่นำไปกำจัด</th><th style="text-align:right">ขยะที่ชั่ง (ตัน)</th><th style="text-align:right">kgCO2e รถเก็บขน</th><th style="text-align:right">kgCO2e ฝังกลบ</th><th style="text-align:right">kgCO2e รวม</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td>${link ? `<a href="#routes/${r.rid}">${esc(r.name)}</a>` : esc(r.name)}${r.miss.length ? ` <span class="pill" style="background:#fff7ed;color:#9a3412" title="${esc(r.miss.join(' · '))}">ข้อมูลไม่ครบ</span>` : ''}</td><td>${esc(r.truck)}</td><td style="text-align:right">${fmt(r.runs)}</td><td style="text-align:right">${fmt(r.liters)}${r.kg != null ? ` · ${fmt(Math.round(r.kg))}` : ''}</td><td style="text-align:right">${fmt(r.trips)}</td><td style="text-align:right">${f2(r.wt)}</td><td style="text-align:right">${f2(r.kgT)}</td><td style="text-align:right">${f2(r.kgL)}</td><td style="text-align:right"><b>${r.kgT == null && r.kgL == null ? '-' : fmt2((r.kgT || 0) + (r.kgL || 0))}</b></td></tr>`).join('')}
+    ${nr ? `<tr style="color:#6b7280"><td colspan="4">เที่ยววิ่งที่ไม่ได้ระบุเส้นทาง</td><td style="text-align:right">${fmt(nr.trips)}</td><td style="text-align:right">${f2(nr.wkg / 1000)}</td><td style="text-align:right">-</td><td style="text-align:right">${f2(nr.kgLand)}</td><td style="text-align:right">${f2(nr.kgLand)}</td></tr>` : ''}</tbody>
+    <tfoot><tr><td colspan="2"><b>รวม ${fmt(rows.length)} เส้นทาง</b></td><td style="text-align:right"><b>${fmt(tot.runs || 0)}</b></td><td></td><td style="text-align:right"><b>${fmt((tot.trips || 0) + (nr ? nr.trips : 0))}</b></td><td style="text-align:right"><b>${f2(c.wkg != null ? c.wkg / 1000 : tot.wt)}</b></td><td style="text-align:right"><b>${f2(c.kgTrans)}</b></td><td style="text-align:right"><b>${f2(c.kgLand)}</b></td><td style="text-align:right"><b>${f2(c.total)}</b></td></tr></tfoot></table></div>`;
+}
+const RT_NOTE = 'รอบในเดือน = วันวิ่งที่ติ๊กไว้ในเดือนนั้น (นับถึงวันนี้) · ความจุต่อรอบ = ลิตรของถังทุกจุดในเส้นทาง (≈ กก. ตามค่ากลาง) · เที่ยวที่นำไปกำจัดและขยะที่ชั่ง มาจากบันทึกเที่ยววิ่ง (ใบชั่ง) · kgCO2e รถ = ระยะทางต่อรอบ ÷ อัตราสิ้นเปลือง × ค่าการปล่อยของ อบก. × รอบ · kgCO2e ฝังกลบ = ตันที่ชั่ง × ค่าตามประเภทบ่อของที่ทิ้ง (อบก.) · ดูวิธีคิดและแหล่งอ้างอิงเต็มที่ แดชบอร์ด → การปล่อยก๊าซ';
+async function rtMonthCards(r, sums) {
+  let data; try { data = await emLoad(r.municipality_id); } catch (e) { return ''; }
+  const ym = rtYm(), c = emCalc(data, [ym]), rows = rtRows(c, sums.filter(x => x.status === 'active')), x = rows.find(y => y.rid === r.route_id);
+  const sid = new Map((data.sites || []).map(t => [t.id, t])), dest = [...new Set(data.weights.filter(w => w.route_id === r.route_id && w.month === ym && w.site_id).map(w => w.site_id))].map(id => sid.get(id)).filter(Boolean);
+  const kpi = (v, l, sub) => `<div class="kpi"><div class="v" style="font-size:22px">${v}</div><div class="l">${l}${sub ? `<br><span>${sub}</span>` : ''}</div></div>`;
+  const one = x ? `<div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">เส้นทาง ${esc(r.route_name)} · ${esc(monthTh(ym))}</h4>${rtMonthPick()}</div>
+      <h4 style="margin:12px 0 4px;font-size:15px">ขยะที่เส้นทางรองรับ</h4><div class="kpis">${kpi(fmt(x.liters), 'ลิตรต่อรอบ', x.kg != null ? `≈ ${fmt(Math.round(x.kg))} กก.` : '')}${kpi(fmt(x.runs), 'รอบในเดือน', 'ตามวันวิ่งที่ติ๊กไว้')}${kpi(x.kg != null ? fmt2(x.kg * x.runs / 1000) : '-', 'ตัน ทั้งเดือน (ประมาณ)', 'ความจุ × รอบ')}</div>
+      <h4 style="margin:12px 0 4px;font-size:15px">เที่ยวที่นำขยะไปกำจัด (น้ำหนักจากใบชั่ง)</h4><div class="kpis">${kpi(fmt(x.trips), 'เที่ยว')}${kpi(f2(x.wt), 'ตันที่ชั่ง')}${kpi(x.trips && x.wt != null ? fmt2(x.wt / x.trips) : '-', 'ตันต่อเที่ยว')}</div>
+      <div class="muted" style="margin-top:4px">${dest.length ? 'ที่กำจัด: ' + dest.map(t => `${esc(t.name)}${t.pit_type ? ` (${esc((PIT_TYPES.find(p => p[0] === t.pit_type) || [, ''])[1])})` : ''}`).join(' · ') : x.trips ? 'บันทึกเที่ยววิ่งไม่ได้ระบุที่ทิ้ง (คิดค่าฝังกลบตั้งต้น)' : 'ยังไม่มีบันทึกเที่ยววิ่งของเส้นทางนี้ในเดือนนี้ · คนขับหรือหัวหน้าพนักงานกรอกที่เมนู "เที่ยววิ่ง"'}</div>
+      <h4 style="margin:12px 0 4px;font-size:15px">การปล่อยก๊าซเรือนกระจก</h4><div class="kpis">${kpi(f2(x.kgT), 'kgCO2e รถเก็บขน', x.kgT != null && x.runs ? `${fmt2(x.kgT / x.runs)} ต่อรอบ` : '')}${kpi(f2(x.kgL), 'kgCO2e ฝังกลบ', 'ตามน้ำหนักที่ชั่ง')}${kpi(x.kgT == null && x.kgL == null ? '-' : fmt2((x.kgT || 0) + (x.kgL || 0)), 'kgCO2e รวม', x.wt ? `${fmt2(((x.kgT || 0) + (x.kgL || 0)) / x.wt)} ต่อตัน` : '')}</div>
+      ${x.miss.length ? `<div class="banner warn" style="margin-top:8px"><b>ข้อมูลที่ยังขาด:</b> ${x.miss.map(esc).join(' · ')} — ตัวเลขรถเก็บขนจึงยังคำนวณไม่ได้หรือไม่ครบ</div>` : ''}</div>`
+    : `<div class="card muted">เส้นทางนี้ปิดใช้งานอยู่ จึงไม่คำนวณรายเดือน</div>`;
+  return one + `<div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">ภาพรวมทุกเส้นทางของ ${esc(muniOf(r.municipality_id).name || 'เทศบาล')} · ${esc(monthTh(ym))}</h4>${rtMonthPick()}</div>
+    <div style="margin-top:8px">${rtTable(rows, c, true)}</div><div class="muted" style="margin-top:6px">${RT_NOTE}</div></div>`;
+}
+// DEC-135 super admin เลือก "ทุกเทศบาล": ภาพรวมแยกเทศบาล + รวมทั้งหมด + รายเส้นทางของแต่ละเทศบาล
+async function pageRoutesAll(view) {
+  const ym = rtYm(), ms = S.munis.filter(m => m.status !== 'inactive');
+  const res = await Promise.all(ms.map(async m => { const [data, sums] = await Promise.all([emLoad(m.id), api.list('v_route_summary', { eq: { municipality_id: m.id, status: 'active' } })]); const c = emCalc(data, [ym]); return { m, c, rows: rtRows(c, sums) }; }));
+  const T = k => res.some(x => x.c[k] != null) ? res.reduce((a, x) => a + (x.c[k] || 0), 0) : null;
+  view.innerHTML = `${scopeSelector()}<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">เส้นทางรถ · ภาพรวมทุกเทศบาล · ${esc(monthTh(ym))}</h3>${rtMonthPick()}</div>
+    <div class="muted" style="margin-top:4px">เลือกเทศบาลที่ช่องด้านบนเพื่อดูแผนที่และรายเส้นทาง</div>
+    <div style="overflow:auto;margin-top:8px"><table><thead><tr><th>เทศบาล</th><th style="text-align:right">เส้นทาง</th><th style="text-align:right">รอบในเดือน</th><th style="text-align:right">เที่ยวที่นำไปกำจัด</th><th style="text-align:right">ขยะที่ชั่ง (ตัน)</th><th style="text-align:right">kgCO2e รถเก็บขน</th><th style="text-align:right">kgCO2e ฝังกลบ</th><th style="text-align:right">kgCO2e รวม</th></tr></thead>
+    <tbody>${res.map(x => `<tr><td><a href="javascript:void(0)" onclick="S.scopeMuni='${x.m.id}';render()">${esc(x.m.code)} · ${esc(x.m.name)}</a></td><td style="text-align:right">${fmt(x.rows.length)}</td><td style="text-align:right">${fmt(rtSum(x.rows, 'runs') || 0)}</td><td style="text-align:right">${fmt((rtSum(x.rows, 'trips') || 0) + (x.c.noRoute ? x.c.noRoute.trips : 0))}</td><td style="text-align:right">${f2(x.c.wkg != null ? x.c.wkg / 1000 : null)}</td><td style="text-align:right">${f2(x.c.kgTrans)}</td><td style="text-align:right">${f2(x.c.kgLand)}</td><td style="text-align:right"><b>${f2(x.c.total)}</b></td></tr>`).join('')}</tbody>
+    <tfoot><tr><td><b>รวมทุกเทศบาล</b></td><td style="text-align:right"><b>${fmt(res.reduce((a, x) => a + x.rows.length, 0))}</b></td><td style="text-align:right"><b>${fmt(res.reduce((a, x) => a + (rtSum(x.rows, 'runs') || 0), 0))}</b></td><td style="text-align:right"><b>${fmt(res.reduce((a, x) => a + (rtSum(x.rows, 'trips') || 0) + (x.c.noRoute ? x.c.noRoute.trips : 0), 0))}</b></td><td style="text-align:right"><b>${f2(T('wkg') != null ? T('wkg') / 1000 : null)}</b></td><td style="text-align:right"><b>${f2(T('kgTrans'))}</b></td><td style="text-align:right"><b>${f2(T('kgLand'))}</b></td><td style="text-align:right"><b>${f2(T('total'))}</b></td></tr></tfoot></table></div></div>
+    ${res.map(x => `<div class="card"><details${res.length === 1 ? ' open' : ''}><summary style="cursor:pointer"><b>${esc(x.m.code)} · ${esc(x.m.name)}</b> <span class="muted">${fmt(x.rows.length)} เส้นทาง · ${f2(x.c.total)} kgCO2e</span></summary><div style="margin-top:8px">${rtTable(x.rows, x.c, false)}</div></details></div>`).join('')}
+    <div class="card muted">${RT_NOTE}</div>`;
+}
 // รายงานแจ้งคนขับ: หน้าพิมพ์ (DEC-082) — เปิดหน้าต่างใหม่แล้วสั่งพิมพ์/บันทึกเป็น PDF จากเบราว์เซอร์
 function printDriverReport(routeId) {
   const r = S._route, stops = S._routeStops || []; if (!r || r.route_id !== routeId) return toast('เปิดเส้นทางก่อน', true);
@@ -3253,7 +3316,7 @@ function pageAbout(view) {
     <h2 style="margin-top:0">เกี่ยวกับระบบ UBWast</h2>
     <p>UBWast คือระบบข้อมูลจุดวางถังขยะสำหรับองค์กรปกครองส่วนท้องถิ่น ใช้บันทึกตำแหน่ง จำนวน และสภาพของถังขยะ พร้อมเส้นทางเก็บขน แดชบอร์ด และรายงานสำหรับผู้บริหาร ใช้งานผ่านเว็บบนมือถือและคอมพิวเตอร์โดยไม่ต้องติดตั้งโปรแกรม</p>
     <h3>โครงการวิจัย</h3>
-    <p>ระบบนี้พัฒนาขึ้นภายใต้โครงการวิจัย "การจัดการขยะอาหารอย่างครบวงจรในเขตเทศบาลนครอุบลราชธานีบนฐานเศรษฐกิจสีเขียว" สนับสนุนโดยกองทุนส่งเสริม ววน. และหน่วยบริหารจัดการทุนด้านการพัฒนาพื้นที่ ปีงบประมาณ 2569</p>
+    <p>ระบบนี้พัฒนาขึ้นภายใต้โครงการวิจัย "การจัดการขยะอาหารอย่างครบวงจรในเขตเทศบาลนครอุบลราชธานีบนฐานเศรษฐกิจสีเขียว" สนับสนุนโดยกองทุนส่งเสริม ววน. และหน่วยบริหารจัดการทุนด้านการพัฒนาพื้นที่ ปีงบประมาณ 2568 และดำเนินการต่อเนื่องในโครงการวิจัย "การพัฒนาระบบนิเวศเมืองเศรษฐกิจการผลิตและการตลาดสีเขียวบนฐานการจัดการทรัพยากรแบบหมุนเวียน ภายใต้บริบทเทศบาลนครอุบลราชธานี" ปีงบประมาณ 2569</p>
     <table>${row('หัวหน้าโครงการและผู้พัฒนาระบบ', 'ผศ.พัฒนศักดิ์ ปทุมวัน มหาวิทยาลัยราชภัฏอุบลราชธานี')}${row('ผู้ร่วมวิจัย', 'เทศบาลนครอุบลราชธานี')}</table>
     <h3>การพัฒนา</h3>
     <p>ออกแบบและเขียนโค้ดร่วมกับ Claude (Anthropic) ผ่าน Claude Code โดยเจ้าของโครงการเป็นผู้กำหนดความต้องการ ตัดสินใจ ตรวจสอบตัวเลขกับข้อมูลจริง และตรวจรับทุกขั้นตอน</p>
@@ -3373,7 +3436,8 @@ const GUIDE_REC = [
       done: 'กรอบสีฟ้าใต้ปุ่มรายงาน บอกรอบที่ จุดออก ที่ทิ้ง วันที่วิ่ง และระยะทางต่อรอบ (admin เป็นผู้กำหนด)' },
     { img: 'r12b', lead: 'เลื่อนลงมาจะเห็นแผนที่เส้นทาง', steps: [
       `${GN(1)} ติ๊ก <b>"แสดงทุกเส้นทางของเทศบาล"</b> เพื่อดูเส้นทางอื่นพร้อมกัน (สีบอกความจุรวมของแต่ละเส้นทาง) · ไม่ติ๊ก = ดูเฉพาะเส้นทางที่เลือก`,
-      `${GN(2)} แผนที่แสดงเส้นทางและหมุดของจุดในเส้นทาง แตะเส้นเพื่อดูชื่อเส้นทาง แตะหมุดเพื่อดูจุด`] }] },
+      `${GN(2)} แผนที่แสดงเส้นทางและหมุดของจุดในเส้นทาง <b>เลขบนหมุด = ลำดับที่รถเก็บ</b> · หมุดสีเทาขีด – = จุดบนถนนของเส้นทางที่ยังไม่อยู่ในลำดับ · แตะเส้นเพื่อดูชื่อเส้นทาง แตะหมุดเพื่อดูจุด`],
+      done: 'เลื่อนลงใต้แผนที่มี 3 ส่วน: <b>ตารางจุดในเส้นทาง</b> (เลขตรงกับหมุด ลิตร และ ≈ กก.) · <b>ข้อมูลรายเดือนของเส้นทาง</b> (ขยะที่รองรับ · เที่ยวที่นำขยะไปกำจัดจากใบชั่ง · การปล่อยก๊าซจากรถและการฝังกลบ) · <b>ภาพรวมทุกเส้นทางของเทศบาล</b> · เปลี่ยนเดือนได้ที่ช่องเดือน' }] },
   { id: 'g10', title: 'เรื่องแจ้งจากประชาชน', intro: 'ประชาชนแจ้งเหตุได้ 2 แบบ: ที่จุดวางถัง (ถังเต็ม สกปรก หาย ชำรุด ฯลฯ) และที่ตำแหน่งที่ไม่มีถัง (ทิ้งขยะริมทาง ควรมีถังที่นี่ ฯลฯ) · admin และหัวหน้าพนักงานเป็นผู้ตอบสถานะ ผู้ปฏิบัติงานดูได้',
     parts: [{ img: 'r16', lead: 'กดเมนู <b>"เรื่องแจ้ง"</b>', steps: [
       `${GN(1)} <b>ตัวเลขบนเมนู</b> = เรื่องที่ยังไม่ปิด · สีแดง = มีเรื่องใหม่ที่ยังไม่รับเรื่อง`,
@@ -3520,7 +3584,7 @@ const GUIDE_ADM = [
       `${GN(5)} เรื่องที่แจ้งที่ <b>ตำแหน่งที่ไม่มีจุดวางถัง</b>: ลิงก์ "ดูตำแหน่ง" และปุ่ม <b>"สร้างเป็นจุดวางถังใหม่"</b> (เติมพิกัดให้)`],
       done: 'ผู้แจ้งหลายคนเรื่องเดียวกันที่จุดเดียวกันภายใน 3 วัน ระบบรวมเป็นเรื่องเดียวและนับจำนวนผู้แจ้ง · เบอร์โทรลบอัตโนมัติเมื่อปิดเรื่องครบ 1 ปี · ปุ่ม "รายงานสรุป" พิมพ์ได้ (ไม่มีเบอร์โทร)' }] }
 ];
-const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=5" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=5" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
+const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=6" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=6" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
 const GUIDE_CSS = `<style>.gn{display:inline-block;min-width:26px;height:26px;line-height:26px;border-radius:50%;background:#E11D48;color:#fff;font-weight:700;text-align:center;font-size:15px;margin-right:4px}
   .gpart{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:18px;align-items:start;margin-top:14px}.gpart.wide{grid-template-columns:1fr;gap:8px}.gpart.wide .gimg{max-width:860px}.gpart ol{margin:6px 0;padding-left:0;list-style:none}.gpart li{margin:8px 0;line-height:1.7}
   .gimg{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;display:block}.gdone{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.7}
