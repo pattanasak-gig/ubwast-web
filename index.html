@@ -126,6 +126,8 @@ const CONFIG = {
   .leaflet-container .leaflet-control-attribution { color:#374151; } .leaflet-container .leaflet-control-attribution a { color:#1d4ed8; }   /* A8 */
   table, .kpi .v, .hbar-r, .hbar-r2, .finding .fv { font-variant-numeric: tabular-nums; }                                        /* A12 */
   label.mini { font-size:14px; margin:0 0 2px; }
+  .rchain { grid-column:1 / -1; border:2px solid #c7d2fe; border-radius:12px; padding:8px; background:#f8faff; }   /* DEC-143 กลุ่มรอบของเที่ยวเดียวกัน */
+  .rchain-h { font-weight:700; margin:0 0 6px 4px; color:#1e3a8a; }
   .seqlbl { background:transparent; border:0; box-shadow:none; color:#fff; font-weight:700; font-size:11px; padding:0; }   /* DEC-091 เลขลำดับบนหมุด */
   .seqlbl::before { display:none; }                                                                                  /* A3 ป้ายเล็กในแถวถัง */
   .binrow > div { display:flex; flex-direction:column; }
@@ -1268,7 +1270,12 @@ function tpAuto() {
   const next = Math.min(9, done.length ? Math.max(...done) + 1 : 1);
   $('#tp_round').value = next;
   $('#tp_roundInfo').innerHTML = done.length ? `วันนั้นรถคันนี้บันทึกแล้ว ${done.length} เที่ยว (รอบ ${done.join(', ')}) → เลือก <b>รอบ ${next}</b> ให้แล้ว` : '';
+  tpRoundRoute();
 }
+// DEC-143 1 รอบ = 1 ใบชั่ง · เลือกเส้นทางของรถคันนี้ที่ตรงกับรอบให้ (ถ้ามีเส้นทางเดียวที่ตรง)
+function tpRoundRoute() { const el = $('#tp_route'), rd = +($('#tp_round') || {}).value; if (!el || !rd) return; const tid = $('#tp_truck').value, rs = (S._tripCtx.routes || []).filter(r => r.truck_id === tid && +r.round_no === rd); if (rs.length === 1) el.value = rs[0].id; }
+document.addEventListener('change', e => { if (e.target && e.target.id === 'tp_round') tpRoundRoute(); });
+document.addEventListener('click', e => { if (e.target && e.target.closest && e.target.closest('.stepper') && $('#tp_round') && e.target.closest('.stepper').contains($('#tp_round'))) setTimeout(tpRoundRoute, 0); });
 function tpInfo() {
   const w = parseFloat($('#tp_weight').value), t = $('#tp_unit').value === 't', o1 = parseFloat($('#tp_o1').value), o2 = parseFloat($('#tp_o2').value);
   $('#tp_wInfo').innerHTML = isNaN(w) ? (t ? 'กรอกเป็นตัน เช่น 3.25 · ใบชั่งเป็นกิโลกรัม กดปุ่ม "กิโลกรัม" ก่อน' : 'กรอกเป็นกิโลกรัม เช่น 3250') : t ? (w > 50 ? '<span style="color:var(--warn)">มากผิดปกติสำหรับหน่วยตัน — ใบชั่งเป็น "กิโลกรัม" หรือไม่? ถ้าใช่ กดปุ่ม "กิโลกรัม"</span>' : `= <b>${fmt(Math.round(w * 1000))} กก.</b>`) : w > 0 && w < 50 ? '<span style="color:var(--warn)">น้อยผิดปกติ — ใบชั่งเป็น "ตัน" หรือไม่? ถ้าใช่ กดปุ่ม "ตัน"</span>' : `= ${fmt1(w / 1000)} ตัน`;
@@ -2032,6 +2039,7 @@ async function pageRoutes(view) {
   const adj = S._adj && S._adj.routeId === sel && isAdmin() ? S._adj : null; if (S._adj && !adj) S._adj = null;
   const cut = !adj && S._cut && S._cut.routeId === sel && isAdmin() ? S._cut : null; if (S._cut && !cut) S._cut = null;   // DEC-138   // DEC-110 โหมดปรับเส้นทาง
   if (isAdmin() && routeRow && !adj) $('#viaBtn').innerHTML = `<a class="btn secondary small" style="text-decoration:none" href="#route-edit/${sel}">แก้เส้นทาง</a>${'via' in routeRow ? `<button class="secondary small" onclick="viaStart('${sel}')">ปรับเส้นทาง (จุดแวะ)${(routeRow.via || []).length + (routeRow.via_back || []).length ? ` · ${(routeRow.via || []).length + (routeRow.via_back || []).length} จุด` : ''}</button>` : ''}`;
+  if (isAdmin() && routeRow && !adj && !cut && 'next_route_id' in routeRow && routeRow.status === 'active' && !(routeRow.return_mode === 'continue' && routeRow.next_route_id)) $('#viaBtn').insertAdjacentHTML('beforeend', `<button class="secondary small" onclick="addNextRound('${sel}')">＋ เพิ่มรอบถัดไป</button>`);   // DEC-143
   if (isAdmin() && routeRow && !adj && !cut && 'path_cuts' in routeRow && (routeRow.path_out || routeRow.path)) $('#viaBtn').insertAdjacentHTML('beforeend', `<button class="secondary small" onclick="cutStart('${sel}')">ตัดเส้นตรงนี้${(routeRow.path_cuts || []).length ? ` · ${(routeRow.path_cuts || []).length}` : ''}</button>`);   // DEC-138
   if (routeRow && routeRow.path_out) { const sw = (col, w, dash) => `<svg width="34" height="10" aria-hidden="true"><line x1="3" y1="5" x2="31" y2="5" stroke="${col}" stroke-width="${w}"${dash ? ` stroke-dasharray="${dash}"` : ''} stroke-linecap="${dash ? 'butt' : 'round'}"/></svg>`;   // DEC-141
     $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center">บนแผนที่: <span>${sw(routeBands(routes.filter(x => x.status === 'active')).colorOf(r), 6, null)} เส้นทึบ = ขาไปจนถึงที่ทิ้ง (เก็บขยะ)</span><span>${sw(RT_BACK_COLOR, 3, '6 5')} เส้นประเล็ก = ขากลับหลังทิ้ง</span><span>แตะเส้นเพื่อดูจุดที่วิ่งผ่านและปริมาณขยะ</span></div>`); }
@@ -2046,9 +2054,16 @@ async function pageRoutes(view) {
   const activeRoutes = routes.filter(x => x.status === 'active'); const bands = routeBands(activeRoutes); const myColor = bands.colorOf(r);
   $('#rtLegend').innerHTML = bands.single ? `<span><i class="dot" style="background:${myColor}"></i>ความจุรวม ${fmt(r.total_liters)} ล.</span>` : bands.legend.map(b => `<span><i class="dot" style="background:${b.color}"></i>${fmt(b.from)}–${fmt(b.to)} ล.</span>`).join('');
   let othersDrawn = 0, othersNoPath = 0;
+  // DEC-143 รอบอื่นของเที่ยวเดียวกัน (ทิ้งแล้วเก็บต่อ): เส้นทึบคนละสี + ป๊อปอัป · ไม่วาดซ้ำในชุดเส้นทางอื่น
+  const chain = 'next_route_id' in r ? routeChain(sel, routes) : [r], chainIds = new Set(chain.map(x => x.route_id)), CH_COL = ['#db2777', '#0891b2', '#65a30d', '#ea580c', '#7c3aed'];
+  if (chain.length > 1 && !adj) { const raw = await api.list('route', { eq: { municipality_id: S.scopeMuni } }); let k = 0;
+    for (const x of chain) { if (x.route_id === sel) continue; const o = raw.find(y => y.id === x.route_id); const col = CH_COL[k++ % CH_COL.length]; if (!o) continue;
+      for (const geo of [o.path_out, o.path_back || (o.path_out ? null : o.path)].filter(gg => gg && gg.coordinates)) L.geoJSON(geo, { style: { color: col, weight: 5, opacity: .85 } }).bindPopup(`<b>${esc(x.route_name)}</b>${x.round_no ? ` · รอบ ${x.round_no}` : ''}<br>${fmt(x.places)} จุด · ${fmt(x.total_liters)} ลิตร${x.path_distance_m ? ` · ${fmtKm(x.path_distance_m)} กม.` : ''}<br><a href="#routes/${x.route_id}">เปิดรอบนี้</a>`).addTo(g);
+      x._col = col; }
+    $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px">เที่ยวนี้มี ${fmt(chain.length)} รอบ: ${chain.map(x => x.route_id === sel ? `<b>${esc(x.route_name)} (กำลังดู)</b>` : `<span style="color:${x._col};font-weight:700">━</span> <a href="#routes/${x.route_id}">${esc(x.route_name)}</a>`).join(' → ')}</div>`); }
   if (!adj && S._routesAll !== false && activeRoutes.length > 1) {   // DEC-092: เส้นทางอื่นของเทศบาล (เฉพาะที่มีเส้นบนถนนแล้ว) สีตามความจุรวม บางกว่าเส้นที่เลือก
     const rows = await api.list('route', { eq: { municipality_id: S.scopeMuni, status: 'active' } });
-    for (const o of rows) { if (o.id === sel) continue; const sum = activeRoutes.find(x => x.route_id === o.id); if (!sum) continue; if (!(o.path && o.path.coordinates)) { othersNoPath++; continue; }
+    for (const o of rows) { if (o.id === sel || chainIds.has(o.id)) continue; const sum = activeRoutes.find(x => x.route_id === o.id); if (!sum) continue; if (!(o.path && o.path.coordinates)) { othersNoPath++; continue; }
       L.geoJSON(o.path, { style: { color: bands.colorOf(sum), weight: 4, opacity: .6 } }).bindPopup(`<b>${esc(sum.route_name)}</b><br>${esc(sum.truck_code)} · ${fmt(sum.places)} จุด · <b>${fmt(sum.total_liters)} ลิตร</b>${o.path_distance_m ? ` · ${fmt(Math.round(o.path_distance_m / 100) / 10)} กม.` : ''}<br><a href="#routes/${o.id}">เปิดเส้นทางนี้</a>`).addTo(g); othersDrawn++; }
   }
   const segs = routeRow && routeRow.path_out ? [[routeRow.path_out, false], [routeRow.path_back, true]].filter(x => x[0] && x[0].coordinates) : (path ? [[path, false]] : []);   // DEC-111 เส้นทึบ = ขาไป · เส้นประ = ขากลับ
@@ -2087,7 +2102,8 @@ async function pageRoutes(view) {
   if (cut) cutMode(map, routeRow, r, segs);
   if (adj && adj.view) map.setView(adj.view[0], adj.view[1]); else fitMuni(map, g);
   S._routeStops = stops; S._route = { ...r, path_distance_m: routeRow && routeRow.path_distance_m, path_at: routeRow && routeRow.path_at, path_source: routeRow && routeRow.path_source, custom_order: custom.length > 0 };
-  view.insertAdjacentHTML('beforeend', rtStopsCard(stops, extra, sel) + (await rtMonthCards(r, routes)));   // DEC-135 ตารางจุดใต้แผนที่ · ขยะ เที่ยวนำไปกำจัด คาร์บอน · ภาพรวมทุกเส้นทาง
+  const inOther = new Set((S._rtCtx.memb || []).filter(m => chainIds.has(m.route_id) && m.route_id !== sel).map(m => m.place_id));   // DEC-143 จุดที่อยู่ในรอบอื่นของเที่ยวเดียวกัน ไม่ใช่ "ยังไม่เลือก"
+  view.insertAdjacentHTML('beforeend', rtStopsCard(stops, extra.filter(x => !inOther.has(x.place_id)), sel, extra.filter(x => inOther.has(x.place_id)).length) + (await rtMonthCards(r, routes)));   // DEC-135 ตารางจุดใต้แผนที่ · ขยะ เที่ยวนำไปกำจัด คาร์บอน · ภาพรวมทุกเส้นทาง
   $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:8px">${path ? `เส้นทึบ = เส้นทางบนถนน ${fmt(Math.round(routeRow.path_distance_m / 100) / 10)} กม. (${routeRow.path_source === 'osrm' ? 'คำนวณจากแผนที่ OpenStreetMap' : 'กำหนดเอง'} · ${thDate(routeRow.path_at)})` : 'เส้นประเชื่อมจุดตามลำดับถนน ไม่ใช่เส้นทางวิ่งจริงบนถนน'}${custom.length ? ` · ลำดับจุด ${custom.length} จุด กำหนดโดย admin` : ' · ยังไม่กำหนดลำดับจุด (admin กำหนดได้ที่ จัดการเทศบาล → เส้นทาง → ลำดับจุด / เส้นถนน)'}</div>`);
 }
 
@@ -2135,10 +2151,10 @@ async function ppRemove(pid) {
 const map_close = () => { const x = document.querySelector('.leaflet-popup-close-button'); if (x) x.click(); };
 // DEC-135 ตารางจุดในเส้นทาง (ใต้แผนที่) · เลขตรงกับหมุดบนแผนที่ · จุดที่ไม่อยู่ในลำดับที่ admin กำหนดแสดงแยก
 const kgOfL = l => { const k = parseFloat(setting('kg_per_liter')); return k > 0 ? l * k : null; };
-function rtStopsCard(stops, extra, rid) {
+function rtStopsCard(stops, extra, rid, otherRound = 0) {
   const row = (x, no) => `<tr${no === '–' ? ' style="color:#6b7280"' : ''}><td>${no}</td><td><a href="#place/${x.place_id}">${esc(x.place_code)}</a></td><td>${esc(x.place_name || '')}</td><td>${esc(x.road_name || '')}</td><td style="text-align:right">${fmt(x.total_bins)}</td><td style="text-align:right">${fmt(x.total_liters)}</td><td style="text-align:right">${kgOfL(+x.total_liters || 0) != null ? fmt(Math.round(kgOfL(+x.total_liters || 0))) : '-'}</td></tr>`;
   const all = [...stops, ...extra], L0 = sum(stops, 'total_liters');
-  return `<div class="card" style="margin-top:12px"><h4 style="margin:0 0 6px">จุดในเส้นทาง (เลือกแล้ว ${fmt(stops.length)} จุด${extra.length ? ` · ยังไม่เลือก ${fmt(extra.length)} จุด` : ''}) · เลขตรงกับหมุดบนแผนที่</h4>
+  return `<div class="card" style="margin-top:12px"><h4 style="margin:0 0 6px">จุดในเส้นทาง (เลือกแล้ว ${fmt(stops.length)} จุด${extra.length ? ` · ยังไม่เลือก ${fmt(extra.length)} จุด` : ''}${otherRound ? ` · อยู่ในรอบอื่นของเที่ยวนี้ ${fmt(otherRound)} จุด` : ''}) · เลขตรงกับหมุดบนแผนที่</h4>
     ${extra.length ? `<div class="banner ${stops.length ? 'info' : 'warn'}" style="margin:6px 0"><b>${stops.length ? `เลือกจุดเข้าเส้นทางแล้ว ${fmt(stops.length)} จาก ${fmt(all.length)} จุดบนถนน` : `ยังไม่ได้เลือกจุดเข้าเส้นทาง (บนถนนมี ${fmt(all.length)} จุด)`}</b> · ปริมาณขยะ ความจุรถ ระยะทาง และคาร์บอนของเส้นทาง <b>นับเฉพาะจุดที่เลือก</b> (หมุดมีเลข) · หมุดสีเทาขีด – = ยังไม่ได้เลือก · ถ้ารถเก็บจุดเหล่านั้นด้วย ให้ admin เปิด "แก้เส้นทาง" → "จัดลำดับจุด" → เพิ่มเข้าลำดับ แล้วกด "ลากเส้นตามถนน"${isAdmin() ? ` <a class="btn small secondary" style="text-decoration:none;margin-left:6px" href="#route-edit/${rid}">แก้เส้นทาง</a>` : ''}</div>` : ''}
     <div style="overflow:auto"><table><thead><tr><th>#</th><th>รหัสจุด</th><th>ชื่อ</th><th>ถนน</th><th style="text-align:right">ใบ</th><th style="text-align:right">ลิตร</th><th style="text-align:right">≈ กก.</th></tr></thead>
     <tbody>${stops.map(x => row(x, x.seq)).join('')}${extra.map(x => row(x, '–')).join('')}</tbody>
@@ -2402,7 +2418,7 @@ async function adminCheck(mid) {
     { title: 'เส้นทางเดินรถ', n: routes.length, empty: !routes.length && trucks.length ? 'ยังไม่มีเส้นทาง ระบบจึงคำนวณระยะทางและการปล่อยของรถไม่ได้' : '', emptyA: lnk('#route-edit/new', '＋ เพิ่มเส้นทาง'), checks: [
       { sev: 'must', l: 'เลือกถนนในเส้นทาง', why: 'ไม่มีถนน = ไม่มีจุดเก็บขยะในเส้นทาง', of: routes, bad: routes.filter(r => !+r.roads).map(R) },
       ...(routes.some(r => r.places_on_roads !== undefined) ? [{ sev: 'must', l: 'เลือกจุดเข้าเส้นทาง (จัดลำดับจุด)', why: 'ปริมาณขยะ ความจุรถ ระยะทาง และคาร์บอน นับเฉพาะจุดที่เลือก · ยังไม่เลือก = 0', of: routes, bad: routes.filter(r => +r.roads && !+r.places).map(R) },
-        { sev: 'should', l: 'เลือกครบทุกจุดบนถนนของเส้นทาง', why: 'มีจุดบนถนนที่ยังไม่ได้เลือก เช่น จุดที่ผู้ปฏิบัติงานเพิ่มภายหลัง · ถ้ารถไม่ได้เก็บจุดนั้นจริง ไม่ต้องแก้', of: routes, bad: routes.filter(r => +r.places && +r.places_on_roads > +r.places).map(r => ({ ...R(r), t: R(r).t + ` <span class="muted">· เลือก ${fmt(r.places)} จาก ${fmt(r.places_on_roads)} จุด</span>` })) }] : []),   // DEC-136
+        { sev: 'should', l: 'เลือกครบทุกจุดบนถนนของเส้นทาง', why: 'มีจุดบนถนนที่ยังไม่ได้เลือก เช่น จุดที่ผู้ปฏิบัติงานเพิ่มภายหลัง · ถ้ารถไม่ได้เก็บจุดนั้นจริง หรือจุดนั้นอยู่ในรอบอื่นของเที่ยวเดียวกัน ไม่ต้องแก้', of: routes, bad: routes.filter(r => +r.places && +r.places_on_roads > +r.places).map(r => ({ ...R(r), t: R(r).t + ` <span class="muted">· เลือก ${fmt(r.places)} จาก ${fmt(r.places_on_roads)} จุด</span>` })) }] : []),   // DEC-136
       { sev: 'must', l: 'ติ๊กวันที่วิ่ง', why: 'ไม่ติ๊ก = นับ 0 รอบ การปล่อยของเส้นทางเป็น 0', of: routes, bad: routes.filter(r => !+r.days_per_week).map(R) },
       { sev: 'must', l: 'มีระยะทาง (ลากเส้นตามถนนแล้ว)', why: 'ไม่มีระยะทาง = คำนวณเชื้อเพลิงและ kgCO2e ของเส้นทางไม่ได้ · แก้ที่ขั้นที่ 3 "บันทึกและลากเส้นตามถนน"', of: routes, bad: routes.filter(r => !+r.path_distance_m).map(R) },
       { sev: 'should', l: 'ระบุที่ทิ้งขยะ', why: 'ไม่ระบุ = ระยะทางนับเฉพาะช่วงเก็บขยะ ไม่รวมขาไปทิ้ง', of: routes, bad: routes.filter(r => !r.dump_site_id).map(R) },
@@ -2851,10 +2867,15 @@ async function routeCards(mid) {
       <div class="muted">รถ ${esc(r.truck_code)} · ${esc(daysLabel(r.run_days))} · ${fmt(r.roads)} ถนน</div><div class="muted">${flow}</div>
       <div style="margin-top:4px">${r.path_distance_m ? `<b>${fmtKm(r.path_distance_m)} กม./รอบ</b> · ขาไป ${legKm(r, 'leg_start_m', 'leg_collect_m')} · ขากลับ ${legKm(r, 'leg_dump_m', 'leg_end_m')}${mode ? ` · กลับแบบ${esc(mode.replace('อัตโนมัติ', 'อัตโนมัติ'))}` : ''}` : '<span class="muted">ยังไม่มีระยะทาง</span>'}</div>
       ${miss.length ? `<div style="margin-top:4px">${miss.map(x => `<span class="pill" style="background:#fff7ed;color:#9a3412">${x}</span>`).join(' ')}</div>` : ''}
-      <div class="row" style="margin-top:8px"><a class="btn small" style="text-decoration:none" href="#route-edit/${r.route_id}">แก้เส้นทาง</a><a class="btn small secondary" style="text-decoration:none" href="#routes/${r.route_id}">ดูบนแผนที่</a><button class="small danger" type="button" onclick="delAsk('route','${r.route_id}','${esc(r.route_name).replace(/'/g, '&#39;')}')">ลบ</button></div></div>`; };
+      <div class="row" style="margin-top:8px"><a class="btn small" style="text-decoration:none" href="#route-edit/${r.route_id}">แก้เส้นทาง</a><a class="btn small secondary" style="text-decoration:none" href="#routes/${r.route_id}">ดูบนแผนที่</a>${r.status === 'active' && 'next_route_id' in r && !(r.return_mode === 'continue' && r.next_route_id) ? `<button class="small secondary" type="button" onclick="addNextRound('${r.route_id}')">＋ เพิ่มรอบถัดไป</button>` : ''}<button class="small danger" type="button" onclick="delAsk('route','${r.route_id}','${esc(r.route_name).replace(/'/g, '&#39;')}')">ลบ</button></div></div>`; };
+  // DEC-143 จัดกลุ่มรอบที่ผูกกัน (ทิ้งแล้วเก็บต่อ) เป็น 1 เที่ยว · ที่เหลือแสดงตามเดิม
+  const seen = new Set(), blocks = [];
+  for (const r of rows) { if (seen.has(r.route_id)) continue; const ch = 'next_route_id' in r ? routeChain(r.route_id, rows) : [r];
+    if (ch.length > 1) { ch.forEach(x => seen.add(x.route_id)); blocks.push(`<div class="rchain"><div class="rchain-h">1 เที่ยว ${fmt(ch.length)} รอบ · ${esc(ch[0].truck_code || '')} <span class="muted">(ทิ้งแล้วเก็บต่อ)</span></div><div class="rgrid">${ch.map(card).join('')}</div></div>`); }
+    else { seen.add(r.route_id); blocks.push(card(r)); } }
   return `<div class="card"><div class="row" style="justify-content:space-between"><h4 style="margin:0">เส้นทางเดินรถ (${fmt(rows.length)}) ${helpBtn('admin-routes')}</h4><span class="row" style="gap:6px"><button class="small secondary" type="button" id="btnRecalc" onclick="recalcAll('${mid}')">คำนวณใหม่ทุกเส้นทาง</button><a class="btn small" style="text-decoration:none" href="#route-edit/new">＋ เพิ่มเส้นทาง</a></span></div>
-    <div class="muted" style="margin:4px 0 10px">1 เส้นทาง = รถ 1 คัน 1 รอบวิ่ง · รถวิ่งหลายรอบต่อวัน สร้างหลายเส้นทางให้รถคันเดียวกัน · เรียงตามรถและรอบ</div>
-    <div class="rgrid">${rows.map(card).join('') || '<div class="muted">ยังไม่มีเส้นทาง กด "＋ เพิ่มเส้นทาง"</div>'}</div></div>`;
+    <div class="muted" style="margin:4px 0 10px"><b>1 เส้นทาง = 1 รอบ = เก็บแล้วทิ้ง 1 ครั้ง</b> · รถที่ทิ้งแล้วไปเก็บต่อ กด <b>"＋ เพิ่มรอบถัดไป"</b> ที่การ์ดรอบแรก ระบบสร้างรอบใหม่และรวมเป็น 1 เที่ยวให้ · เรียงตามรถและรอบ</div>
+    <div class="rgrid">${blocks.join('') || '<div class="muted">ยังไม่มีเส้นทาง กด "＋ เพิ่มเส้นทาง"</div>'}</div></div>`;
 }
 // DEC-113 คำนวณเส้นบนถนนใหม่ทุกเส้นทางที่ใช้งาน (หลังเปลี่ยนวิธีคำนวณ หรือแก้จุดออก/ที่ทิ้งหลายเส้นพร้อมกัน) · บริการสาธิตขอได้ 1 ครั้ง/วินาที จึงใช้เวลาประมาณ 3 วินาทีต่อเส้นทาง
 async function recalcAll(mid) {
@@ -2963,6 +2984,25 @@ async function reSave(snap) {
     await api.update('route', e.id, res.patch);
     toast(`บันทึกแล้ว ${fmtKm(res.km)} กม./รอบ (ขาไป ${fmtKm(res.outM)} · ขากลับ ${fmtKm(res.backM)})${res.sec ? ` · ขับประมาณ ${fmtMin(res.sec)} นาที` : ''}${nxMsg}`); render();
   } catch (err) { b.disabled = false; b.textContent = t; if (/บริการเส้นทาง|ถนน|พิกัด/.test(String(err && err.message)) && !isNetworkError(err)) toastErr('ลากเส้นตามถนนไม่สำเร็จ', err.message + ' · ข้อมูลในฟอร์มบันทึกแล้ว'); else fail(err, 'บันทึกเส้นทางไม่สำเร็จ'); }
+}
+// DEC-143 เพิ่มรอบถัดไป (ทิ้งแล้วเก็บต่อ): สร้างเส้นทางรอบใหม่ของรถคันเดิม ออกจากที่ทิ้งของรอบนี้ แล้วผูกเป็นเที่ยวเดียวกันให้เอง
+//   admin ไม่ต้องเลือกวิธีกลับหรือเส้นทางที่ไปต่อเอง · หลังสร้างเปิดหน้าแก้รอบใหม่ให้เลือกถนน/จุด
+async function addNextRound(rid) {
+  try {
+    const [r] = await api.list('route', { eq: { id: rid } }); if (!r) return;
+    if (!('next_route_id' in r)) return toastErr('ยังเพิ่มรอบถัดไปไม่ได้', 'เจ้าของโครงการต้องรัน sql/033_route_continue.sql ก่อน');
+    if (r.return_mode === 'continue' && r.next_route_id) { toast('รอบนี้มีรอบถัดไปแล้ว เปิดรอบถัดไปให้'); return go('#route-edit/' + r.next_route_id); }
+    if (!r.dump_site_id) { toastErr('ระบุ "ทิ้งที่" ของรอบนี้ก่อน', 'รอบถัดไปจะออกจากที่ทิ้งนี้ · กด "แก้เส้นทาง" → ขั้นที่ 3 → ทิ้งที่'); return go('#route-edit/' + rid); }
+    const no = Math.min(9, (+r.round_no || 1) + 1), base = String(r.name).replace(/\s*รอบ\s*\d+\s*$/, '');
+    if (!confirm(`สร้าง "${base} รอบ ${no}" ของรถคันเดิม?\n\n• ออกจากที่ทิ้งของรอบนี้ · ทิ้งที่เดิม · วันวิ่งเดิม\n• รอบนี้จะเปลี่ยนเป็น "ทิ้งแล้วไปเก็บต่อ" และนับรวมเป็น 1 เที่ยว\n• จากนั้นเลือกถนนและจุดของรอบใหม่`)) return;
+    const x = await api.insert('route', { municipality_id: r.municipality_id, name: `${base} รอบ ${no}`, truck_id: r.truck_id, round_no: no, run_days: r.run_days, route_kind: r.route_kind || 'regular', valid_from: r.valid_from || null, valid_to: r.valid_to || null,
+      schedule_note: null, status: 'active', return_mode: 'auto', start_site_id: r.dump_site_id, dump_site_id: r.dump_site_id, end_site_id: r.end_site_id || r.start_site_id || null });
+    await api.update('route', rid, { return_mode: 'continue', next_route_id: x.id, ...(r.round_no ? {} : { round_no: 1 }) });
+    let msg = `สร้าง ${x.name} แล้ว`;
+    try { const st = await api.list('v_route_stop', { eq: { route_id: rid }, order: ['seq'] }); if (st.length) { const [r1] = await api.list('route', { eq: { id: rid } }), res = await snapTrip(r1, st); await api.update('route', rid, res.patch); msg += ` · รอบ ${r.round_no || 1} ลากเส้นใหม่ (ขากลับจบที่ที่ทิ้ง) ${fmtKm(res.km)} กม.`; } }
+    catch (e) { msg += ' · รอบเดิมยังไม่ได้ลากเส้นใหม่ (กด "ลากเส้นตามถนน" ภายหลัง)'; }
+    toast(msg + ' · ขั้นต่อไป: เลือกถนนและจุดของรอบใหม่'); S.cache.loaded = false; go('#route-edit/' + x.id);
+  } catch (e) { fail(e, 'เพิ่มรอบถัดไปไม่สำเร็จ'); }
 }
 // DEC-137 รอบถัดไปออกจากที่ทิ้งของรอบนี้ · ลากเส้นของรอบถัดไปใหม่ (ถ้าเลือก "บันทึกและลากเส้น") · ไม่สำเร็จไม่ล้มการบันทึกหลัก
 async function reChainNext(p, snap) {
@@ -3674,7 +3714,7 @@ const GUIDE_ADM = [
       `${GN(3)} <b>ปีที่จดทะเบียน</b> ใช้ปี พ.ศ. เช่น 2562`,
       `${GN(4)} กด <b>"บันทึก"</b>`],
       done: 'ถ้ากรอกน้ำมันรายเดือนพร้อมเลขไมล์ ระบบคำนวณอัตราสิ้นเปลืองจริงให้เอง (หัวข้อ 8)' }] },
-  { id: 'a4', title: 'เส้นทางเดินรถ: รายการและหลักคิด', intro: '<b>1 เส้นทาง = รถ 1 คัน วิ่ง 1 รอบ</b> · รถที่วิ่งหลายรอบต่อวัน ให้สร้างหลายเส้นทางให้รถคันเดียวกัน (รอบที่ 1, 2, …) แต่ละรอบมีขาไป (เก็บขยะ) และขากลับ (ไปทิ้งแล้วไปต่อ)',
+  { id: 'a4', title: 'เส้นทางเดินรถ: รายการและหลักคิด', intro: '<b>1 เส้นทาง = 1 รอบ = เก็บแล้วทิ้ง 1 ครั้ง</b> · รถที่ทิ้งแล้วไปเก็บต่อ กดปุ่ม <b>"＋ เพิ่มรอบถัดไป"</b> ที่การ์ดรอบแรก ระบบสร้างรอบใหม่ (รถคันเดิม ออกจากที่ทิ้ง) และรวมเป็น 1 เที่ยวให้ แล้วเลือกถนน/จุดของรอบใหม่ · คนขับกรอกเที่ยววิ่ง 1 ใบชั่งต่อ 1 รอบ',
     parts: [{ img: 'a05', lead: 'แท็บ <b>"รถและเส้นทาง"</b> → การ์ด <b>เส้นทางเดินรถ</b> (เรียงตามรถและรอบ)', steps: [
       `${GN(1)} <b>"＋ เพิ่มเส้นทาง"</b> เปิดหน้าแก้เส้นทางแบบว่าง`,
       `${GN(2)} การ์ด 1 ใบ = 1 รอบ บอก รถ · วันวิ่ง · จำนวนถนน · ออกจาก → เก็บ → ทิ้งที่ → ไป · กม. ขาไป/ขากลับ`,
@@ -3771,7 +3811,7 @@ const GUIDE_ADM = [
       `${GN(5)} เรื่องที่แจ้งที่ <b>ตำแหน่งที่ไม่มีจุดวางถัง</b>: ลิงก์ "ดูตำแหน่ง" และปุ่ม <b>"สร้างเป็นจุดวางถังใหม่"</b> (เติมพิกัดให้)`],
       done: 'ผู้แจ้งหลายคนเรื่องเดียวกันที่จุดเดียวกันภายใน 3 วัน ระบบรวมเป็นเรื่องเดียวและนับจำนวนผู้แจ้ง · เบอร์โทรลบอัตโนมัติเมื่อปิดเรื่องครบ 1 ปี · ปุ่ม "รายงานสรุป" พิมพ์ได้ (ไม่มีเบอร์โทร)' }] }
 ];
-const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=8" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=8" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
+const GIMG = (f, dir = 'rec') => `<a href="help/${dir}/${f}.jpg?v=9" target="_blank" rel="noopener" title="แตะเพื่อดูภาพขนาดเต็ม"><img src="help/${dir}/${f}.jpg?v=9" alt="ภาพหน้าจอประกอบ" loading="lazy" ${dir === 'rec' ? 'width="390" height="844"' : ''} class="gimg"></a>`;
 const GUIDE_CSS = `<style>.gn{display:inline-block;min-width:26px;height:26px;line-height:26px;border-radius:50%;background:#E11D48;color:#fff;font-weight:700;text-align:center;font-size:15px;margin-right:4px}
   .gpart{display:grid;grid-template-columns:minmax(0,340px) 1fr;gap:18px;align-items:start;margin-top:14px}.gpart.wide{grid-template-columns:1fr;gap:8px}.gpart.wide .gimg{max-width:860px}.gpart ol{margin:6px 0;padding-left:0;list-style:none}.gpart li{margin:8px 0;line-height:1.7}
   .gimg{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;display:block}.gdone{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.7}
