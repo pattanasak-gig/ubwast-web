@@ -434,7 +434,7 @@ const DemoBackend = () => {
   for (let i = 1; i <= 2; i++) { const p = mkPlace(m2, `จุดตัวอย่าง ง-${i}`, r4, i, null, 15.1 + i * 0.001, 100.1 + i * 0.001); add('bin', { municipality_id: m2.id, place_id: p.id, bin_type_id: bt120.id, amount: 2 }); }
 
   for (const rt of D.route.filter(x => x.route_kind !== 'temporary')) { let k = 0; for (const rr of D.route_road.filter(x => x.route_id === rt.id).sort((a, b) => a.seq - b.seq)) for (const p of D.place.filter(p => p.road_id === rr.road_id).sort((a, b) => String(a.place_code).localeCompare(String(b.place_code), 'th'))) add('route_stop', { municipality_id: rt.municipality_id, route_id: rt.id, place_id: p.id, seq: ++k }); }   // DEC-136
-  for (const rt of D.route) { if (!rt.return_mode) rt.return_mode = 'auto'; if (!('next_route_id' in rt)) rt.next_route_id = null; }   // DEC-137
+  for (const rt of D.route) { if (!rt.return_mode) rt.return_mode = 'auto'; if (!('next_route_id' in rt)) rt.next_route_id = null; if (!('path_cuts' in rt)) rt.path_cuts = null; }   // DEC-137 · DEC-138
   let me = null;
   const byId = (t, id) => D[t].find(r => r.id === id);
   const tier = L => { const t = D.capacity_tier.slice().sort((a, b) => a.sort_order - b.sort_order).find(t => L >= t.min_liters && (t.max_liters == null || L <= t.max_liters)); return t || {}; };
@@ -693,7 +693,7 @@ async function refreshRepBadge() {
 }
 async function render() {
   S.charts.forEach(c => c.destroy()); S.charts = [];
-  if (!location.hash.startsWith('#routes')) { S._adj = null; S._turn = null; }   // ออกจากหน้าเส้นทาง = เลิกโหมดปรับ
+  if (!location.hash.startsWith('#routes')) { S._adj = null; S._cut = null; }   // ออกจากหน้าเส้นทาง = เลิกโหมดปรับ
   const view = $('#view');
   try {
     if (!S.me) { S.me = await api.me(); }
@@ -2025,9 +2025,9 @@ async function pageRoutes(view) {
   const extra = byRoad.filter(x => !custom.some(c => c.place_id === x.place_id));   // จุดบนถนนของเส้นทางที่ยังไม่ได้เลือก
   const [routeRow] = await api.list('route', { eq: { id: sel } }); const path = routeRow && routeRow.path && routeRow.path.coordinates ? routeRow.path : null;
   const adj = S._adj && S._adj.routeId === sel && isAdmin() ? S._adj : null; if (S._adj && !adj) S._adj = null;
-  const turn = !adj && S._turn && S._turn.routeId === sel && isAdmin() ? S._turn : null; if (S._turn && !turn) S._turn = null;   // DEC-137   // DEC-110 โหมดปรับเส้นทาง
+  const cut = !adj && S._cut && S._cut.routeId === sel && isAdmin() ? S._cut : null; if (S._cut && !cut) S._cut = null;   // DEC-138   // DEC-110 โหมดปรับเส้นทาง
   if (isAdmin() && routeRow && !adj) $('#viaBtn').innerHTML = `<a class="btn secondary small" style="text-decoration:none" href="#route-edit/${sel}">แก้เส้นทาง</a>${'via' in routeRow ? `<button class="secondary small" onclick="viaStart('${sel}')">ปรับเส้นทาง (จุดแวะ)${(routeRow.via || []).length + (routeRow.via_back || []).length ? ` · ${(routeRow.via || []).length + (routeRow.via_back || []).length} จุด` : ''}</button>` : ''}`;
-  if (isAdmin() && routeRow && !adj && !turn && custom.length) $('#viaBtn').insertAdjacentHTML('beforeend', `<button class="secondary small" onclick="turnStart('${sel}')">เลี้ยวเข้าถนนอื่น</button>`);   // DEC-137
+  if (isAdmin() && routeRow && !adj && !cut && 'path_cuts' in routeRow && (routeRow.path_out || routeRow.path)) $('#viaBtn').insertAdjacentHTML('beforeend', `<button class="secondary small" onclick="cutStart('${sel}')">ตัดเส้นตรงนี้${(routeRow.path_cuts || []).length ? ` · ${(routeRow.path_cuts || []).length}` : ''}</button>`);   // DEC-138
   if (routeRow && routeRow.path_out) $('#routeInfo').insertAdjacentHTML('beforeend', '<div class="muted" style="margin-top:4px">บนแผนที่: เส้นทึบ = ขาไป (เก็บขยะ) · เส้นประ = ขากลับ</div>');
   const map = mkMap('map'); addBaseLayer(map);
   const all = (await api.list('v_place', { eq: { status: 'active', municipality_id: S.scopeMuni } })).filter(p => p.lat != null);
@@ -2044,21 +2044,20 @@ async function pageRoutes(view) {
   }
   const segs = routeRow && routeRow.path_out ? [[routeRow.path_out, false], [routeRow.path_back, true]].filter(x => x[0] && x[0].coordinates) : (path ? [[path, false]] : []);   // DEC-111 เส้นทึบ = ขาไป · เส้นประ = ขากลับ
   if (adj) for (const [geo, dashed] of segs) L.geoJSON(geo, { style: { color: myColor, weight: 9, opacity: .85, dashArray: dashed ? '14 10' : null } }).on('click', e => { L.DomEvent.stop(e); viaAdd(e.latlng); }).addTo(g);
+  else if (cut) for (const [geo, dashed] of segs) L.geoJSON(geo, { style: { color: myColor, weight: 10, opacity: .9, dashArray: dashed ? '14 10' : null } }).on('click', e => { L.DomEvent.stop(e); cutPick(e.latlng, routeRow.path_out ? (dashed ? 'back' : 'out') : null); }).addTo(g);   // DEC-138
   else if (routeRow && routeRow.path_out) for (const [geo, dashed] of segs) L.geoJSON(geo, { style: { color: myColor, weight: 7, opacity: .95, dashArray: dashed ? '14 10' : null } }).bindPopup(`<b>${esc(r.route_name)}</b> · ${dashed ? 'ขากลับ' : 'ขาไป (เก็บขยะ)'}<br>${fmt(r.places)} จุด · <b>${fmt(r.total_liters)} ลิตร</b>`).addTo(g);
   else if (path) L.geoJSON(path, { style: { color: myColor, weight: 7, opacity: .95 } }).bindPopup(`<b>${esc(r.route_name)}</b><br>${fmt(r.places)} จุด · <b>${fmt(r.total_liters)} ลิตร</b>`).addTo(g);   // เส้นบนถนนที่เก็บไว้ (เส้นที่เลือก หนากว่า)
   else { const line = stops.filter(s => s.lat != null).map(s => [s.lat, s.lng]); if (line.length > 1) L.polyline(line, { color: myColor, weight: 3, dashArray: '6 6' }).addTo(g); }
   if (othersDrawn || othersNoPath) $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px">แสดงเส้นทางอื่นอีก ${fmt(othersDrawn)} เส้น${othersNoPath ? ` · อีก ${fmt(othersNoPath)} เส้นยังไม่มีเส้นบนถนน (admin กด "ลากเส้นตามถนน")` : ''} · แตะเส้นเพื่อดูชื่อและความจุ</div>`);
-  for (const sidx of stops.filter(s => s.lat != null)) { const mk = L.circleMarker([sidx.lat, sidx.lng], { radius: turn ? 13 : 11, color: '#fff', weight: 1.5, fillColor: '#1F3A5F', fillOpacity: .95, interactive: !adj }).bindTooltip(String(sidx.seq), { permanent: true, direction: 'center', className: 'seqlbl' });
-    if (turn) mk.on('click', e => { L.DomEvent.stop(e); turnPick(sidx.place_id); }); else mk.bindPopup(`<b>${sidx.seq}. ${esc(sidx.place_code)}</b><br>${esc(sidx.place_name)}<br>${fmt(sidx.total_liters)} ลิตร`);
-    mk.addTo(g); }   // DEC-135 เลขลำดับทุกจุดเสมอ
+  for (const sidx of stops.filter(s => s.lat != null)) L.circleMarker([sidx.lat, sidx.lng], { radius: 11, color: '#fff', weight: 1.5, fillColor: '#1F3A5F', fillOpacity: .95, interactive: !adj && !cut }).bindTooltip(String(sidx.seq), { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${sidx.seq}. ${esc(sidx.place_code)}</b><br>${esc(sidx.place_name)}<br>${fmt(sidx.total_liters)} ลิตร`).addTo(g);   // DEC-135 เลขลำดับทุกจุดเสมอ
   for (const x of extra.filter(s => s.lat != null)) L.circleMarker([x.lat, x.lng], { radius: 9, color: '#fff', weight: 1.5, fillColor: '#9ca3af', fillOpacity: .95, interactive: !adj }).bindTooltip('–', { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${esc(x.place_code)}</b><br>${esc(x.place_name)}<br>${fmt(x.total_liters)} ลิตร<br><span class="muted">ไม่อยู่ในลำดับที่ admin กำหนด</span>`).addTo(g);
   if (r.start_site_id || r.dump_site_id) {   // DEC-108 หมุดสถานที่ของเที่ยววิ่ง
-    const sites = await siteList(S.scopeMuni);
+    const sites = await siteList(S.scopeMuni); if (cut) cut.sites = sites.filter(x => [r.start_site_id, r.dump_site_id, r.end_site_id].includes(x.id));   // DEC-138
     const pin = (sid, lbl, col) => { const x = sites.find(y => y.id === sid); if (x) L.marker([x.lat, x.lng], { icon: L.divIcon({ className: 'sitepin', html: `<span style="background:${col}">${lbl}</span>`, iconSize: [46, 26], iconAnchor: [23, 13] }) }).bindPopup(`<b>${esc(x.name)}</b><br>${esc(siteTypeLabel(x.site_type))}`).addTo(g); };
     pin(r.start_site_id, 'ออก', '#1d4ed8'); pin(r.dump_site_id, 'ทิ้ง', '#92400e'); if (r.end_site_id && r.end_site_id !== r.start_site_id) pin(r.end_site_id, 'จบ', '#475569');
   }
   if (adj) viaMode(map, routeRow, r);
-  if (turn) turnMode(map, routeRow, r, stops);
+  if (cut) cutMode(map, routeRow, r, segs);
   if (adj && adj.view) map.setView(adj.view[0], adj.view[1]); else fitMuni(map, g);
   S._routeStops = stops; S._route = { ...r, path_distance_m: routeRow && routeRow.path_distance_m, path_at: routeRow && routeRow.path_at, path_source: routeRow && routeRow.path_source, custom_order: custom.length > 0 };
   view.insertAdjacentHTML('beforeend', rtStopsCard(stops, extra, sel) + (await rtMonthCards(r, routes)));   // DEC-135 ตารางจุดใต้แผนที่ · ขยะ เที่ยวนำไปกำจัด คาร์บอน · ภาพรวมทุกเส้นทาง
@@ -2566,6 +2565,30 @@ function insertVia(wp, via) {
   return out;
 }
 const geoDist = (a, b) => Math.hypot(a.lat - b.lat, (a.lng - b.lng) * Math.cos(a.lat * Math.PI / 180));
+// DEC-138 ตัดช่วงที่รถวิ่งเลยจุดที่แตะแล้วย้อนกลับมาที่เดิม (เส้นซ้อนไป-กลับ) · coords = [[lng,lat],…] ของ OSRM · p = [lat,lng]
+//   1) ซอยเส้นเป็นช่วงละ ≤ 10 ม. 2) หาครั้งแรกและครั้งถัดไปที่เส้นผ่านใกล้จุดที่แตะ (≤ 25 ม.) 3) ถอยออกไปทั้งสองฝั่งตราบที่สองฝั่งยังซ้อนกัน (≤ 25 ม.)
+//   คืนพิกัดใหม่ (ซอยเฉพาะจุดรอยต่อ ไม่ทำให้เส้นที่เก็บใหญ่ขึ้น) · ตำแหน่งที่ตัด (ม. จากต้นเส้น) · ความยาวที่ตัด · ความยาวเดิม · พิกัดช่วงที่ตัด (ไว้แสดง)
+const mDist = (a, b) => 111320 * Math.hypot(a[1] - b[1], (a[0] - b[0]) * Math.cos(a[1] * Math.PI / 180));
+function cutSpur(coords, p) {
+  if (!coords || coords.length < 3) return null;
+  const D = []; for (let k = 0; k < coords.length - 1; k++) { const a = coords[k], b = coords[k + 1], m = Math.max(1, Math.ceil(mDist(a, b) / 10)); for (let t = 0; t < m; t++) D.push({ c: [a[0] + (b[0] - a[0]) * t / m, a[1] + (b[1] - a[1]) * t / m], s: k, o: t === 0 }); }
+  D.push({ c: coords[coords.length - 1], s: coords.length - 1, o: true });
+  const q = [p[1], p[0]], runs = []; let cur = null;
+  D.forEach((d, k) => { const dd = mDist(d.c, q); if (dd <= 25) { if (cur && k === cur.e + 1) { cur.e = k; if (dd < cur.bd) { cur.b = k; cur.bd = dd; } } else { cur = { st: k, e: k, b: k, bd: dd }; runs.push(cur); } } });
+  if (runs.length < 2) return null;
+  let i = runs[0].b, j = runs[1].b;
+  while (i > 0) { let best = -1, bd = Infinity; for (let k = j; k <= Math.min(D.length - 1, j + 60); k++) { const dd = mDist(D[i - 1].c, D[k].c); if (dd < bd) { bd = dd; best = k; } } if (bd > 25 || best >= D.length - 1) break; i--; j = Math.max(j, best); }
+  if (j - i < 2) return null;
+  let len = 0, at = 0, total = 0; for (let k = 0; k < D.length - 1; k++) { const l = mDist(D[k].c, D[k + 1].c); total += l; if (k < i) at += l; else if (k < j) len += l; }
+  if (len < 30) return null;
+  const out = coords.slice(0, D[i].s + 1); if (!D[i].o) out.push(D[i].c); out.push(D[j].c); for (const c of coords.slice(D[j].s + 1)) out.push(c);
+  return { coords: out, at, len, total, removed: D.slice(i, j + 1).map(d => d.c) };
+}
+// ลดระยะทาง/เวลาของ OSRM legs ตามช่วงที่ตัด (เทียบตำแหน่งตามสัดส่วนระยะ OSRM ÷ ระยะตามพิกัด) · ช่วงที่ตัดคร่อมหลาย leg ได้
+function legCut(rr, r) {
+  const sum = rr.legs.reduce((a, x) => a + x.distance, 0), sc = r.total > 0 ? sum / r.total : 1; let pos = r.at * sc, rem = r.len * sc, c0 = 0;
+  for (const lg of rr.legs) { const c1 = c0 + lg.distance, ov = Math.max(0, Math.min(c1, pos + rem) - Math.max(c0, pos)); if (ov > 0 && lg.distance > 0) { lg.duration -= lg.duration * ov / lg.distance; lg.distance -= ov; } c0 = c1; }
+}
 let _osrmLast = 0;
 async function osrmRoute(wp) {   // บริการสาธิต OSRM ขอไม่เกิน 1 ครั้ง/วินาที → เว้นช่วงเองเมื่อเรียกติดกัน
   const wait = 1100 - (Date.now() - _osrmLast); if (wait > 0) await new Promise(r => setTimeout(r, wait)); _osrmLast = Date.now();
@@ -2624,6 +2647,10 @@ async function snapTrip(rt, stops, o = {}) {
   if (mode === 'roads' && !roadsSel.length) throw new Error('เลือกถนนที่ใช้กลับอย่างน้อย 1 สาย หรือเปลี่ยนวิธีกลับเป็น "อัตโนมัติ"');
   const out = await tripOut(b, via), back = await tripBack(b, out, mode, roadsSel, viaBack, rt.municipality_id);
   if (!out && !back) throw new Error('ต้องมีจุดที่มีพิกัดอย่างน้อย 2 จุด');
+  const cuts = o.cuts !== undefined ? o.cuts : (rt.path_cuts || []); let cutsOk = 0;   // DEC-138 ตัดช่วงวิ่งเลยแล้วย้อนตามจุดตัดที่จำไว้
+  for (const [seg, lgName] of [[out, 'out'], [back, 'back']]) { if (!seg) continue; seg.rr.legs = seg.rr.legs.map(x => ({ distance: x.distance || 0, duration: x.duration || 0 }));
+    for (const c of cuts.filter(x => x && x.leg === lgName && Array.isArray(x.p))) { const r = cutSpur(seg.rr.geometry.coordinates, c.p); if (!r) continue; cutsOk++; legCut(seg.rr, r); seg.rr.geometry = { type: 'LineString', coordinates: r.coords }; }
+    seg.rr.distance = seg.rr.legs.reduce((a, x) => a + x.distance, 0); seg.rr.duration = seg.rr.legs.reduce((a, x) => a + x.duration, 0); }
   const leg = { start: [0, 0], collect: [0, 0], dump: [0, 0], end: [0, 0] };   // [เมตร, วินาที]
   if (out) { const kAt = i => { while (out.wp[i] && out.wp[i].k === 'via') i--; return out.wp[i] ? out.wp[i].k : null; };
     out.rr.legs.forEach((lg, i) => { const c = kAt(i) === 'start' ? 'start' : 'collect'; leg[c][0] += lg.distance || 0; leg[c][1] += lg.duration || 0; }); }
@@ -2633,7 +2660,7 @@ async function snapTrip(rt, stops, o = {}) {
   const patch = { path: { type: 'LineString', coordinates: coords }, path_source: 'osrm', path_at: new Date().toISOString(), path_distance_m: r1(dist) };
   if (S._hasSite) Object.assign(patch, { path_duration_s: r1(dur), leg_start_m: r1(leg.start[0]), leg_start_s: r1(leg.start[1]), leg_collect_m: r1(leg.collect[0]), leg_collect_s: r1(leg.collect[1]), leg_dump_m: r1(leg.dump[0]), leg_dump_s: r1(leg.dump[1]), leg_end_m: r1(leg.end[0]), leg_end_s: r1(leg.end[1]) });
   if (S._hasReturn) Object.assign(patch, { path_out: out ? out.rr.geometry : null, path_back: back ? back.rr.geometry : null });
-  return { patch, km: dist, sec: dur, stops: b.pts.length, via: (via || []).length + (viaBack || []).length, outM: out ? out.rr.distance : 0, backM: back ? back.rr.distance : 0 };
+  return { patch, km: dist, sec: dur, stops: b.pts.length, via: (via || []).length + (viaBack || []).length, outM: out ? out.rr.distance : 0, backM: back ? back.rr.distance : 0, cuts: cuts.length, cutsOk };
 }
 // เทียบวิธีกลับ: คำนวณขาไปครั้งเดียว แล้วลองขากลับทุกแบบ · คืน { auto, same, roads } เป็นเมตรรวมทั้งรอบ
 async function compareReturn(rt, stops, roadIds, via, viaBack) {
@@ -2644,46 +2671,48 @@ async function compareReturn(rt, stops, roadIds, via, viaBack) {
   }
   return res;
 }
-// ---- DEC-137 เลี้ยวเข้าถนนอื่น: แตะจุดเก็บสุดท้ายก่อนเลี้ยว → ระบบเสนอเอาจุดที่เลยไปบนถนนเดิมออกจากลำดับ → แตะถนนที่จะเลี้ยวเข้า (เป็นจุดแวะขาไป) → บันทึกและลากเส้นใหม่
-//      OSRM ฟรีไม่มีคำสั่งห้ามผ่าน จึงใช้ "เอาจุดที่เลยไปออก + จุดแวะ" แทน · จุดที่เอาออกไม่นับในเส้นทางนี้ (DEC-136) แท็บตรวจความครบจะเตือน
-function turnStart(routeId) { S._adj = null; S._turn = { routeId, step: 1, rm: [], useRm: true, via: null }; render(); }
-function turnMode(map, routeRow, r, stops) {
-  const t = S._turn; t.map = map; t.route = routeRow; t.stops = stops; t.layer = L.featureGroup().addTo(map);
-  $('#map').insertAdjacentHTML('beforebegin', '<div class="banner warn" id="turnBar" style="margin-bottom:8px"></div>');
-  map.on('click', e => { if (t.step === 2) { t.via = [+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)]; turnDraw(); } });
-  turnDraw();
+// ---- DEC-138 ตัดเส้นตรงนี้: แตะบนเส้น (ขาไป/ขากลับ) ตรงทางแยกที่จะให้รถเลี้ยว → ระบบหาช่วงที่วิ่งเลยแล้วย้อนกลับ แสดงสีแดง → บันทึก = ลากเส้นใหม่แล้วตัดช่วงนั้นออก (จำจุดตัดไว้ใน path_cuts)
+function cutStart(routeId) { S._adj = null; S._cut = { routeId, leg: 'out', p: null }; render(); }
+function cutMode(map, routeRow, r, segs) {
+  const c = S._cut; Object.assign(c, { map, route: routeRow, layer: L.featureGroup().addTo(map) }); if (!routeRow.path_out) c.leg = 'out';
+  $('#map').insertAdjacentHTML('beforebegin', '<div class="banner warn" id="cutBar" style="margin-bottom:8px"></div>');
+  map.on('click', e => cutPick(e.latlng, null)); cutDraw();
 }
-function turnPick(pid) {
-  const t = S._turn; if (!t || t.step !== 1) return; const i = t.stops.findIndex(x => x.place_id === pid); if (i < 0) return;
-  const road = t.stops[i].road_name, rm = []; for (let j = i + 1; j < t.stops.length && t.stops[j].road_name === road; j++) rm.push(t.stops[j].place_id);   // จุดที่ต่อจากจุดนี้บนถนนเดียวกัน (ติดกันตามลำดับ)
-  Object.assign(t, { step: 2, pick: pid, rm, useRm: rm.length > 0 }); turnDraw();
+const cutGeom = (rt, leg) => { const g = leg === 'back' ? rt.path_back : (rt.path_out || rt.path); return g && g.coordinates ? g.coordinates : null; };
+function cutPick(ll, leg) {
+  const c = S._cut; if (!c) return; if (leg) c.leg = leg; c.p = [+ll.lat.toFixed(6), +ll.lng.toFixed(6)];
+  c.res = cutSpur(cutGeom(c.route, c.leg), c.p);
+  if (c.res) {   // จุดเก็บ/ที่ทิ้งที่รถไปถึงได้ผ่านช่วงที่จะตัดเท่านั้น = อยู่ใกล้ช่วงที่ตัดมากกว่าเส้นที่เหลือ (บริการเส้นทางพาไปถึงถนนที่ใกล้จุดที่สุดแล้ววกกลับ)
+    const mid = c.res.removed.slice(4, -4), keep = c.res.coords, segD = (q, a, b) => { const kx = 111320 * Math.cos(q[1] * Math.PI / 180), ky = 111320, ax = (a[0] - q[0]) * kx, ay = (a[1] - q[1]) * ky, bx = (b[0] - q[0]) * kx, by = (b[1] - q[1]) * ky, dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0; return Math.hypot(ax + t * dx, ay + t * dy); };
+    const served = (lat, lng) => { const q = [lng, lat]; if (!mid.length) return false; const dCut = Math.min(...mid.map(x => mDist(x, q))); let dKeep = Infinity; for (let k = 0; k < keep.length - 1; k++) dKeep = Math.min(dKeep, segD(q, keep[k], keep[k + 1])); return dCut + 5 < dKeep; };
+    c.skip = [...(S._routeStops || []).filter(x => x.lat != null && served(+x.lat, +x.lng)).map(x => `จุด ${x.seq}. ${x.place_code}`), ...(c.sites || []).filter(x => served(+x.lat, +x.lng)).map(x => x.name)]; }
+  cutDraw();
 }
-function turnDraw() {
-  const t = S._turn; if (!t || !t.layer) return; t.layer.clearLayers();
-  const st = id => t.stops.find(x => x.place_id === id) || {}, k = t.pick ? st(t.pick) : null;
-  if (k && k.lat != null) L.circleMarker([k.lat, k.lng], { radius: 18, color: '#16a34a', weight: 4, fill: false, interactive: false }).addTo(t.layer);
-  for (const id of t.useRm ? t.rm : []) { const x = st(id); if (x.lat != null) L.circleMarker([x.lat, x.lng], { radius: 16, color: '#dc2626', weight: 3, dashArray: '4 4', fill: false, interactive: false }).addTo(t.layer); }
-  if (t.via) L.marker(t.via, { interactive: false, icon: L.divIcon({ className: 'viapin', html: '<span>เลี้ยว</span>', iconSize: [44, 30], iconAnchor: [22, 15] }) }).addTo(t.layer);
-  const bar = $('#turnBar'); if (!bar) return;
-  bar.innerHTML = t.step === 1 ? `<b>เลี้ยวเข้าถนนอื่น · ขั้น 1/3</b> แตะหมุดมีเลข <b>จุดเก็บสุดท้ายก่อนเลี้ยว</b> (บนถนนเดิม)<div class="row" style="margin-top:8px"><button class="small secondary" onclick="turnStop()">ยกเลิก</button></div>`
-    : `<b>เลี้ยวเข้าถนนอื่น</b> · จุดสุดท้ายก่อนเลี้ยว: <b>${esc(k.seq + '. ' + (k.place_code || ''))}</b> (วงเขียว)
-      ${t.rm.length ? `<label class="pick-opt" style="margin:6px 0"><input type="checkbox" ${t.useRm ? 'checked' : ''} onchange="S._turn.useRm=this.checked;turnDraw()"> <span>เอา <b>${fmt(t.rm.length)} จุด</b> ที่อยู่เลยไปบนถนน ${esc(k.road_name || '')} ออกจากเส้นทางนี้ (วงแดงประ): ${t.rm.map(id => esc(st(id).place_code || '')).join(', ')} <span class="muted">· จุดที่เอาออกไม่นับในเส้นทางนี้ ให้เพิ่มในเส้นทางอื่น</span></span></label>` : '<div class="muted" style="margin:6px 0">หลังจุดนี้ไม่มีจุดบนถนนเดียวกันในลำดับ ระบบจะวางจุดเลี้ยวอย่างเดียว</div>'}
-      <div><b>ขั้น 2/3</b> แตะบนแผนที่ <b>ที่ถนนซึ่งต้องการให้รถเลี้ยวเข้า</b> ${t.via ? '<span class="pill" style="background:#dcfce7;color:#14532d">วางจุดเลี้ยวแล้ว (แตะใหม่เพื่อย้าย)</span>' : ''}</div>
-      <div style="margin-top:4px"><b>ขั้น 3/3</b> กดบันทึก ระบบลากเส้นตามถนนใหม่</div>
-      <div class="row" style="margin-top:8px"><button class="small" id="btnTurn" ${t.via ? '' : 'disabled'} onclick="turnSave()">บันทึกและลากเส้นใหม่</button><button class="small secondary" onclick="S._turn.step=1;S._turn.pick=null;S._turn.rm=[];S._turn.via=null;turnDraw()">เลือกจุดใหม่</button><button class="small secondary" onclick="turnStop()">ยกเลิก</button></div>`;
+function cutDraw() {
+  const c = S._cut; if (!c || !c.layer) return; c.layer.clearLayers();
+  if (c.res) L.polyline(c.res.removed.map(x => [x[1], x[0]]), { color: '#dc2626', weight: 8, opacity: .95, interactive: false }).addTo(c.layer);
+  if (c.p) L.marker(c.p, { interactive: false, icon: L.divIcon({ className: 'viapin', html: '<span>ตัด</span>', iconSize: [40, 30], iconAnchor: [20, 15] }) }).addTo(c.layer);
+  const saved = (c.route.path_cuts || []), bar = $('#cutBar'); if (!bar) return;
+  bar.innerHTML = `<b>ตัดเส้นตรงนี้</b> · ไม่ให้รถวิ่งเลยไปแล้วย้อนกลับ
+    ${c.route.path_out ? `<div class="row" style="margin:6px 0;gap:12px"><b>1) เส้นของ</b><label class="pick-opt" style="margin:0"><input type="radio" name="cleg" value="out" ${c.leg === 'out' ? 'checked' : ''} onchange="S._cut.leg='out';S._cut.p=null;S._cut.res=null;cutDraw()"> ขาไป (เส้นทึบ)</label><label class="pick-opt" style="margin:0"><input type="radio" name="cleg" value="back" ${c.leg === 'back' ? 'checked' : ''} onchange="S._cut.leg='back';S._cut.p=null;S._cut.res=null;cutDraw()"> ขากลับ (เส้นประ)</label></div>` : ''}
+    <div><b>${c.route.path_out ? '2' : '1'})</b> แตะบนเส้น <b>ตรงทางแยกที่ต้องการให้รถเลี้ยว</b> (แตะบนเส้นทึบหรือเส้นประ ระบบเลือกขาให้เอง)</div>
+    ${c.p ? (c.res ? `<div style="margin-top:6px">พบช่วงที่วิ่งเลยแล้วย้อนกลับ <b style="color:#dc2626">ตัดออก ${fmtKm(c.res.len)} กม.</b> (เส้นสีแดง)${c.skip && c.skip.length ? `<div class="banner err" style="margin:6px 0"><b>ช่วงที่ตัดมี ${esc(c.skip.join(', '))}</b> · เส้นที่วิ่งเลยไปนี้คือทางไปถึงจุดนั้น ถ้าตัด รถจะไม่ได้แวะ · ถ้ายังต้องเก็บ/ทิ้งที่นั่น อย่าตัดตรงนี้ · ถ้ารถไม่ได้เก็บจุดนั้นจริง ให้เอาจุดออกจากลำดับด้วย (แก้เส้นทาง → จัดลำดับจุด) เพื่อไม่ให้นับปริมาณขยะ</div>` : ''}</div>` : '<div style="margin-top:6px;color:var(--danger)">ตรงนี้ไม่พบช่วงที่รถวิ่งเลยแล้วย้อนกลับ ลองแตะบนเส้นที่ซ้อนกันไป-กลับ ใกล้ทางแยก หรือเปลี่ยนขาไป/ขากลับ</div>') : ''}
+    <div class="row" style="margin-top:8px"><button class="small" id="btnCut" ${c.res ? '' : 'disabled'} onclick="cutSave()">บันทึกและลากเส้นใหม่</button><button class="small secondary" onclick="cutStop()">${saved.length ? 'ปิด' : 'ยกเลิก'}</button></div>
+    ${saved.length ? `<div style="margin-top:8px"><b>จุดตัดที่บันทึกไว้ (${fmt(saved.length)})</b> <span class="muted">ระบบตัดให้ทุกครั้งที่ลากเส้นใหม่</span><ol style="margin:4px 0;padding-left:20px">${saved.map((x, i) => `<li>${x.leg === 'back' ? 'ขากลับ' : 'ขาไป'} · ${x.p[0]}, ${x.p[1]} <button class="small danger" onclick="cutDel(${i})">ลบ</button></li>`).join('')}</ol></div>` : ''}`;
 }
-function turnStop() { S._turn = null; render(); }
-async function turnSave() {
-  const t = S._turn; if (!t || !t.via) return; const b = $('#btnTurn'); b.disabled = true; b.textContent = 'กำลังบันทึก…';
+function cutStop() { S._cut = null; render(); }
+async function cutSaveList(list, okMsg) {
+  const c = S._cut, b = $('#btnCut'); if (b) { b.disabled = true; b.textContent = 'กำลังคำนวณ…'; }
   try {
-    const rm = new Set(t.useRm ? t.rm : []), keep = t.stops.filter(x => !rm.has(x.place_id)), via = [...(t.route.via || []).map(v => [+v[0], +v[1]]), t.via];
-    if (via.length > 30) throw new Error('จุดแวะขาไปครบ 30 จุดแล้ว ลบจุดแวะเดิมที่ไม่ใช้ก่อน (ปุ่ม "ปรับเส้นทาง (จุดแวะ)")');
-    const res = await snapTrip(t.route, keep, { via });   // คำนวณก่อน ถ้าบริการเส้นทางไม่ตอบ จะยังไม่แตะลำดับจุด
-    if (rm.size) { for (const e of await api.list('route_stop', { eq: { route_id: t.routeId } })) await api.remove('route_stop', e.id); for (let i = 0; i < keep.length; i++) await api.insert('route_stop', { route_id: t.routeId, place_id: keep[i].place_id, seq: i + 1 }); }
-    await api.update('route', t.routeId, { ...res.patch, via });
-    S._turn = null; toast(`บันทึกแล้ว ${fmtKm(res.km)} กม./รอบ${rm.size ? ` · เอาออก ${fmt(rm.size)} จุด (ให้เพิ่มในเส้นทางอื่น)` : ''}`); render();
-  } catch (e) { b.disabled = false; b.textContent = 'บันทึกและลากเส้นใหม่'; toastErr('บันทึกไม่สำเร็จ', isNetworkError(e) ? 'บริการเส้นทางไม่ตอบในขณะนี้ ยังไม่มีอะไรเปลี่ยน ลองใหม่ภายหลัง' : e.message); }
+    const stops = (S._routeStops || []).length ? S._routeStops : await reStops(c.routeId, true);
+    const res = await snapTrip(c.route, stops, { cuts: list });
+    if (res.cutsOk < list.length) throw new Error(`เส้นที่คำนวณใหม่ตัดได้ ${res.cutsOk} จาก ${list.length} จุด (เส้นอาจเปลี่ยนไปจากเดิม) · ยังไม่บันทึก ลองแตะจุดตัดใหม่`);
+    await api.update('route', c.routeId, { ...res.patch, path_cuts: list.length ? list : null });
+    S._cut = null; toast(`${okMsg} · ${fmtKm(res.km)} กม./รอบ (ขาไป ${fmtKm(res.outM)} · ขากลับ ${fmtKm(res.backM)})`); render();
+  } catch (e) { if (b) { b.disabled = false; b.textContent = 'บันทึกและลากเส้นใหม่'; } toastErr('บันทึกไม่สำเร็จ', isNetworkError(e) ? 'บริการเส้นทางไม่ตอบในขณะนี้ ยังไม่มีอะไรเปลี่ยน ลองใหม่ภายหลัง' : e.message); }
 }
+function cutSave() { const c = S._cut; if (!c || !c.res) return; if (c.skip && c.skip.length && !confirm(`ช่วงที่ตัดมี ${c.skip.join(', ')} รถจะไม่ได้แวะ ยืนยันตัด?`)) return; cutSaveList([...(c.route.path_cuts || []), { leg: c.leg, p: c.p }], 'ตัดเส้นแล้ว'); }
+function cutDel(i) { const c = S._cut; if (!c || !confirm('ลบจุดตัดนี้? ระบบจะลากเส้นใหม่ (รถกลับไปวิ่งช่วงเดิม)')) return; const list = (c.route.path_cuts || []).filter((_, k) => k !== i); cutSaveList(list, 'ลบจุดตัดแล้ว'); }
 // ---- โหมดปรับเส้นทาง (DEC-110) — บทเรียนจาก AppTech: เส้นที่ปรับไม่ผูก popup (popup กลืนคลิก) · หยุด event ที่หมุด/เส้นไม่ให้ทะลุไปแผนที่
 //      หมุดจุดแวะอยู่ชั้นแยก วาดใหม่เฉพาะชั้นนั้น (ไม่ render ทั้งหน้าทุกคลิก) · จำมุมมองแผนที่ไว้ ไม่ซูมออกเองหลังคำนวณ
 function viaStart(routeId, leg) { S._adj = { routeId, leg: leg || 'out' }; if (location.hash !== '#routes/' + routeId) go('#routes/' + routeId); else render(); }
@@ -3625,7 +3654,7 @@ const GUIDE_ADM = [
       `${GN(2)} แตะบนแผนที่หรือบนเส้น = เพิ่มจุดแวะ · ลากหมุด = ย้าย · แตะหมุด = ลบ (ระบบถามยืนยัน)`,
       `${GN(3)} <b>"คำนวณใหม่ตามจุดแวะ"</b> บันทึกจุดแวะและเส้นใหม่ · แผนที่ไม่ซูมออกเอง ดูผลได้ทันที`,
       `${GN(4)} <b>"เลิกปรับ"</b> ถ้ายังมีจุดที่ไม่ได้คำนวณ ระบบเตือนก่อนออก`],
-      done: 'วางจุดแวะบนถนนที่ต้องการให้รถผ่าน ไม่ต้องวางทุกหัวมุม ส่วนใหญ่ 1–2 จุดก็พอ · ระบบแทรกจุดแวะตรงช่วงที่อ้อมน้อยที่สุดเอง · <b>ให้รถเลี้ยวเข้าถนนอื่นแทนการวิ่งสุดถนนแล้วกลับรถ:</b> หน้าเส้นทางรถ → ปุ่ม "เลี้ยวเข้าถนนอื่น" → แตะจุดเก็บสุดท้ายก่อนเลี้ยว → ระบบเสนอเอาจุดที่เลยไปบนถนนเดิมออก → แตะถนนที่จะเลี้ยวเข้า → "บันทึกและลากเส้นใหม่" (จุดที่เอาออกให้เพิ่มในเส้นทางอื่น)' }] },
+      done: 'วางจุดแวะบนถนนที่ต้องการให้รถผ่าน ไม่ต้องวางทุกหัวมุม ส่วนใหญ่ 1–2 จุดก็พอ · ระบบแทรกจุดแวะตรงช่วงที่อ้อมน้อยที่สุดเอง · <b>เส้นวิ่งเลยทางแยกแล้วย้อนกลับ (เส้นซ้อนไป-กลับ):</b> หน้าเส้นทางรถ → ปุ่ม "ตัดเส้นตรงนี้" → แตะบนเส้นตรงทางแยกที่ต้องการให้รถเลี้ยว → ระบบแสดงช่วงที่จะตัดเป็นสีแดง → "บันทึกและลากเส้นใหม่" · ระบบจำจุดตัดไว้และตัดให้ทุกครั้งที่ลากเส้นใหม่ · ถ้าช่วงที่ตัดมีจุดเก็บหรือที่ทิ้ง ระบบเตือนก่อน' }] },
   { id: 'a8', title: 'บันทึกน้ำมันรายเดือน (ไม่บังคับ)', intro: 'กรอกเดือนละครั้งจากใบเบิกน้ำมันหรือสมุดคุมรถ · เดือนที่ไม่กรอก ระบบใช้ค่าประมาณ = กม. ตามแผน ÷ อัตราสิ้นเปลือง',
     parts: [{ img: 'a13', lead: 'จัดการเทศบาล → แท็บ <b>"น้ำมันรถ"</b>', steps: [
       `${GN(1)} <b>เดือน</b> ที่จะกรอก (ค่าเริ่มต้น = เดือนก่อน)`,
