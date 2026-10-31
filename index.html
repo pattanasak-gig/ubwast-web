@@ -825,10 +825,10 @@ async function pageMap(view) {
     <div id="map"></div>${S.me.role !== 'super_admin' || S.scopeMuni ? `<button class="fab" onclick="go('#place-edit/new')">＋ เพิ่มจุด</button>` : ''}`;
   const places = (await api.list('v_place', { eq: { status: 'active', ...scopeEq() } })).filter(p => p.lat != null && p.lng != null);
   const map = mkMap('map'); S.map = map; addBaseLayer(map);
-  const group = L.featureGroup().addTo(map), maxL = Math.max(1, ...places.map(p => +p.total_liters)), OR = await openReports();   // DEC-127 ขนาดตามความจุรวม · แดง = มีเรื่องแจ้ง
+  const group = L.featureGroup().addTo(map), maxL = Math.max(1, ...places.map(p => +p.total_liters)), OR = await openReports(), photos = await placePhotoMap(scopeEq());   // DEC-142   // DEC-127 ขนาดตามความจุรวม · แดง = มีเรื่องแจ้ง
   for (const p of places) { const rp = OR.get(p.id);
     L.circleMarker([p.lat, p.lng], { radius: 7 + 9 * Math.sqrt((+p.total_liters) / maxL), color: rp ? REPORT_RED : '#fff', weight: rp ? 4 : 1.5, fillColor: rp ? REPORT_RED : (p.tier_color || '#1D91C0'), fillOpacity: .95 })
-      .bindPopup(placePopup({ ...p, road_name: (p.road_name || '') + (p.soi_name ? ' ' + p.soi_name : '') }, rp), POPUP_OPT)
+      .bindPopup(placePopup({ ...p, photo_url: photos.get(p.id) || null, road_name: (p.road_name || '') + (p.soi_name ? ' ' + p.soi_name : '') }, rp), POPUP_OPT)
       .addTo(group);
   }
   addPins(group, await openPins());   // DEC-133
@@ -1617,6 +1617,8 @@ async function openReports() {
   if (!S.me) return groupOpen((S.pub && S.pub.open_reports) || []);
   try { return groupOpen((await api.list('citizen_report', { eq: scopeEq() })).filter(r => !RCLOSED.includes(r.status))); } catch (_) { return new Map(); }
 }
+// DEC-142 รูปล่าสุดของแต่ละจุด (เจ้าหน้าที่) สำหรับป๊อปอัปแผนที่ · ข้อมูลสาธารณะมี photo_url มาแล้ว
+async function placePhotoMap(eq) { try { const rows = await api.list('place_photo', { eq: { ...(eq || {}), status: 'active' } }); const m = new Map(); for (const r of rows.sort((a, b) => ((a.seq || 0) - (b.seq || 0)) || String(a.created_at).localeCompare(String(b.created_at)))) m.set(r.place_id, r.url); return m; } catch (_) { return new Map(); } }
 const POPUP_OPT = { maxWidth: 230, autoPanPaddingTopLeft: [8, 100], autoPanPaddingBottomRight: [8, 16] };   // กันปุ่มซูม/ชั้นแผนที่บังป๊อปอัปบนมือถือ
 const PIN_SVG = `<svg width="26" height="24" viewBox="0 0 26 24" aria-hidden="true"><path d="M13 2 L24 22 H2 Z" fill="${REPORT_RED}" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><text x="13" y="19.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">!</text></svg>`;
 const repLegend = '<span><i class="dot" style="background:#fff;border:3px solid ' + REPORT_RED + '"></i>มีเรื่องแจ้งจากประชาชน</span><span style="display:inline-flex;align-items:center;gap:4px">' + PIN_SVG.replace('width="26" height="24"', 'width="16" height="15"') + 'เรื่องแจ้งตำแหน่งที่ไม่มีถัง</span>';
@@ -2036,8 +2038,11 @@ async function pageRoutes(view) {
   const map = mkMap('map'); addBaseLayer(map);
   const all = (await api.list('v_place', { eq: { status: 'active', municipality_id: S.scopeMuni } })).filter(p => p.lat != null);
   const inRoute = new Set([...stops, ...extra].map(s => s.place_id));
+  const [photos, memb] = await Promise.all([placePhotoMap({ municipality_id: S.scopeMuni }), api.list('v_route_stop', { eq: { municipality_id: S.scopeMuni } }).catch(() => [])]);   // DEC-142
+  S._rtCtx = { routes, sel, photos, memb, pmap: new Map(all.map(p => [p.id, p])) };
+  map.on('popupopen', () => { const x = $('#pp_rt'); if (x) ppSync(x.dataset.pid); });
   const g = L.featureGroup().addTo(map);
-  for (const p of all) L.circleMarker([p.lat, p.lng], { radius: inRoute.has(p.id) ? 10 : 5, color: '#fff', weight: 1, fillColor: inRoute.has(p.id) ? (p.tier_color || '#1b6e3a') : '#9ca3af', fillOpacity: inRoute.has(p.id) ? .95 : .5, interactive: !adj }).bindPopup(`<b>${esc(p.place_code)}</b><br>${esc(p.name)}<br>${fmt(p.total_liters)} ลิตร`).addTo(g);
+  for (const p of all) L.circleMarker([p.lat, p.lng], { radius: inRoute.has(p.id) ? 10 : 5, color: '#fff', weight: 1, fillColor: inRoute.has(p.id) ? (p.tier_color || '#1b6e3a') : '#9ca3af', fillOpacity: inRoute.has(p.id) ? .95 : .5, interactive: !adj }).bindPopup(() => rtPlacePop(p.id), POPUP_OPT).addTo(g);
   const activeRoutes = routes.filter(x => x.status === 'active'); const bands = routeBands(activeRoutes); const myColor = bands.colorOf(r);
   $('#rtLegend').innerHTML = bands.single ? `<span><i class="dot" style="background:${myColor}"></i>ความจุรวม ${fmt(r.total_liters)} ล.</span>` : bands.legend.map(b => `<span><i class="dot" style="background:${b.color}"></i>${fmt(b.from)}–${fmt(b.to)} ล.</span>`).join('');
   let othersDrawn = 0, othersNoPath = 0;
@@ -2071,8 +2076,8 @@ async function pageRoutes(view) {
   else if (path) L.geoJSON(path, { style: { color: myColor, weight: 7, opacity: .95 } }).bindPopup(`<b>${esc(r.route_name)}</b><br>${fmt(r.places)} จุด · <b>${fmt(r.total_liters)} ลิตร</b>`).addTo(g);   // เส้นบนถนนที่เก็บไว้ (เส้นที่เลือก หนากว่า)
   else { const line = stops.filter(s => s.lat != null).map(s => [s.lat, s.lng]); if (line.length > 1) L.polyline(line, { color: myColor, weight: 3, dashArray: '6 6' }).addTo(g); }
   if (othersDrawn || othersNoPath) $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:4px">แสดงเส้นทางอื่นอีก ${fmt(othersDrawn)} เส้น${othersNoPath ? ` · อีก ${fmt(othersNoPath)} เส้นยังไม่มีเส้นบนถนน (admin กด "ลากเส้นตามถนน")` : ''} · แตะเส้นเพื่อดูชื่อและความจุ</div>`);
-  for (const sidx of stops.filter(s => s.lat != null)) L.circleMarker([sidx.lat, sidx.lng], { radius: 11, color: '#fff', weight: 1.5, fillColor: '#1F3A5F', fillOpacity: .95, interactive: !adj && !cut }).bindTooltip(String(sidx.seq), { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${sidx.seq}. ${esc(sidx.place_code)}</b><br>${esc(sidx.place_name)}<br>${fmt(sidx.total_liters)} ลิตร`).addTo(g);   // DEC-135 เลขลำดับทุกจุดเสมอ
-  for (const x of extra.filter(s => s.lat != null)) L.circleMarker([x.lat, x.lng], { radius: 9, color: '#fff', weight: 1.5, fillColor: '#9ca3af', fillOpacity: .95, interactive: !adj }).bindTooltip('–', { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(`<b>${esc(x.place_code)}</b><br>${esc(x.place_name)}<br>${fmt(x.total_liters)} ลิตร<br><span class="muted">ไม่อยู่ในลำดับที่ admin กำหนด</span>`).addTo(g);
+  for (const sidx of stops.filter(s => s.lat != null)) L.circleMarker([sidx.lat, sidx.lng], { radius: 11, color: '#fff', weight: 1.5, fillColor: '#1F3A5F', fillOpacity: .95, interactive: !adj && !cut }).bindTooltip(String(sidx.seq), { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(() => rtPlacePop(sidx.place_id), POPUP_OPT).addTo(g);   // DEC-135 เลขลำดับทุกจุดเสมอ
+  for (const x of extra.filter(s => s.lat != null)) L.circleMarker([x.lat, x.lng], { radius: 9, color: '#fff', weight: 1.5, fillColor: '#9ca3af', fillOpacity: .95, interactive: !adj }).bindTooltip('–', { permanent: true, direction: 'center', className: 'seqlbl' }).bindPopup(() => rtPlacePop(x.place_id), POPUP_OPT).addTo(g);
   if (r.start_site_id || r.dump_site_id) {   // DEC-108 หมุดสถานที่ของเที่ยววิ่ง
     const sites = await siteList(S.scopeMuni); if (cut) cut.sites = sites.filter(x => [r.start_site_id, r.dump_site_id, r.end_site_id].includes(x.id));   // DEC-138
     const pin = (sid, lbl, col) => { const x = sites.find(y => y.id === sid); if (x) L.marker([x.lat, x.lng], { icon: L.divIcon({ className: 'sitepin', html: `<span style="background:${col}">${lbl}</span>`, iconSize: [46, 26], iconAnchor: [23, 13] }) }).bindPopup(`<b>${esc(x.name)}</b><br>${esc(siteTypeLabel(x.site_type))}`).addTo(g); };
@@ -2086,6 +2091,48 @@ async function pageRoutes(view) {
   $('#routeInfo').insertAdjacentHTML('beforeend', `<div class="muted" style="margin-top:8px">${path ? `เส้นทึบ = เส้นทางบนถนน ${fmt(Math.round(routeRow.path_distance_m / 100) / 10)} กม. (${routeRow.path_source === 'osrm' ? 'คำนวณจากแผนที่ OpenStreetMap' : 'กำหนดเอง'} · ${thDate(routeRow.path_at)})` : 'เส้นประเชื่อมจุดตามลำดับถนน ไม่ใช่เส้นทางวิ่งจริงบนถนน'}${custom.length ? ` · ลำดับจุด ${custom.length} จุด กำหนดโดย admin` : ' · ยังไม่กำหนดลำดับจุด (admin กำหนดได้ที่ จัดการเทศบาล → เส้นทาง → ลำดับจุด / เส้นถนน)'}</div>`);
 }
 
+// DEC-142 ป๊อปอัปจุดบนหน้าเส้นทางรถ: รูป · รายละเอียด · อยู่ในเส้นทางใด (ลำดับที่) · admin เลือกเส้นทางแล้วเพิ่ม/เอาออกได้ทันที
+function rtPlacePop(pid) {
+  const c = S._rtCtx || {}, p = (c.pmap && c.pmap.get(pid)) || {}, url = c.photos && c.photos.get(pid), mine = (c.memb || []).filter(x => x.place_id === pid), rn = id => (c.routes || []).find(r => r.route_id === id) || {};
+  const inR = mine.map(x => `${esc(rn(x.route_id).route_name || '?')} <span class="muted">· ${esc(rn(x.route_id).truck_code || '')} · ลำดับ ${x.seq}</span>`).join('<br>');
+  return `${url ? `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="รูปจุด ${esc(p.place_code || '')}" loading="lazy" style="width:220px;max-width:100%;height:140px;object-fit:cover;border-radius:6px;display:block;margin-bottom:6px"></a>` : '<div class="muted" style="margin-bottom:4px">ยังไม่มีรูป</div>'}
+    <b>${esc(p.place_code || '')}</b> ${esc(p.name || '')}<br><span class="muted">${esc(p.road_name || '')}${p.soi_name ? ' ' + esc(p.soi_name) : ''}</span><br>${fmt(p.total_bins)} ใบ · <b>${fmt(p.total_liters)} ลิตร</b>${p.tier_label ? ' · ' + esc(p.tier_label) : ''}
+    <div style="margin-top:6px"><b>อยู่ในเส้นทาง</b><br>${inR || '<span style="color:var(--danger)">ยังไม่อยู่ในเส้นทางใด</span>'}</div>
+    ${isAdmin() ? `<div style="margin-top:6px;border-top:1px solid var(--line);padding-top:6px"><label class="mini" for="pp_rt">จัดจุดนี้เข้าเส้นทาง</label><select id="pp_rt" data-pid="${pid}" onchange="ppSync('${pid}')">${(c.routes || []).filter(r => r.status === 'active').map(r => `<option value="${r.route_id}" ${r.route_id === c.sel ? 'selected' : ''}>${esc(r.route_name)} · ${esc(r.truck_code || '')}</option>`).join('')}</select>
+      <div class="row" style="margin-top:6px;gap:6px"><button class="small" type="button" id="pp_add" onclick="ppAdd('${pid}')">เพิ่มเข้าเส้นทางนี้</button><button class="small danger" type="button" id="pp_rm" onclick="ppRemove('${pid}')">เอาออก</button></div><div id="pp_msg" class="muted" style="margin-top:4px"></div></div>` : ''}
+    <div style="margin-top:4px"><a href="#place/${pid}">รายละเอียด/รูปทั้งหมด</a></div>`;
+}
+function ppSync(pid) {
+  const c = S._rtCtx, rid = ($('#pp_rt') || {}).value; if (!c || !rid) return; const m = c.memb.find(x => x.route_id === rid && x.place_id === pid);
+  const a = $('#pp_add'), r = $('#pp_rm'), msg = $('#pp_msg'); if (a) a.disabled = !!m; if (r) r.disabled = !m; if (msg) msg.textContent = m ? `อยู่ในเส้นทางนี้แล้ว ลำดับ ${m.seq}` : 'ยังไม่อยู่ในเส้นทางนี้ · เพิ่มแล้วระบบแทรกในลำดับที่อ้อมน้อยที่สุด';
+}
+async function rtSaveStops(rid, ids) { for (const e of await api.list('route_stop', { eq: { route_id: rid } })) await api.remove('route_stop', e.id); for (let i = 0; i < ids.length; i++) await api.insert('route_stop', { route_id: rid, place_id: ids[i], seq: i + 1 }); }
+async function rtAfterStops(rid, msg) {   // ถามว่าจะลากเส้นใหม่เลยไหม (ระยะทางและคาร์บอนเปลี่ยนตามลำดับจุด)
+  if (confirm(`${msg}\n\nลากเส้นตามถนนของเส้นทางนี้ใหม่ตอนนี้เลยไหม? (ใช้เวลา 3–10 วินาที · ระยะทางและคาร์บอนจะคำนวณใหม่)`)) {
+    try { const [rt] = await api.list('route', { eq: { id: rid } }), st = await reStops(rid, true), res = await snapTrip(rt, st); await api.update('route', rid, res.patch); toast(`${msg} · ลากเส้นใหม่ ${fmtKm(res.km)} กม./รอบ`); }
+    catch (e) { toastErr('ลากเส้นใหม่ไม่สำเร็จ', (isNetworkError(e) ? 'บริการเส้นทางไม่ตอบในขณะนี้' : e.message) + ' · ลำดับจุดบันทึกแล้ว กด "ลากเส้นตามถนน" ภายหลัง'); }
+  } else toast(`${msg} · ระยะทางยังเป็นของเดิมจนกว่าจะกด "ลากเส้นตามถนน"`);
+  render();
+}
+async function ppAdd(pid) {
+  const c = S._rtCtx, rid = $('#pp_rt').value, p = c.pmap.get(pid), b = $('#pp_add'); if (!rid || !p) return; b.disabled = true; b.textContent = 'กำลังเพิ่ม…';
+  try {
+    const cur = await api.list('v_route_stop', { eq: { route_id: rid }, order: ['seq'] }); if (cur.some(x => x.place_id === pid)) return ppSync(pid);
+    const rr = await api.list('route_road', { eq: { route_id: rid } });   // ปริมาณขยะนับเฉพาะจุดบนถนนของเส้นทาง (DEC-136) → เพิ่มถนนให้ถ้ายังไม่มี
+    if (!rr.some(x => x.road_id === p.road_id)) await api.insert('route_road', { route_id: rid, road_id: p.road_id, seq: (rr.length ? Math.max(...rr.map(x => +x.seq || 0)) : 0) + 1 });
+    const list = cur.map(x => ({ id: x.place_id, lat: x.lat == null ? null : +x.lat, lng: x.lng == null ? null : +x.lng })), P0 = { lat: +p.lat, lng: +p.lng }; let best = list.length, cost = Infinity;
+    for (let i = 0; i <= list.length; i++) { const a = list[i - 1], z = list[i]; if ((a && a.lat == null) || (z && z.lat == null)) continue; const cst = (a ? geoDist(a, P0) : 0) + (z ? geoDist(P0, z) : 0) - (a && z ? geoDist(a, z) : 0); if (cst < cost) { cost = cst; best = i; } }
+    list.splice(best, 0, { id: pid }); await rtSaveStops(rid, list.map(x => x.id));
+    map_close(); await rtAfterStops(rid, `เพิ่ม ${p.place_code} เข้าเส้นทางแล้ว (ลำดับ ${best + 1})`);
+  } catch (e) { b.disabled = false; b.textContent = 'เพิ่มเข้าเส้นทางนี้'; fail(e, 'เพิ่มจุดเข้าเส้นทางไม่สำเร็จ'); }
+}
+async function ppRemove(pid) {
+  const c = S._rtCtx, rid = $('#pp_rt').value, p = c.pmap.get(pid) || {}, rname = ((c.routes || []).find(r => r.route_id === rid) || {}).route_name || ''; if (!rid || !confirm(`เอา ${p.place_code || 'จุดนี้'} ออกจากเส้นทาง ${rname}?\nจุดยังอยู่ในระบบ แต่ไม่นับปริมาณขยะของเส้นทางนี้`)) return;
+  const b = $('#pp_rm'); b.disabled = true; b.textContent = 'กำลังเอาออก…';
+  try { const cur = await api.list('v_route_stop', { eq: { route_id: rid }, order: ['seq'] }); await rtSaveStops(rid, cur.filter(x => x.place_id !== pid).map(x => x.place_id)); map_close(); await rtAfterStops(rid, `เอา ${p.place_code || 'จุด'} ออกจากเส้นทางแล้ว`); }
+  catch (e) { b.disabled = false; b.textContent = 'เอาออก'; fail(e, 'เอาจุดออกไม่สำเร็จ'); }
+}
+const map_close = () => { const x = document.querySelector('.leaflet-popup-close-button'); if (x) x.click(); };
 // DEC-135 ตารางจุดในเส้นทาง (ใต้แผนที่) · เลขตรงกับหมุดบนแผนที่ · จุดที่ไม่อยู่ในลำดับที่ admin กำหนดแสดงแยก
 const kgOfL = l => { const k = parseFloat(setting('kg_per_liter')); return k > 0 ? l * k : null; };
 function rtStopsCard(stops, extra, rid) {
