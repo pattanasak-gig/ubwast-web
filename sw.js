@@ -2,16 +2,19 @@
 //   หน้าเว็บ: ดึงจากเน็ตก่อนเสมอ (ได้รุ่นล่าสุดทุกครั้งหลังขึ้นเว็บใหม่) · ไม่มีเน็ตจึงใช้ฉบับที่จำไว้
 //   ไลบรารีจาก CDN และไอคอน: ใช้ฉบับที่จำไว้ก่อน แล้วอัปเดตเบื้องหลัง
 //   ไม่แตะคำขอข้อมูล (Supabase · ห้องเครื่อง · แผนที่ · เส้นทาง) — ข้อมูลไปที่เซิร์ฟเวอร์ตามปกติ
-const V = 'ubwast-v2', SHELL = ['./', './manifest.webmanifest', './pwa/icon-192.png'];
+const V = 'ubwast-v3', SHELL = ['./', './manifest.webmanifest', './pwa/icon-192.png'];
+// DEC-144 ไลบรารีที่หน้าเว็บต้องมีตอนไม่มีเน็ต (ตอนเปิดครั้งแรก service worker ยังไม่คุมหน้า จึงต้องเก็บไว้ตอนติดตั้งด้วย)
+const LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js', 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js'];
 const CDN = /^https:\/\/(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
-self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
+self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL).then(() => Promise.all(LIBS.map(u => c.add(new Request(u, { mode: 'cors' })).catch(() => c.add(new Request(u, { mode: 'no-cors' })).catch(() => null)))))).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
   const r = e.request; if (r.method !== 'GET') return;
   const u = new URL(r.url), own = u.origin === location.origin;
   if (r.mode === 'navigate') {
     // cache: 'no-cache' = ถามเซิร์ฟเวอร์ทุกครั้ง (ได้ 304 ถ้าไม่เปลี่ยน) ไม่ใช้แคช HTTP ของเบราว์เซอร์ → เปิดแอปได้รุ่นล่าสุดทันทีหลังขึ้นเว็บ
-    e.respondWith(fetch(r.url, { cache: 'no-cache', credentials: 'same-origin' }).then(res => { if (res.ok) { const cp = res.clone(); caches.open(V).then(c => c.put('./', cp)); } return res; }).catch(() => caches.match('./')));
+    // เก็บเป็นหน้าหลักเฉพาะเมื่อเป็น HTML ของหน้าแรก (ไม่ให้ไฟล์รูป/JSON ที่เปิดตรง ๆ หรือหน้า captive portal มาทับ)
+    e.respondWith(fetch(r.url, { cache: 'no-cache', credentials: 'same-origin' }).then(res => { const ct = res.headers.get('content-type') || '', isIndex = /\/(index\.html)?$/.test(u.pathname); if (res.ok && !res.redirected && isIndex && ct.includes('text/html')) { const cp = res.clone(); caches.open(V).then(c => c.put('./', cp)); } return res; }).catch(() => caches.match('./').then(hit => hit || new Response('<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:24px">ไม่มีสัญญาณอินเทอร์เน็ต และยังไม่เคยเปิดหน้านี้มาก่อน<br>เชื่อมต่อแล้วลองใหม่</body>', { headers: { 'content-type': 'text/html; charset=utf-8' } }))));
     return;
   }
   if (CDN.test(r.url) || (own && /\/(pwa\/|manifest\.webmanifest$)/.test(u.pathname))) {
