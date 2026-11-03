@@ -2,7 +2,7 @@
 //   หน้าเว็บ: ดึงจากเน็ตก่อนเสมอ (ได้รุ่นล่าสุดทุกครั้งหลังขึ้นเว็บใหม่) · ไม่มีเน็ตจึงใช้ฉบับที่จำไว้
 //   ไลบรารีจาก CDN และไอคอน: ใช้ฉบับที่จำไว้ก่อน แล้วอัปเดตเบื้องหลัง
 //   ไม่แตะคำขอข้อมูล (Supabase · ห้องเครื่อง · แผนที่ · เส้นทาง) — ข้อมูลไปที่เซิร์ฟเวอร์ตามปกติ
-const V = 'ubwast-v3', SHELL = ['./', './manifest.webmanifest', './pwa/icon-192.png'];
+const V = 'ubwast-v4', SHELL = ['./', './manifest.webmanifest', './pwa/icon-192.png', './brand/logo.svg', './brand/favicon-32.png'];   // DEC-151 โลโก้ใหม่
 // DEC-144 ไลบรารีที่หน้าเว็บต้องมีตอนไม่มีเน็ต (ตอนเปิดครั้งแรก service worker ยังไม่คุมหน้า จึงต้องเก็บไว้ตอนติดตั้งด้วย)
 const LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css', 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js', 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js'];
 const CDN = /^https:\/\/(cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
