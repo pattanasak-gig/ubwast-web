@@ -466,6 +466,7 @@ const DemoBackend = () => {
   for (let i = 1; i <= 2; i++) { const p = mkPlace(m2, `จุดตัวอย่าง ง-${i}`, r4, i, null, 15.1 + i * 0.001, 100.1 + i * 0.001); add('bin', { municipality_id: m2.id, place_id: p.id, bin_type_id: bt120.id, amount: 2 }); }
 
   for (const rt of D.route.filter(x => x.route_kind !== 'temporary')) { let k = 0; for (const rr of D.route_road.filter(x => x.route_id === rt.id).sort((a, b) => a.seq - b.seq)) for (const p of D.place.filter(p => p.road_id === rr.road_id).sort((a, b) => String(a.place_code).localeCompare(String(b.place_code), 'th'))) add('route_stop', { municipality_id: rt.municipality_id, route_id: rt.id, place_id: p.id, seq: ++k }); }   // DEC-136
+  for (const rt of D.route) { const pts = D.route_stop.filter(x => x.route_id === rt.id).sort((a, b) => a.seq - b.seq).map(x => D.place.find(p => p.id === x.place_id)).filter(p => p && p.lat != null); if (pts.length > 1 && !rt.path_out) rt.path_out = { type: 'LineString', coordinates: pts.map(p => [+p.lng, +p.lat]) }; }   // DEC-154 เส้นสมมติในโหมดสาธิต (ต่อจุดตามลำดับ) ให้หน้าเส้นทางรถมีเส้น
   for (const rt of D.route) { if (!rt.return_mode) rt.return_mode = 'auto'; if (!('next_route_id' in rt)) rt.next_route_id = null; if (!('path_cuts' in rt)) rt.path_cuts = null; }   // DEC-137 · DEC-138
   let me = null;
   const byId = (t, id) => D[t].find(r => r.id === id);
@@ -1982,6 +1983,9 @@ function pagePubRoutes(view) {
   for (const r of list) { const col = ROUTE_PAL[all.indexOf(r) % ROUTE_PAL.length], pop = `<b>${esc(r.route_name)}</b>${r.round_no ? '<br>รอบที่ ' + r.round_no : ''}<br>วันที่รถมา: ${esc(daysLabel(r.run_days))}`;
     if (r.path && r.path.coordinates && r.path.coordinates.length) L.geoJSON(r.path, { style: { color: col, weight: 5, opacity: .85 } }).bindPopup(pop).addTo(g);
     if (r.path_back && r.path_back.coordinates && r.path_back.coordinates.length) L.geoJSON(r.path_back, { style: { color: col, weight: 3, opacity: .6, dashArray: '10 8' } }).bindPopup(pop).addTo(g); }
+  if (!g.getLayers().length) {   // DEC-154 เส้นทางที่ยังไม่ได้ลากเส้น: แสดงจุดวางถังของเทศบาลจาง ๆ ให้แผนที่ซูมถูกพื้นที่
+    for (const p of (S.pub.places || []).filter(p => p.municipality_id === mid && p.lat != null)) L.circleMarker([p.lat, p.lng], { radius: 4, color: '#fff', weight: 1, fillColor: '#9ca3af', fillOpacity: .8 }).addTo(g);
+  }
   fitMuni(map, g, mid);
 }
 // DEC-152 การ์ดตั้งค่า admin: เปิด/ปิดเส้นทางบนหน้าสาธารณะ
