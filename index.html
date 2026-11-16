@@ -25,6 +25,23 @@ const CREDIT = {
 };
 const CONFIG = {
   ESRI_KEY_EXPIRES: '2027-10-22',
+  // DEC-154 คลิปแนะนำรายโมดูล (YouTube แบบไม่เป็นสาธารณะ · ใส่เฉพาะรหัสวิดีโอ 11 ตัว เช่น 'dQw4w9WgXcQ') · ว่าง = ไม่แสดงปุ่ม
+  CLIPS: {
+    c00: '',   // ภาพรวมระบบ · หน้าเกี่ยวกับระบบ
+    c01: '',   // ภาพรวม & แผนที่ · หน้าแรกสาธารณะ
+    c02: '',   // แจ้งเหตุจุดถังขยะ · หน้าแรกสาธารณะ (ข้างปุ่มแจ้งเหตุ)
+    c03: '',   // ติดตามเรื่องแจ้ง
+    c04: '',   // ผลงานการเก็บขน
+    c05: '',   // การปล่อยก๊าซเรือนกระจก
+    c06: '',   // เส้นทางรถ (สาธารณะ)
+    c07: '',   // บันทึกจุดวางถังและถัง (ผู้บันทึก)
+    c08: '',   // บันทึกเที่ยววิ่ง + ปุ่มออกรถ (คนขับ)
+    c09: '',   // กระดานวันนี้ + ยอดชั่งรายเดือน (หัวหน้าพนักงาน)
+    c10: '',   // เรื่องแจ้งจากประชาชน (เจ้าหน้าที่)
+    c11: '',   // จัดการเทศบาล (admin)
+    c12: '',   // แดชบอร์ดและรายงาน (admin/ผู้บริหาร)
+    c13: '',   // ติดตั้งเป็นแอปบนมือถือ
+  },
   MANUAL_MUNI_URL: 'https://www.notion.so/40d813ec72778193b17bdf713edb2ea8',   // DEC-150 คู่มือเทศบาลออนไลน์ใน Notion (ขั้นตอนอย่างเดียว · 7 หน้าตามบทบาท) แทน Google Doc เดิม
   MANUAL_MUNI_DOC_ID: '1wuO0mU6LcoXcbrcoGPixMws-57qX9BR7Ls-RmQrMTek',   // DEC-101 คู่มือเทศบาล (Google Doc ใน Drive ของเจ้าของโครงการ โฟลเดอร์ UBWast-help · แชร์แบบมีลิงก์) · แก้ไฟล์ใน Drive ได้เลย ลิงก์เดิม
   MANUAL_OWNER_URL: 'https://claude.ai/artifact/R3aVnvnyht5C8wpMkGCvuP',   // คู่มือเจ้าของโครงการ (เห็นเฉพาะ super admin)       // วันหมดอายุคีย์ Esri (ค.ศ.) · ระบบเตือนเจ้าของโครงการล่วงหน้า 30 วันในหน้าส่วนกลาง
@@ -740,7 +757,35 @@ async function refreshRepBadge() {
   const tip = `เรื่องค้าง ${fmt(cnt)} เรื่อง${nNew ? ` · ใหม่ยังไม่รับเรื่อง ${fmt(nNew)} เรื่อง` : ''}`;
   a.insertAdjacentHTML('beforeend', `<span class="nbadge" style="background:${nNew ? REPORT_RED : '#6b7280'}" title="${tip}" aria-label="${tip}">${fmt(cnt)}</span>`);
 }
-async function render() {
+// DEC-154 จุดฝังคลิปแนะนำ: แถบ "ดูคลิปแนะนำ" ด้านบนของหน้าที่มีคลิป · เปิดวิดีโอเมื่อกดเท่านั้น (youtube-nocookie)
+const CLIP_TITLES = { c00: 'ภาพรวมระบบ', c01: 'ภาพรวม & แผนที่', c02: 'แจ้งเหตุจุดถังขยะ', c03: 'ติดตามเรื่องแจ้ง', c04: 'ผลงานการเก็บขน', c05: 'การปล่อยก๊าซเรือนกระจก', c06: 'เส้นทางรถ', c07: 'บันทึกจุดวางถังและถัง', c08: 'บันทึกเที่ยววิ่งและปุ่มออกรถ', c09: 'กระดานวันนี้และยอดชั่งรายเดือน', c10: 'จัดการเรื่องแจ้งจากประชาชน', c11: 'จัดการเทศบาล', c12: 'แดชบอร์ดและรายงาน', c13: 'ติดตั้งเป็นแอปบนมือถือ' };
+function clipKeysFor(h) {
+  h = h || '#';
+  if (!S.me) return h.startsWith('#about') ? ['c00', 'c13'] : h.startsWith('#perf') ? ['c04'] : h.startsWith('#carbon') ? ['c05'] : h.startsWith('#track') ? ['c03'] : h.startsWith('#pubroutes') ? ['c06'] : (h === '#' || h === '') ? ['c01', 'c02'] : [];
+  if (h.startsWith('#place') || h.startsWith('#map') || h.startsWith('#queue')) return ['c07'];
+  if (h.startsWith('#trips')) return S.me.role === 'supervisor' ? ['c08', 'c09'] : ['c08'];
+  if (h.startsWith('#today')) return ['c09'];
+  if (h.startsWith('#complaints')) return ['c10'];
+  if (h.startsWith('#admin')) return ['c11'];
+  if (h.startsWith('#dashboard') || h.startsWith('#reports')) return h.startsWith('#dashboard/perf') ? ['c04', 'c12'] : h.startsWith('#dashboard/carbon') ? ['c05', 'c12'] : ['c12'];
+  if (h.startsWith('#help')) return Object.keys(CLIP_TITLES);
+  return [];
+}
+function clipBar() {
+  const ids = (CONFIG.CLIPS || {}), keys = clipKeysFor(location.hash).filter(k => /^[A-Za-z0-9_-]{11}$/.test(ids[k] || ''));
+  if (!keys.length) return; const view = $('#view'); if (!view || view.querySelector('.clipbar')) return;
+  view.insertAdjacentHTML('afterbegin', `<div class="card clipbar row" style="gap:8px;padding:8px 12px;align-items:center"><span class="muted">คลิปแนะนำ:</span>${keys.map(k => `<button type="button" class="secondary small" onclick="playClip('${k}')">▶ ${esc(CLIP_TITLES[k])}</button>`).join('')}</div>`);
+}
+function playClip(k) {
+  const id = (CONFIG.CLIPS || {})[k]; if (!/^[A-Za-z0-9_-]{11}$/.test(id || '')) return;
+  const d = document.createElement('div'); d.className = 'clipmodal'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-label', 'คลิปแนะนำ ' + CLIP_TITLES[k]);
+  d.style.cssText = 'position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML = `<div style="width:min(960px,100%);background:#000;border-radius:10px;overflow:hidden"><div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#111;color:#fff"><b>${esc(CLIP_TITLES[k])}</b><button type="button" class="secondary small" onclick="this.closest('.clipmodal').remove()">ปิด</button></div><div style="position:relative;padding-top:56.25%"><iframe src="https://www.youtube-nocookie.com/embed/${id}?rel=0&autoplay=1&cc_load_policy=1&hl=th" title="${esc(CLIP_TITLES[k])}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe></div></div>`;
+  d.addEventListener('click', e => { if (e.target === d) d.remove(); }); document.addEventListener('keydown', function esc1(e) { if (e.key === 'Escape') { d.remove(); document.removeEventListener('keydown', esc1); } });
+  document.body.appendChild(d);
+}
+async function render() { try { return await renderInner(); } finally { try { clipBar(); } catch (_) {} } }
+async function renderInner() {
   S.charts.forEach(c => c.destroy()); S.charts = [];
   if (!location.hash.startsWith('#routes')) { S._adj = null; S._cut = null; }   // ออกจากหน้าเส้นทาง = เลิกโหมดปรับ
   const view = $('#view');
