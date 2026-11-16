@@ -25,22 +25,41 @@ const CREDIT = {
 };
 const CONFIG = {
   ESRI_KEY_EXPIRES: '2027-10-22',
-  // DEC-154 คลิปแนะนำรายโมดูล (YouTube แบบไม่เป็นสาธารณะ · ใส่เฉพาะรหัสวิดีโอ 11 ตัว เช่น 'dQw4w9WgXcQ') · ว่าง = ไม่แสดงปุ่ม
+  // DEC-155 คลิปแนะนำรายโมดูล 3 ชุด (P ประชาชน · O ผู้ปฏิบัติงาน · A admin เทศบาล) + X00 ภาพรวม · YouTube แบบไม่เป็นสาธารณะ ใส่เฉพาะรหัสวิดีโอ 11 ตัว · ว่าง = ไม่แสดงปุ่ม
   CLIPS: {
-    c00: '',   // ภาพรวมระบบ · หน้าเกี่ยวกับระบบ
-    c01: '',   // ภาพรวม & แผนที่ · หน้าแรกสาธารณะ
-    c02: '',   // แจ้งเหตุจุดถังขยะ · หน้าแรกสาธารณะ (ข้างปุ่มแจ้งเหตุ)
-    c03: '',   // ติดตามเรื่องแจ้ง
-    c04: '',   // ผลงานการเก็บขน
-    c05: '',   // การปล่อยก๊าซเรือนกระจก
-    c06: '',   // เส้นทางรถ (สาธารณะ)
-    c07: '',   // บันทึกจุดวางถังและถัง (ผู้บันทึก)
-    c08: '',   // บันทึกเที่ยววิ่ง + ปุ่มออกรถ (คนขับ)
-    c09: '',   // กระดานวันนี้ + ยอดชั่งรายเดือน (หัวหน้าพนักงาน)
-    c10: '',   // เรื่องแจ้งจากประชาชน (เจ้าหน้าที่)
-    c11: '',   // จัดการเทศบาล (admin)
-    c12: '',   // แดชบอร์ดและรายงาน (admin/ผู้บริหาร)
-    c13: '',   // ติดตั้งเป็นแอปบนมือถือ
+    X00: '',   // ภาพรวมระบบ
+    P01: '',   // ภาพรวมและแผนที่จุดวางถัง
+    P02: '',   // สถานะเก็บขยะวันนี้
+    P03: '',   // แจ้งเหตุที่จุดวางถัง
+    P04: '',   // แจ้งตำแหน่งที่ไม่มีถัง
+    P05: '',   // ติดตามเรื่องแจ้ง
+    P06: '',   // เส้นทางรถเก็บขยะ
+    P07: '',   // ผลงานการเก็บขน
+    P08: '',   // การปล่อยก๊าซเรือนกระจก
+    P09: '',   // ติดตั้งเป็นแอปบนมือถือ
+    O01: '',   // เข้าสู่ระบบและเปลี่ยนรหัสผ่าน
+    O02: '',   // เพิ่มจุดวางถัง
+    O03: '',   // ค้นหา แก้ไข และส่งออกข้อมูลจุด
+    O04: '',   // บันทึกได้แม้ไม่มีสัญญาณ
+    O05: '',   // ดูเส้นทางและรายงานแจ้งคนขับ
+    O06: '',   // ปุ่มออกรถและทิ้งแล้ว
+    O07: '',   // บันทึกเที่ยววิ่งและน้ำหนัก
+    O08: '',   // กระดานวันนี้
+    O09: '',   // ยอดชั่งรายเดือน
+    A01: '',   // เริ่มต้นใช้งานและตรวจความครบ
+    A02: '',   // ถนนและซอย
+    A03: '',   // รถเก็บขยะ
+    A04: '',   // สถานที่ของเทศบาล
+    A05: '',   // สร้างเส้นทางเดินรถ
+    A06: '',   // ปรับเส้นทางและเพิ่มรอบ
+    A07: '',   // บันทึกน้ำมันรายเดือน
+    A08: '',   // บัญชีผู้ใช้และใบส่งมอบ
+    A09: '',   // ที่เก็บรูปถ่าย
+    A10: '',   // เปิดหรือปิดบริการ
+    A11: '',   // จัดการเรื่องแจ้ง
+    A12: '',   // แดชบอร์ดภาพรวมและทรัพย์สินถัง
+    A13: '',   // แดชบอร์ดรถ คาร์บอน และผลงาน
+    A14: '',   // รายงานสำหรับผู้บริหาร
   },
   MANUAL_MUNI_URL: 'https://www.notion.so/40d813ec72778193b17bdf713edb2ea8',   // DEC-150 คู่มือเทศบาลออนไลน์ใน Notion (ขั้นตอนอย่างเดียว · 7 หน้าตามบทบาท) แทน Google Doc เดิม
   MANUAL_MUNI_DOC_ID: '1wuO0mU6LcoXcbrcoGPixMws-57qX9BR7Ls-RmQrMTek',   // DEC-101 คู่มือเทศบาล (Google Doc ใน Drive ของเจ้าของโครงการ โฟลเดอร์ UBWast-help · แชร์แบบมีลิงก์) · แก้ไฟล์ใน Drive ได้เลย ลิงก์เดิม
@@ -759,17 +778,30 @@ async function refreshRepBadge() {
   a.insertAdjacentHTML('beforeend', `<span class="nbadge" style="background:${nNew ? REPORT_RED : '#6b7280'}" title="${tip}" aria-label="${tip}">${fmt(cnt)}</span>`);
 }
 // DEC-154 จุดฝังคลิปแนะนำ: แถบ "ดูคลิปแนะนำ" ด้านบนของหน้าที่มีคลิป · เปิดวิดีโอเมื่อกดเท่านั้น (youtube-nocookie)
-const CLIP_TITLES = { c00: 'ภาพรวมระบบ', c01: 'ภาพรวม & แผนที่', c02: 'แจ้งเหตุจุดถังขยะ', c03: 'ติดตามเรื่องแจ้ง', c04: 'ผลงานการเก็บขน', c05: 'การปล่อยก๊าซเรือนกระจก', c06: 'เส้นทางรถ', c07: 'บันทึกจุดวางถังและถัง', c08: 'บันทึกเที่ยววิ่งและปุ่มออกรถ', c09: 'กระดานวันนี้และยอดชั่งรายเดือน', c10: 'จัดการเรื่องแจ้งจากประชาชน', c11: 'จัดการเทศบาล', c12: 'แดชบอร์ดและรายงาน', c13: 'ติดตั้งเป็นแอปบนมือถือ' };
-function clipKeysFor(h) {
+const CLIP_TITLES = { X00: 'X00 ภาพรวมระบบ', P01: 'P01 ภาพรวมและแผนที่จุดวางถัง', P02: 'P02 สถานะเก็บขยะวันนี้', P03: 'P03 แจ้งเหตุที่จุดวางถัง', P04: 'P04 แจ้งตำแหน่งที่ไม่มีถัง', P05: 'P05 ติดตามเรื่องแจ้ง', P06: 'P06 เส้นทางรถเก็บขยะ', P07: 'P07 ผลงานการเก็บขน', P08: 'P08 การปล่อยก๊าซเรือนกระจก', P09: 'P09 ติดตั้งเป็นแอปบนมือถือ', O01: 'O01 เข้าสู่ระบบและเปลี่ยนรหัสผ่าน', O02: 'O02 เพิ่มจุดวางถัง', O03: 'O03 ค้นหา แก้ไข และส่งออกข้อมูลจุด', O04: 'O04 บันทึกได้แม้ไม่มีสัญญาณ', O05: 'O05 ดูเส้นทางและรายงานแจ้งคนขับ', O06: 'O06 ปุ่มออกรถและทิ้งแล้ว', O07: 'O07 บันทึกเที่ยววิ่งและน้ำหนัก', O08: 'O08 กระดานวันนี้', O09: 'O09 ยอดชั่งรายเดือน', A01: 'A01 เริ่มต้นใช้งานและตรวจความครบ', A02: 'A02 ถนนและซอย', A03: 'A03 รถเก็บขยะ', A04: 'A04 สถานที่ของเทศบาล', A05: 'A05 สร้างเส้นทางเดินรถ', A06: 'A06 ปรับเส้นทางและเพิ่มรอบ', A07: 'A07 บันทึกน้ำมันรายเดือน', A08: 'A08 บัญชีผู้ใช้และใบส่งมอบ', A09: 'A09 ที่เก็บรูปถ่าย', A10: 'A10 เปิดหรือปิดบริการ', A11: 'A11 จัดการเรื่องแจ้ง', A12: 'A12 แดชบอร์ดภาพรวมและทรัพย์สินถัง', A13: 'A13 แดชบอร์ดรถ คาร์บอน และผลงาน', A14: 'A14 รายงานสำหรับผู้บริหาร' };
+function clipKeysFor(h) {   // DEC-155 หน้าไหนแสดงคลิปไหน
   h = h || '#';
-  if (!S.me) return h.startsWith('#about') ? ['c00', 'c13'] : h.startsWith('#perf') ? ['c04'] : h.startsWith('#carbon') ? ['c05'] : h.startsWith('#track') ? ['c03'] : h.startsWith('#pubroutes') ? ['c06'] : (h === '#' || h === '') ? ['c01', 'c02'] : [];
-  if (h.startsWith('#place') || h.startsWith('#map') || h.startsWith('#queue')) return ['c07'];
-  if (h.startsWith('#trips')) return S.me.role === 'supervisor' ? ['c08', 'c09'] : ['c08'];
-  if (h.startsWith('#today')) return ['c09'];
-  if (h.startsWith('#complaints')) return ['c10'];
-  if (h.startsWith('#admin')) return ['c11'];
-  if (h.startsWith('#dashboard') || h.startsWith('#reports')) return h.startsWith('#dashboard/perf') ? ['c04', 'c12'] : h.startsWith('#dashboard/carbon') ? ['c05', 'c12'] : ['c12'];
-  if (h.startsWith('#help')) return Object.keys(CLIP_TITLES);
+  if (!S.me) return h.startsWith('#about') ? ['X00', 'P09'] : h.startsWith('#perf') ? ['P07'] : h.startsWith('#carbon') ? ['P08'] : h.startsWith('#track') ? ['P05'] : h.startsWith('#pubroutes') ? ['P06'] : h.startsWith('#login') ? ['O01'] : (h === '#' || h === '') ? ['P01', 'P02', 'P03', 'P04'] : [];
+  const r = S.me.role, adm = r === 'admin' || r === 'super_admin';
+  if (h.startsWith('#me')) return ['O01'];
+  if (h.startsWith('#places')) return ['O03'];
+  if (h.startsWith('#place-edit')) return ['O02', 'O04'];
+  if (h.startsWith('#place') || h.startsWith('#map') || h.startsWith('#queue')) return ['O02', 'O03', 'O04'];
+  if (h.startsWith('#routes')) return adm ? ['A06', 'O05'] : ['O05'];
+  if (h.startsWith('#route-edit')) return ['A05', 'A06'];
+  if (h.startsWith('#trips')) return r === 'driver' ? ['O06', 'O07'] : ['O07', 'O09', 'O06'];
+  if (h.startsWith('#today')) return ['O08'];
+  if (h.startsWith('#complaints')) return ['A11'];
+  if (h.startsWith('#admin/roads')) return ['A02'];
+  if (h.startsWith('#admin/fleet')) return ['A03', 'A04', 'A05'];
+  if (h.startsWith('#admin/fuel')) return ['A07'];
+  if (h.startsWith('#admin/users')) return ['A08'];
+  if (h.startsWith('#admin/settings')) return ['A09', 'A10'];
+  if (h.startsWith('#admin')) return ['A01'];
+  if (h.startsWith('#dashboard/fleet') || h.startsWith('#dashboard/carbon') || h.startsWith('#dashboard/perf')) return ['A13'];
+  if (h.startsWith('#dashboard')) return ['A12'];
+  if (h.startsWith('#reports')) return ['A14'];
+  if (h.startsWith('#help')) return Object.keys(CLIP_TITLES).filter(k => k[0] !== 'A' || adm);
   return [];
 }
 function clipBar() {
