@@ -756,7 +756,7 @@ function scopeSelector() {
 // เราเตอร์และเมนู
 // =====================================================================
 const TABS = () => isDriver() ? [['#trips', 'เที่ยววิ่ง'], ['#help', 'ช่วยเหลือ']] : [
-  ['#map', 'แผนที่'], ['#places', 'จุด'], ['#complaints', 'เรื่องแจ้ง'], ...(canLogTrip() ? [['#trips', 'เที่ยววิ่ง']] : []), ...(canLogTrip() && statusOn(S.me.municipality_id || S.scopeMuni) ? [['#today', 'วันนี้']] : []),   // DEC-149 ...(isAdmin() ? [['#dashboard', 'แดชบอร์ด']] : []), ['#routes', 'เส้นทางรถ'],   // DEC-090: แดชบอร์ดเฉพาะ admin เทศบาล (เห็นเทศบาลตน) และ super admin
+  ['#map', 'แผนที่'], ['#places', 'จุด'], ['#complaints', 'เรื่องแจ้ง'], ...(canLogTrip() ? [['#trips', 'เที่ยววิ่ง']] : []), ...(canLogTrip() && statusOn(S.me.municipality_id || S.scopeMuni) ? [['#today', 'วันนี้']] : []), ...(isAdmin() ? [['#dashboard', 'แดชบอร์ด']] : []), ['#routes', 'เส้นทางรถ'],   // DEC-149 วันนี้ · DEC-090 แดชบอร์ดเฉพาะ admin เทศบาลและ super admin · MIS-032 คอมเมนต์เคยอยู่กลางบรรทัดทำให้ 2 เมนูหาย
   ...(isAdmin() ? [['#reports', 'รายงาน'], ['#admin', 'จัดการเทศบาล']] : []),
   ...(isSuper() ? [['#super', 'ส่วนกลาง']] : []),
   ['#help', 'ช่วยเหลือ']
